@@ -53,23 +53,28 @@ export function TrendChart({ pts }) {
   );
 }
 
-/* ---------- body weight (soft white gradient) ---------- */
+/* ---------- body weight (trend-colored, same style as the exercise charts) ---------- */
 export function BodyChart({ data }) {
+  const vals = data.filter(m => m.value != null);
+  const first = vals[0]?.value, last = vals[vals.length - 1]?.value;
+  const up = last >= first;
+  const stroke = up ? T.green : T.down;
+  const gid = up ? "gradBWup" : "gradBWdown";
   return (
     <ResponsiveContainer width="100%" height={220}>
       <AreaChart data={data} margin={{ top: 8, right: 12, bottom: 0, left: -10 }}>
         <defs>
-          <linearGradient id="gradBW" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#FFFFFF" stopOpacity={0.22} />
-            <stop offset="100%" stopColor="#FFFFFF" stopOpacity={0} />
+          <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={stroke} stopOpacity={0.26} />
+            <stop offset="100%" stopColor={stroke} stopOpacity={0} />
           </linearGradient>
         </defs>
         <XAxis dataKey="label" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
         <YAxis tick={{ fontSize: 11 }} domain={["auto", "auto"]} axisLine={false} tickLine={false} />
         <Tooltip content={<NiceTip unit=" lb" />} cursor={{ stroke: "#4A4E50", strokeDasharray: "3 3" }} />
-        <ReferenceLine y={data.find(m => m.value != null)?.value} stroke="#4A4E50" strokeDasharray="2 6" />
-        <Area type="monotone" dataKey="value" stroke="#FFFFFF" strokeWidth={2.5} fill="url(#gradBW)"
-          dot={{ r: 3, fill: "#FFFFFF", strokeWidth: 0 }} activeDot={{ r: 5, fill: "#FFF", stroke: "#000", strokeWidth: 2 }}
+        <ReferenceLine y={first} stroke="#4A4E50" strokeDasharray="2 6" />
+        <Area type="monotone" dataKey="value" stroke={stroke} strokeWidth={2.5} fill={`url(#${gid})`}
+          dot={{ r: 3, fill: stroke, strokeWidth: 0 }} activeDot={{ r: 5, fill: stroke, stroke: "#000", strokeWidth: 2 }}
           connectNulls isAnimationActive={ANIM} animationDuration={700} animationEasing="ease-out" />
       </AreaChart>
     </ResponsiveContainer>
@@ -91,6 +96,26 @@ function ActiveSlice(props) {
   );
 }
 
+/* Highcharts-style outside label: bent connector line from the slice to
+   "Name 32%", anchored left or right of the donut. */
+const RAD = Math.PI / 180;
+function PieLabel({ cx, cy, midAngle, outerRadius, fill, name, percent }) {
+  const cos = Math.cos(-RAD * midAngle), sin = Math.sin(-RAD * midAngle);
+  const sx = cx + (outerRadius + 4) * cos,  sy = cy + (outerRadius + 4) * sin;   // start on the slice edge
+  const mx = cx + (outerRadius + 14) * cos, my = cy + (outerRadius + 14) * sin;  // bend point
+  const ex = mx + (cos >= 0 ? 12 : -12),    ey = my;                             // horizontal tail
+  const anchor = cos >= 0 ? "start" : "end";
+  return (
+    <g>
+      <polyline points={`${sx},${sy} ${mx},${my} ${ex},${ey}`} fill="none" stroke={fill} strokeWidth={1.3} opacity={0.85} />
+      <text x={ex + (cos >= 0 ? 4 : -4)} y={ey} textAnchor={anchor} dominantBaseline="central"
+        fill="#FFFFFF" fontSize={11.5} fontWeight={600}>
+        {name} <tspan fill={fill} fontWeight={700}>{Math.round(percent * 100)}%</tspan>
+      </text>
+    </g>
+  );
+}
+
 export function MusclePie({ data }) {
   const [active, setActive] = useState(-1);
   const total = data.reduce((s, d) => s + d.value, 0);
@@ -98,11 +123,12 @@ export function MusclePie({ data }) {
   return (
     <div>
       <div style={{ position: "relative" }}>
-        <ResponsiveContainer width="100%" height={240}>
-          <PieChart>
+        <ResponsiveContainer width="100%" height={270}>
+          <PieChart margin={{ top: 14, right: 10, bottom: 14, left: 10 }}>
             <Pie data={data} dataKey="value" nameKey="name"
-              innerRadius={62} outerRadius={88} paddingAngle={2} cornerRadius={5}
+              innerRadius={52} outerRadius={76} paddingAngle={2} cornerRadius={5}
               stroke="none" activeIndex={active} activeShape={<ActiveSlice />}
+              labelLine={false} label={<PieLabel />}
               onMouseEnter={(_, i) => setActive(i)} onMouseLeave={() => setActive(-1)}
               onClick={(_, i) => setActive(a => a === i ? -1 : i)}
               isAnimationActive={ANIM} animationBegin={0} animationDuration={800} animationEasing="ease-out" />

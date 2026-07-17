@@ -719,7 +719,7 @@ function BodyTab({ data, setData }) {
     <div className="card" style={{display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:8, textAlign:"center"}}>
       <div><div style={kpiN}>{current?current.weight:"—"}</div><div style={kpiL}>Current</div></div>
       <div><div style={kpiN}>{starting?starting.weight:"—"}</div><div style={kpiL}>Starting</div></div>
-      <div><div style={kpiN}>{change!=null?(change>0?"+":"")+Math.round(change*10)/10:"—"}</div><div style={kpiL}>Change (lb)</div></div>
+      <div><div style={{...kpiN, color: change==null ? T.ink : change >= 0 ? T.green : T.down}}>{change!=null?(change>0?"+":"")+Math.round(change*10)/10:"—"}</div><div style={kpiL}>Change (lb)</div></div>
       <div><div style={{...kpiN, fontSize:20, paddingTop:8}}>{current?fmtDate(current.date):"—"}</div><div style={kpiL}>Latest</div></div>
     </div>
 
@@ -733,11 +733,23 @@ function BodyTab({ data, setData }) {
 
     <div className="card">
       <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:8}}>Monthly average</div>
-      <table><thead><tr><th>Month</th><th>Avg wt</th><th>Creatine</th></tr></thead>
-        <tbody>{[...months].reverse().map(m=>(
-          <tr key={m.key}><td>{m.label}</td><td>{m.avg ?? "-"}</td><td>{m.creatine}</td></tr>
-        ))}
-        {!months.length && <tr><td colSpan={3} style={{color:T.sub}}>No weigh-ins yet.</td></tr>}
+      <table><thead><tr><th>Month</th><th>Avg wt</th><th>vs prev</th><th>Creatine</th></tr></thead>
+        <tbody>{(() => {
+          // pair each month with the previous month that actually has an average
+          const withPrev = months.map((m, i) => {
+            let prev = null;
+            for (let j = i - 1; j >= 0; j--) if (months[j].avg != null) { prev = months[j].avg; break; }
+            return { ...m, diff: (m.avg != null && prev != null) ? Math.round((m.avg - prev) * 10) / 10 : null };
+          });
+          return [...withPrev].reverse().map(m=>(
+            <tr key={m.key}><td>{m.label}</td><td style={{fontWeight:600}}>{m.avg ?? "-"}</td>
+              <td style={{color: m.diff==null ? T.sub : m.diff >= 0 ? T.green : T.down, fontWeight:700}}>
+                {m.diff==null ? "—" : `${m.diff>0?"▲ +":m.diff<0?"▼ ":""}${m.diff===0?"0":Math.abs(m.diff)}`}
+              </td>
+              <td style={{color:T.sub}}>{m.creatine}</td></tr>
+          ));
+        })()}
+        {!months.length && <tr><td colSpan={4} style={{color:T.sub}}>No weigh-ins yet.</td></tr>}
         </tbody></table>
     </div>
 
