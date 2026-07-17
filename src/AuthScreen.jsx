@@ -15,7 +15,9 @@ const emailFor = (u) => `${u}@lifting.local`;
 const lbl = { display: "block", fontSize: 12.5, fontWeight: 600, color: "#A9BDBA", marginBottom: 4 };
 const inp = {
   width: "100%", border: `1px solid ${C.line}`, borderRadius: 8,
-  padding: "11px 12px", fontSize: 15, background: C.input, color: C.ink, boxSizing: "border-box",
+  // 16px so iOS Safari doesn't zoom in when the field is tapped
+  padding: "11px 12px", fontSize: 16, minHeight: 44, background: C.input, color: C.ink, boxSizing: "border-box",
+  WebkitAppearance: "none", appearance: "none",
 };
 
 export default function AuthScreen() {
@@ -68,9 +70,9 @@ export default function AuthScreen() {
 
   return (
     <div style={{
-      fontFamily: "system-ui,-apple-system,'Segoe UI',Roboto,sans-serif", background: C.bg, minHeight: "100vh",
+      fontFamily: "system-ui,-apple-system,'Segoe UI',Roboto,sans-serif", background: C.bg, minHeight: "100dvh",
       display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-      padding: 20, color: C.ink,
+      padding: "calc(20px + env(safe-area-inset-top)) 20px calc(20px + env(safe-area-inset-bottom))", color: C.ink,
     }}>
       <div style={{
         fontWeight: 800, letterSpacing: ".2px",

@@ -168,12 +168,18 @@ export default function LiftingTracker({ user }) {
   ];
 
   return (
-    <div style={{ fontFamily:"system-ui,-apple-system,'Segoe UI',Roboto,sans-serif", background:T.bg, minHeight:"100vh", color:T.ink, paddingBottom:76 }}>
+    <div style={{ fontFamily:"system-ui,-apple-system,'Segoe UI',Roboto,sans-serif", background:T.bg, minHeight:"100dvh", color:T.ink, paddingBottom:"calc(76px + env(safe-area-inset-bottom))" }}>
       <style>{`
         html { color-scheme:dark; scroll-behavior:smooth; }
-        * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; } input,select,button { font-family:inherit; font-size:15px; }
+        * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+        /* 16px minimum: anything smaller makes iOS Safari zoom in when a field is tapped */
+        input,select,button { font-family:inherit; font-size:16px; }
         input,select,button { touch-action:manipulation; }
-        input,select { border:1px solid ${T.line}; border-radius:10px; padding:9px 10px; background:${T.input}; color:${T.ink}; width:100%; transition:border-color .15s ease; }
+        button { -webkit-touch-callout:none; user-select:none; }
+        input,select { border:1px solid ${T.line}; border-radius:10px; padding:9px 10px; background:${T.input}; color:${T.ink}; width:100%; transition:border-color .15s ease; min-height:44px; -webkit-appearance:none; appearance:none; }
+        select { background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%238C8F90' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position:right 12px center; padding-right:32px; }
+        input[type=date] { min-width:0; }
+        input[type=date]::-webkit-date-and-time-value { text-align:left; }
         input::placeholder { color:${T.sub}; opacity:.75; }
         input:focus,select:focus { outline:2px solid ${T.green}; outline-offset:0; border-color:${T.green}; }
         button { cursor:pointer; border:none; border-radius:24px; transition:transform .08s ease, background-color .15s ease, color .15s ease, border-color .15s ease, opacity .15s ease; }
@@ -193,7 +199,7 @@ export default function LiftingTracker({ user }) {
         @media(prefers-reduced-motion:reduce){ *{transition:none!important;animation:none!important} }
       `}</style>
 
-      <header style={{ background:T.bg, color:"#fff", padding:"14px 18px", position:"sticky", top:0, zIndex:5, display:"flex", justifyContent:"space-between", alignItems:"center", gap:10, borderBottom:`1px solid ${T.line}` }}>
+      <header style={{ background:T.bg, color:"#fff", padding:"calc(14px + env(safe-area-inset-top)) 18px 14px", position:"sticky", top:0, zIndex:5, display:"flex", justifyContent:"space-between", alignItems:"center", gap:10, borderBottom:`1px solid ${T.line}` }}>
         <div className="h" onClick={()=>setTab("dash")} style={{ fontSize:24, cursor:"pointer", userSelect:"none" }}>🏋️ MY LIFTING TRACKER</div>
         <div style={{ display:"flex", alignItems:"center", gap:10, flexShrink:0 }}>
           <span style={{ fontSize:13, fontWeight:600 }}>💪 {username}</span>
@@ -219,7 +225,7 @@ export default function LiftingTracker({ user }) {
         {tab==="ex" && <ExercisesTab data={data} setData={setData} />}
       </main>
 
-      <nav style={{ position:"fixed", bottom:0, left:0, right:0, background:T.bg, borderTop:`1px solid ${T.line}`, display:"flex", zIndex:10 }}>
+      <nav style={{ position:"fixed", bottom:0, left:0, right:0, background:T.bg, borderTop:`1px solid ${T.line}`, display:"flex", zIndex:10, paddingBottom:"env(safe-area-inset-bottom)" }}>
         {tabs.map(([id,label,icon]) => (
           <button key={id} onClick={()=>setTab(id)} style={{
             flex:1, padding:"9px 2px 10px", background:"none", display:"flex", flexDirection:"column", alignItems:"center", gap:2,
