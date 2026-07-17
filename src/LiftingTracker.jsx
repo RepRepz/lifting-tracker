@@ -186,6 +186,8 @@ export default function LiftingTracker({ user }) {
         .h { font-weight:800; letter-spacing:.2px; }
         @keyframes rise { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
         @keyframes pop { 0% { transform:scale(.6); opacity:0; } 70% { transform:scale(1.06); opacity:1; } 100% { transform:scale(1); opacity:1; } }
+        @keyframes grow { from { transform:scaleY(0); } }
+        .vbar { transform-origin:bottom; animation:grow .5s ease-out both; }
         .chip { animation:pop .25s ease-out both; }
         .chip { display:inline-block; padding:2px 10px; border-radius:99px; font-size:12px; font-weight:600; }
         @media(prefers-reduced-motion:reduce){ *{transition:none!important;animation:none!important} }
@@ -258,6 +260,18 @@ function LogTab({ data, exMap, setData }) {
     return { text:`${best.weight} × ${best.reps}`, date:lastDate };
   }, [exName, date, sorted, isBW]);
 
+  /* session-best history for the picked exercise (last 10 sessions before today's date) */
+  const sparkPts = useMemo(() => {
+    if (!exName) return null;
+    const byDate = {};
+    for (const e of sorted) {
+      if (e.exercise !== exName || e.date >= date || e.effort === "Warm-up") continue;
+      const v = isBW ? e.reps : e1rm(e.weight || 0, e.reps);
+      byDate[e.date] = Math.max(byDate[e.date] || 0, v);
+    }
+    return Object.keys(byDate).sort().map(k => Math.round(byDate[k])).slice(-10);
+  }, [exName, date, sorted, isBW]);
+
   const checkPR = (entry) => {
     const prior = data.log.filter(e => e.exercise===entry.exercise && e.date < entry.date);
     if (!prior.length) return false;
@@ -316,6 +330,12 @@ function LogTab({ data, exMap, setData }) {
             ? <b>First time logging this!</b>
             : <>Last time: <b>{lastTime.text}</b> <span style={{color:T.sub}}>({fmtDate(lastTime.date)})</span> — beat it.</>}
           {isBW && <div style={{fontSize:12, color:T.sub, marginTop:2}}>Bodyweight move — tracked by reps, no weight needed.</div>}
+          {sparkPts && sparkPts.length >= 2 && (
+            <div style={{display:"flex", alignItems:"center", gap:10, marginTop:8}}>
+              <Spark pts={sparkPts} w={110} h={28} />
+              <span style={{fontSize:11.5, color:T.sub}}>your last {sparkPts.length} sessions ({isBW ? "best reps" : "best est. 1RM"})</span>
+            </div>
+          )}
         </div>
       )}
 
@@ -400,6 +420,34 @@ function LogTab({ data, exMap, setData }) {
   </>);
 }
 const lbl = { display:"block", fontSize:12.5, fontWeight:600, color:"#A9BDBA", marginBottom:0 };
+
+/* Feather-light inline SVG sparkline — no chart library needed (safe for the Log tab). */
+function Spark({ pts, w = 88, h = 26 }) {
+  if (!pts || pts.length < 2) return <span style={{ color: T.sub, fontSize: 11 }}>—</span>;
+  const min = Math.min(...pts), max = Math.max(...pts), span = (max - min) || 1;
+  const step = w / (pts.length - 1);
+  const color = pts[pts.length - 1] >= pts[0] ? T.green : T.down;
+  const xy = pts.map((v, i) => [i * step, h - 3 - (v - min) / span * (h - 6)]);
+  const last = xy[xy.length - 1];
+  return (
+    <svg width={w} height={h} style={{ display: "block", overflow: "visible" }}>
+      <polyline points={xy.map(p => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ")}
+        fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx={last[0]} cy={last[1]} r="2.6" fill={color} />
+    </svg>
+  );
+}
+
+/* Horizontal progress bar with a highlighted target zone (weekly sets). */
+function TargetBar({ count, color, lo = 12, hi = 16, max = 20 }) {
+  const pct = Math.min(count, max) / max * 100;
+  return (
+    <div style={{ position: "relative", height: 10, background: T.input, borderRadius: 99, overflow: "hidden" }}>
+      <div style={{ position: "absolute", left: `${lo / max * 100}%`, width: `${(hi - lo) / max * 100}%`, top: 0, bottom: 0, background: "rgba(255,255,255,.10)" }} />
+      <div style={{ width: `${pct}%`, height: "100%", background: color, borderRadius: 99, transition: "width .6s ease" }} />
+    </div>
+  );
+}
 
 /* Small pencil button that opens an inline editor. */
 function PencilBtn({ onClick }) {
@@ -532,13 +580,22 @@ function Dashboard({ data, exMap, setData }) {
     })}
 
     <div className="card">
-      <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:8}}>Weekly set target — aim 12–16 hard sets / muscle</div>
-      <table><thead><tr><th>Muscle</th><th>Sets this week</th><th>Target</th><th>Status</th></tr></thead>
-        <tbody>{MUSCLES.map(m=>(
-          <tr key={m}><td>{m}</td><td style={{textAlign:"center"}}>{weekSets[m]}</td><td>12–16</td>
-            <td style={{color: weekSets[m]<12?T.sub:weekSets[m]<=16?T.green:T.down, fontWeight:600}}>
-              {weekSets[m]<12?"↓ under — add sets":weekSets[m]<=16?"✓ on target":"↑ over"}</td></tr>
-        ))}</tbody></table>
+      <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:2}}>Weekly set target</div>
+      <div style={{fontSize:12, color:T.sub, marginBottom:12}}>Aim for 12–16 hard sets per muscle — the brighter zone on each bar.</div>
+      {MUSCLES.map((m,i)=>{
+        const n = weekSets[m];
+        const status = n<12 ? "under" : n<=16 ? "✓ on target" : "over";
+        const sColor = n<12 ? T.sub : n<=16 ? T.green : T.down;
+        return (
+          <div key={m} style={{display:"grid", gridTemplateColumns:"78px 1fr 92px", gap:10, alignItems:"center", marginBottom:9}}>
+            <span style={{fontSize:13, fontWeight:600}}>{m}</span>
+            <TargetBar count={n} color={MUSCLE_COLORS[i]} />
+            <span style={{fontSize:12, textAlign:"right", whiteSpace:"nowrap"}}>
+              <b style={{color:T.ink, fontSize:13}}>{n}</b> <span style={{color:sColor, fontWeight:600}}>{status}</span>
+            </span>
+          </div>
+        );
+      })}
     </div>
 
     <div className="card" style={{display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, textAlign:"center"}}>
@@ -567,13 +624,19 @@ function RecordsTab({ data, exMap }) {
     const isBW = ex.type==="Bodyweight";
     const mostReps = Math.max(...entries.map(e=>e.reps));
     const lastDone = entries.reduce((a,b)=>a.date>b.date?a:b).date;
-    if (isBW) return { ...ex, heaviest:"BW", best:"BW", est:"—", mostReps, vol:"—", lastDone };
+    const byDate = {};
+    for (const e of entries) {
+      const v = isBW ? e.reps : e1rm(e.weight||0, e.reps);
+      byDate[e.date] = Math.max(byDate[e.date]||0, v);
+    }
+    const spark = Object.keys(byDate).sort().map(k=>byDate[k]).slice(-10);
+    if (isBW) return { ...ex, heaviest:"BW", best:"BW", est:"—", mostReps, vol:"—", lastDone, spark };
     const maxW = Math.max(...entries.map(e=>e.weight||0));
     const repsAtMax = Math.max(...entries.filter(e=>e.weight===maxW).map(e=>e.reps));
     const bestEntry = entries.reduce((a,b)=> e1rm(b.weight||0,b.reps)>e1rm(a.weight||0,a.reps)?b:a);
     const vol = Math.max(...entries.map(e=>(e.weight||0)*e.reps));
     return { ...ex, heaviest:`${maxW} × ${repsAtMax}`, best:`${bestEntry.weight} × ${bestEntry.reps}`,
-      est: Math.round(e1rm(bestEntry.weight, bestEntry.reps)*10)/10, mostReps, vol, lastDone };
+      est: Math.round(e1rm(bestEntry.weight, bestEntry.reps)*10)/10, mostReps, vol, lastDone, spark };
   }), [data]);
   const logged = rows.filter(r=>!r.empty);
   return (
@@ -581,13 +644,13 @@ function RecordsTab({ data, exMap }) {
       <div className="h" style={{fontSize:19, color:T.tealDk, marginBottom:2}}>🏆 Personal records</div>
       <div style={{fontSize:12.5, color:T.sub, marginBottom:10}}>Best-ever numbers per lift. Updates as you log.</div>
       <div style={{overflowX:"auto"}}>
-        <table><thead><tr><th>Exercise</th><th>Muscle</th><th>Heaviest</th><th>Best set</th><th>Est. 1RM</th><th>Most reps</th><th>Best volume</th><th>Last done</th></tr></thead>
+        <table><thead><tr><th>Exercise</th><th>Trend</th><th>Muscle</th><th>Heaviest</th><th>Best set</th><th>Est. 1RM</th><th>Most reps</th><th>Best volume</th><th>Last done</th></tr></thead>
           <tbody>
             {logged.map(r=>(
-              <tr key={r.name}><td>{r.name}</td><td>{r.muscle}</td><td>{r.heaviest}</td><td>{r.best}</td>
+              <tr key={r.name}><td>{r.name}</td><td><Spark pts={r.spark} /></td><td>{r.muscle}</td><td>{r.heaviest}</td><td>{r.best}</td>
                 <td>{r.est}</td><td>{r.mostReps}</td><td>{r.vol}</td><td>{fmtDate(r.lastDone)}</td></tr>
             ))}
-            {!logged.length && <tr><td colSpan={8} style={{color:T.sub}}>No lifts logged yet — records build themselves as you train.</td></tr>}
+            {!logged.length && <tr><td colSpan={9} style={{color:T.sub}}>No lifts logged yet — records build themselves as you train.</td></tr>}
           </tbody></table>
       </div>
     </div>
@@ -731,6 +794,22 @@ function CardioTab({ data, setData, latestBW }) {
 
   const rows = [...data.cardio].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,40);
 
+  /* minutes per week, last 8 weeks (current week last) */
+  const weeks = useMemo(() => {
+    const mins = {};
+    for (const c of data.cardio) { const w = weekStart(c.date); mins[w] = (mins[w]||0) + (c.duration||0); }
+    const out = [];
+    const d = new Date(weekStart(todayStr()) + "T00:00");
+    d.setDate(d.getDate() - 7*7);
+    for (let i=0;i<8;i++) {
+      const k = d.toISOString().slice(0,10);
+      out.push({ k, label:`${d.getMonth()+1}/${d.getDate()}`, min:mins[k]||0 });
+      d.setDate(d.getDate()+7);
+    }
+    return out;
+  }, [data.cardio]);
+  const weekMax = Math.max(...weeks.map(w=>w.min), 1);
+
   const [editAct, setEditAct] = useState(null); // { orig, name, type }
   const actValid = editAct && editAct.name.trim() &&
     !data.cardioActivities.some(a => a.name === editAct.name.trim() && a.name !== editAct.orig);
@@ -789,6 +868,27 @@ function CardioTab({ data, setData, latestBW }) {
       {estCal!=null && <div style={{background:T.cream, borderRadius:10, padding:"8px 12px", marginBottom:10, fontSize:14}}>Estimated: <b>{estCal} cal</b></div>}
       <button onClick={add} disabled={!activity||!duration} style={{width:"100%", padding:"12px", background:T.green, color:"#000", fontWeight:700, fontSize:16, opacity:(activity&&duration)?1:0.45}}>Save session</button>
     </div>
+
+    {data.cardio.length > 0 && (
+      <div className="card">
+        <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:2}}>Cardio minutes — last 8 weeks</div>
+        <div style={{fontSize:12, color:T.sub, marginBottom:10}}>Each bar is one week (Mon–Sun). The last bar is this week.</div>
+        <div style={{display:"flex", alignItems:"flex-end", gap:8, height:110}}>
+          {weeks.map((w,i)=>(
+            <div key={w.k} style={{flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:4, minWidth:0}}>
+              <span style={{fontSize:11, fontWeight:700, color:w.min>0?T.green:T.sub}}>{w.min>0?w.min:""}</span>
+              <div className="vbar" style={{
+                width:"100%", maxWidth:34, borderRadius:"5px 5px 2px 2px",
+                height: w.min>0 ? Math.max(6, w.min/weekMax*70) : 3,
+                background: w.min>0 ? (i===weeks.length-1 ? T.green : "rgba(0,200,5,.55)") : T.line,
+                animationDelay: `${i*0.04}s`,
+              }} />
+              <span style={{fontSize:10, color:T.sub}}>{w.label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    )}
 
     <div className="card">
       <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:6}}>Your activities</div>
@@ -1205,7 +1305,14 @@ function FriendsTab({ user }) {
             <tbody>{consistency.map((r,i)=>(
               <tr key={r.uid}>
                 <td style={{fontWeight: r.uid===user.id?700:400}}>{i===0 && r.workouts>0 ? "👑 " : ""}{r.user}{r.uid===user.id?" (you)":""}</td>
-                <td style={{textAlign:"center", color: r.workouts>0?T.green:T.sub, fontWeight:700}}>{r.workouts}</td>
+                <td style={{minWidth:96}}>
+                  <div style={{display:"flex", alignItems:"center", gap:7}}>
+                    <div style={{flex:1, height:7, background:T.input, borderRadius:99, overflow:"hidden"}}>
+                      <div style={{width:`${Math.min(r.workouts,7)/7*100}%`, height:"100%", background:T.green, borderRadius:99, transition:"width .5s ease"}} />
+                    </div>
+                    <b style={{color: r.workouts>0?T.green:T.sub, fontSize:13}}>{r.workouts}</b>
+                  </div>
+                </td>
                 <td style={{textAlign:"center"}}>{r.streak}</td>
                 <td><button onClick={()=>setProfile(members.find(m=>m.user_id===r.uid))} style={{background:"none", color:T.green, fontSize:12.5, textDecoration:"underline"}}>View profile</button></td>
               </tr>
