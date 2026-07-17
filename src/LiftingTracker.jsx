@@ -1,9 +1,8 @@
-import { useState, useEffect, useMemo, useRef } from "react";
-import { LineChart, Line, XAxis, YAxis, ReferenceLine, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts";
+import { useState, useEffect, useMemo, useRef, lazy, Suspense } from "react";
 import { supabase, loadUserState, saveUserState, listMyGroups, listMembers, createGroup, joinGroup, leaveGroup, listReactions, addReaction, removeReaction } from "./lib/storage.js";
 
 /* ---------- theme (Robinhood-style: black + neon green) ---------- */
-const T = {
+export const T = {
   green: "#00C805",       // the accent: buttons, gains, active controls
   down: "#FF5000",        // declines / destructive
   teal: "#00C805",        // (legacy alias)
@@ -16,7 +15,13 @@ const T = {
   input: "#111213", ink: "#FFFFFF", sub: "#8C8F90", line: "#222527",
   danger: "#FF5000", dangerBg: "#2A1105",
 };
-const tipStyle = { background: T.card, border: `1px solid ${T.line}`, borderRadius: 8, color: T.ink };
+export const tipStyle = { background: T.card, border: `1px solid ${T.line}`, borderRadius: 8, color: T.ink };
+
+/* Charts load on demand so the gym-critical tabs (Log etc.) start fast. */
+const TrendChart = lazy(() => import("./charts.jsx").then(m => ({ default: m.TrendChart })));
+const BodyChart = lazy(() => import("./charts.jsx").then(m => ({ default: m.BodyChart })));
+const MusclePie = lazy(() => import("./charts.jsx").then(m => ({ default: m.MusclePie })));
+const ChartFallback = ({ h }) => <div style={{ height: h, display:"flex", alignItems:"center", justifyContent:"center", color:T.sub, fontSize:13 }}>loading chart…</div>;
 
 /* ---------- seed exercise library (same as the sheet) ---------- */
 const SEED_EXERCISES = [
@@ -163,21 +168,25 @@ export default function LiftingTracker({ user }) {
   ];
 
   return (
-    <div style={{ fontFamily:"'Inter',system-ui,sans-serif", background:T.bg, minHeight:"100vh", color:T.ink, paddingBottom:76 }}>
+    <div style={{ fontFamily:"system-ui,-apple-system,'Segoe UI',Roboto,sans-serif", background:T.bg, minHeight:"100vh", color:T.ink, paddingBottom:76 }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
-        html { color-scheme:dark; }
-        * { box-sizing:border-box; } input,select,button { font-family:inherit; font-size:15px; }
-        input,select { border:1px solid ${T.line}; border-radius:10px; padding:9px 10px; background:${T.input}; color:${T.ink}; width:100%; }
+        html { color-scheme:dark; scroll-behavior:smooth; }
+        * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; } input,select,button { font-family:inherit; font-size:15px; }
+        input,select,button { touch-action:manipulation; }
+        input,select { border:1px solid ${T.line}; border-radius:10px; padding:9px 10px; background:${T.input}; color:${T.ink}; width:100%; transition:border-color .15s ease; }
         input::placeholder { color:${T.sub}; opacity:.75; }
         input:focus,select:focus { outline:2px solid ${T.green}; outline-offset:0; border-color:${T.green}; }
-        button { cursor:pointer; border:none; border-radius:24px; }
+        button { cursor:pointer; border:none; border-radius:24px; transition:transform .08s ease, background-color .15s ease, color .15s ease, border-color .15s ease, opacity .15s ease; }
+        button:active { transform:scale(.96); }
         table { border-collapse:collapse; width:100%; } td,th { padding:9px 10px; text-align:left; font-size:13.5px; }
         th { background:none; color:${T.sub}; font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.8px; white-space:nowrap; border-bottom:1px solid ${T.line}; }
         td { border-bottom:1px solid ${T.line}; }
-        .card { background:${T.card}; border:1px solid ${T.line}; border-radius:14px; padding:16px; margin-bottom:14px; }
+        .card { background:${T.card}; border:1px solid ${T.line}; border-radius:14px; padding:16px; margin-bottom:14px; animation:rise .22s ease-out both; }
         .recharts-text { fill:${T.sub}; }
-        .h { font-family:'Inter',system-ui; font-weight:800; letter-spacing:.2px; }
+        .h { font-weight:800; letter-spacing:.2px; }
+        @keyframes rise { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
+        @keyframes pop { 0% { transform:scale(.6); opacity:0; } 70% { transform:scale(1.06); opacity:1; } 100% { transform:scale(1); opacity:1; } }
+        .chip { animation:pop .25s ease-out both; }
         .chip { display:inline-block; padding:2px 10px; border-radius:99px; font-size:12px; font-weight:600; }
         @media(prefers-reduced-motion:reduce){ *{transition:none!important;animation:none!important} }
       `}</style>
@@ -437,7 +446,9 @@ function Dashboard({ data, exMap, setData }) {
       </div>
     </div>
 
-    {picks.map((p,i)=>(
+    {picks.map((p,i)=>{
+      const pts = seriesFor(p);
+      return (
       <div className="card" key={i}>
         <div style={{display:"flex", gap:10, alignItems:"center", marginBottom:6}}>
           <span className="h" style={{color:T.tealDk, fontSize:16}}>Chart {i+1} ▸</span>
@@ -449,9 +460,12 @@ function Dashboard({ data, exMap, setData }) {
         <div style={{fontSize:11.5, color:T.sub, fontStyle:"italic", marginBottom:4}}>
           {exMap[p]?.type==="Bodyweight" ? "tracked by reps (no 1RM for bodyweight moves)" : "tracked by est. 1RM"}
         </div>
-        <ChartBody pts={seriesFor(p)} />
+        {pts.length
+          ? <Suspense fallback={<ChartFallback h={210} />}><TrendChart pts={pts} /></Suspense>
+          : <div style={{color:T.sub, fontSize:14, padding:"28px 0", textAlign:"center"}}>No sessions logged for this lift yet.</div>}
       </div>
-    ))}
+      );
+    })}
 
     <div className="card">
       <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:8}}>Weekly set target — aim 12–16 hard sets / muscle</div>
@@ -472,34 +486,14 @@ function Dashboard({ data, exMap, setData }) {
     <div className="card">
       <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:4}}>Last 30 days — sets by muscle</div>
       {pieData.length ? (
-        <ResponsiveContainer width="100%" height={230}>
-          <PieChart><Pie data={pieData} dataKey="value" nameKey="name" outerRadius={85} label={({name,value})=>`${name} ${value}`} />
-          <Tooltip contentStyle={tipStyle} itemStyle={{color:T.ink}} labelStyle={{color:T.sub}} /></PieChart>
-        </ResponsiveContainer>
+        <Suspense fallback={<ChartFallback h={230} />}><MusclePie data={pieData} /></Suspense>
       ) : <div style={{color:T.sub, fontSize:14}}>Log some sets and your split shows up here.</div>}
     </div>
   </>);
 }
-const kpiN = { fontFamily:"'Inter',system-ui", fontWeight:800, fontSize:28, color:T.ink };
+const kpiN = { fontWeight:800, fontSize:28, color:T.ink };
 const kpiL = { fontSize:11.5, color:T.sub };
 
-function ChartBody({ pts }) {
-  if (!pts.length) return <div style={{color:T.sub, fontSize:14, padding:"28px 0", textAlign:"center"}}>No sessions logged for this lift yet.</div>;
-  const display = pts.length===1 ? [pts[0], {...pts[0], label:pts[0].label+" "}] : pts;
-  const first = display[0].value, last = display[display.length-1].value;
-  const stroke = last >= first ? T.green : T.down; // green when trending up, orange when down
-  return (
-    <ResponsiveContainer width="100%" height={210}>
-      <LineChart data={display} margin={{top:8,right:12,bottom:0,left:-14}}>
-        <XAxis dataKey="label" tick={{fontSize:11}} axisLine={false} tickLine={false} />
-        <YAxis tick={{fontSize:11}} domain={["auto","auto"]} axisLine={false} tickLine={false} />
-        <Tooltip contentStyle={tipStyle} itemStyle={{color:T.ink}} labelStyle={{color:T.sub}} cursor={{stroke:T.line}} />
-        <ReferenceLine y={first} stroke="#4A4E50" strokeDasharray="2 6" />
-        <Line type="linear" dataKey="value" stroke={stroke} strokeWidth={2} dot={false} activeDot={{r:4, fill:stroke}} isAnimationActive={false} />
-      </LineChart>
-    </ResponsiveContainer>
-  );
-}
 
 /* ================= RECORDS ================= */
 function RecordsTab({ data, exMap }) {
@@ -597,15 +591,7 @@ function BodyTab({ data, setData }) {
       <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:4}}>Body weight — monthly average</div>
       <div style={{fontSize:12, color:T.sub, marginBottom:6}}>One dot per month. Months you didn't log stay blank.</div>
       {chartData.length ? (
-        <ResponsiveContainer width="100%" height={220}>
-          <LineChart data={chartData} margin={{top:8,right:12,bottom:0,left:-10}}>
-            <XAxis dataKey="label" tick={{fontSize:11}} axisLine={false} tickLine={false} />
-            <YAxis tick={{fontSize:11}} domain={["auto","auto"]} axisLine={false} tickLine={false} />
-            <Tooltip contentStyle={tipStyle} itemStyle={{color:T.ink}} labelStyle={{color:T.sub}} cursor={{stroke:T.line}} />
-            <ReferenceLine y={chartData.find(m=>m.value!=null)?.value} stroke="#4A4E50" strokeDasharray="2 6" />
-            <Line type="linear" dataKey="value" stroke="#FFFFFF" strokeWidth={2} dot={{r:3, fill:"#FFFFFF"}} connectNulls isAnimationActive={false} />
-          </LineChart>
-        </ResponsiveContainer>
+        <Suspense fallback={<ChartFallback h={220} />}><BodyChart data={chartData} /></Suspense>
       ) : <div style={{color:T.sub, fontSize:14}}>Log a weigh-in and the trend starts here.</div>}
     </div>
 

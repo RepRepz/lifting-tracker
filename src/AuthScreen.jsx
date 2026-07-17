@@ -68,12 +68,12 @@ export default function AuthScreen() {
 
   return (
     <div style={{
-      fontFamily: "'Inter',system-ui,sans-serif", background: C.bg, minHeight: "100vh",
+      fontFamily: "system-ui,-apple-system,'Segoe UI',Roboto,sans-serif", background: C.bg, minHeight: "100vh",
       display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
       padding: 20, color: C.ink,
     }}>
       <div style={{
-        fontFamily: "'Inter',system-ui", fontWeight: 800, letterSpacing: ".2px",
+        fontWeight: 800, letterSpacing: ".2px",
         fontSize: 26, color: C.head, marginBottom: 18,
       }}>
         🏋️ MY LIFTING TRACKER
