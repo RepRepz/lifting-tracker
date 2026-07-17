@@ -63,3 +63,26 @@ export async function leaveGroup(groupId, userId) {
   if (error) throw error;
 }
 
+/* ---------- reactions (💪 on feed items) ---------- */
+
+export async function listReactions(groupId) {
+  const { data, error } = await supabase
+    .from("reactions").select("event_key, reactor_id, reactor_name")
+    .eq("group_id", groupId);
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function addReaction(groupId, eventKey, reactorName) {
+  const { error } = await supabase
+    .from("reactions").insert({ group_id: groupId, event_key: eventKey, reactor_name: reactorName });
+  if (error && error.code !== "23505") throw error; // 23505 = already reacted, fine
+}
+
+export async function removeReaction(groupId, eventKey, userId) {
+  const { error } = await supabase
+    .from("reactions").delete()
+    .eq("group_id", groupId).eq("event_key", eventKey).eq("reactor_id", userId);
+  if (error) throw error;
+}
+

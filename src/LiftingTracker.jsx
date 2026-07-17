@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { LineChart, Line, XAxis, YAxis, ReferenceLine, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts";
-import { supabase, loadUserState, saveUserState, listMyGroups, listMembers, createGroup, joinGroup, leaveGroup } from "./lib/storage.js";
+import { supabase, loadUserState, saveUserState, listMyGroups, listMembers, createGroup, joinGroup, leaveGroup, listReactions, addReaction, removeReaction } from "./lib/storage.js";
 
 /* ---------- theme (Robinhood-style: black + neon green) ---------- */
 const T = {
@@ -792,6 +792,8 @@ function FriendsTab({ user }) {
   const [gname, setGname] = useState("");
   const [code, setCode] = useState("");
   const [copied, setCopied] = useState(false);
+  const [reactions, setReactions] = useState({}); // event_key -> [{reactor_id, reactor_name}]
+  const myName = user.user_metadata?.username || "you";
 
   const refreshGroups = async () => {
     try { setGroups(await listMyGroups()); setErr(""); }
@@ -802,7 +804,7 @@ function FriendsTab({ user }) {
   useEffect(() => {
     if (!active) return;
     (async () => {
-      setMembers(null); setStates({});
+      setMembers(null); setStates({}); setReactions({});
       try {
         const ms = await listMembers(active.id);
         setMembers(ms);
@@ -811,9 +813,27 @@ function FriendsTab({ user }) {
           try { st[m.user_id] = await loadUserState(m.user_id); } catch { /* member has no data yet */ }
         }));
         setStates(st);
+        try {
+          const rs = await listReactions(active.id);
+          const map = {};
+          for (const r of rs) (map[r.event_key] ||= []).push(r);
+          setReactions(map);
+        } catch { /* reactions table may not exist yet — feed still works */ }
       } catch (e) { setErr("Couldn't load this group."); }
     })();
   }, [active?.id]);
+
+  const toggleReact = async (key) => {
+    const mine = (reactions[key] || []).some(r => r.reactor_id === user.id);
+    setReactions(prev => {
+      const cur = prev[key] || [];
+      return { ...prev, [key]: mine ? cur.filter(r => r.reactor_id !== user.id) : [...cur, { reactor_id: user.id, reactor_name: myName }] };
+    });
+    try {
+      if (mine) await removeReaction(active.id, key, user.id);
+      else await addReaction(active.id, key, myName);
+    } catch { /* offline or table missing — optimistic UI stays, refresh reconciles */ }
+  };
 
   const doCreate = async () => {
     if (!gname.trim()) return;
@@ -894,6 +914,46 @@ function FriendsTab({ user }) {
     const best = {};
     for (const lift of BIG_LIFTS) best[lift] = Math.max(0, ...rows.map(r => r.lifts[lift] || 0));
     return { rows, best };
+  }, [members, states]);
+
+  /* all-time group records */
+  const records = useMemo(() => {
+    if (!members) return [];
+    let heaviest=null, volBest=null, streakBest=null, weekMost=null, cardioLong=null;
+    for (const m of members) {
+      const st = states[m.user_id]; if (!st) continue;
+      for (const e of (st.log || [])) {
+        if (e.weight != null && (!heaviest || e.weight > heaviest.v))
+          heaviest = { v:e.weight, text:`${e.weight} lb × ${e.reps} — ${e.exercise}`, who:m.username };
+      }
+      const volByDate = {};
+      for (const e of (st.log || [])) volByDate[e.date] = (volByDate[e.date] || 0) + (e.weight || 0) * e.reps;
+      for (const [d, v] of Object.entries(volByDate)) {
+        if (v > 0 && (!volBest || v > volBest.v))
+          volBest = { v, text:`${Math.round(v).toLocaleString()} lb (${fmtDate(d)})`, who:m.username };
+      }
+      const s = computeStreak(st.log, st.cardio);
+      if (s.best > 0 && (!streakBest || s.best > streakBest.v))
+        streakBest = { v:s.best, text:`${s.best} week${s.best===1?"":"s"} in a row`, who:m.username };
+      const byWeek = {};
+      for (const d of new Set([...(st.log||[]).map(e=>e.date), ...(st.cardio||[]).map(e=>e.date)]))
+        byWeek[weekStart(d)] = (byWeek[weekStart(d)] || 0) + 1;
+      for (const [wk, c] of Object.entries(byWeek)) {
+        if (!weekMost || c > weekMost.v)
+          weekMost = { v:c, text:`${c} day${c===1?"":"s"} (week of ${fmtDate(wk)})`, who:m.username };
+      }
+      for (const c of (st.cardio || [])) {
+        if (c.duration && (!cardioLong || c.duration > cardioLong.v))
+          cardioLong = { v:c.duration, text:`${c.duration} min ${c.activity}`, who:m.username };
+      }
+    }
+    return [
+      heaviest   && { icon:"🏋️", label:"Heaviest set", ...heaviest },
+      volBest    && { icon:"🐂", label:"Biggest session volume", ...volBest },
+      streakBest && { icon:"🔥", label:"Longest streak", ...streakBest },
+      weekMost   && { icon:"📅", label:"Most workout days in a week", ...weekMost },
+      cardioLong && { icon:"🏃", label:"Longest cardio", ...cardioLong },
+    ].filter(Boolean);
   }, [members, states]);
 
   /* ---- read-only profile view ---- */
@@ -983,21 +1043,50 @@ function FriendsTab({ user }) {
           </div>
         </div>
 
+        {records.length > 0 && (
+          <div className="card">
+            <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:8}}>🏆 Group records</div>
+            <table><thead><tr><th>Record</th><th>Holder</th><th>Mark</th></tr></thead>
+              <tbody>{records.map(r=>(
+                <tr key={r.label}>
+                  <td>{r.icon} {r.label}</td>
+                  <td style={{color:T.green, fontWeight:700}}>{r.who}</td>
+                  <td>{r.text}</td>
+                </tr>
+              ))}</tbody></table>
+          </div>
+        )}
+
         <div className="card">
           <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:8}}>📣 Recent activity</div>
           {!feed.length && <div style={{color:T.sub, fontSize:14}}>Nothing yet — someone go lift something.</div>}
-          {feed.map(ev=>(
-            <div key={ev.key} style={{padding:"9px 0", borderBottom:`1px solid ${T.line}`, fontSize:14}}>
-              <span style={{color:T.sub, fontSize:12.5}}>{fmtDate(ev.date)}</span>{" "}
-              <b>{ev.user}</b>{" "}
-              {ev.kind==="cardio" ? <>🏃 {ev.text}</> : <>
-                logged {ev.sets} set{ev.sets===1?"":"s"} — {ev.names.join(", ")}{ev.more>0?` +${ev.more} more`:""}
-              </>}
-              {ev.prs?.map(pr=>(
-                <span key={pr} className="chip" style={{background:T.mint, color:T.green, marginLeft:6}}>🎉 PR: {pr}</span>
-              ))}
-            </div>
-          ))}
+          {feed.map(ev=>{
+            const rs = reactions[ev.key] || [];
+            const mine = rs.some(r=>r.reactor_id===user.id);
+            return (
+              <div key={ev.key} style={{padding:"9px 0", borderBottom:`1px solid ${T.line}`, fontSize:14}}>
+                <span style={{color:T.sub, fontSize:12.5}}>{fmtDate(ev.date)}</span>{" "}
+                <b>{ev.user}</b>{" "}
+                {ev.kind==="cardio" ? <>🏃 {ev.text}</> : <>
+                  logged {ev.sets} set{ev.sets===1?"":"s"} — {ev.names.join(", ")}{ev.more>0?` +${ev.more} more`:""}
+                </>}
+                {ev.prs?.map(pr=>(
+                  <span key={pr} className="chip" style={{background:T.mint, color:T.green, marginLeft:6}}>🎉 PR: {pr}</span>
+                ))}
+                <div style={{marginTop:5, display:"flex", alignItems:"center", gap:8}}>
+                  <button onClick={()=>toggleReact(ev.key)} style={{
+                    background: mine ? T.mint : "none", border:`1px solid ${mine ? T.green : T.line}`,
+                    color: mine ? T.green : T.sub, padding:"2px 12px", fontSize:12.5, fontWeight:600, borderRadius:99,
+                  }}>
+                    💪 {rs.length > 0 ? rs.length : ""}
+                  </button>
+                  {rs.length > 0 && (
+                    <span style={{color:T.sub, fontSize:11.5}}>{rs.map(r=>r.reactor_name).join(", ")}</span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </>)}
     </>);
