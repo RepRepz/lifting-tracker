@@ -24,6 +24,27 @@ export async function saveUserState(userId, value) {
   if (error) throw error;
 }
 
+/* ---------- security question (password reset without email) ---------- */
+
+/** Signed-in user sets/changes their reset question + answer (answer is hashed server-side). */
+export async function setSecurityQuestion(q, a) {
+  const { error } = await supabase.rpc("set_security_question", { q, a });
+  if (error) throw error;
+}
+
+/** Anyone can look up a username's question (null if they never set one). */
+export async function getSecurityQuestion(uname) {
+  const { data, error } = await supabase.rpc("get_security_question", { uname });
+  if (error) throw error;
+  return data ?? null;
+}
+
+/** Resets the password if the answer matches; locks for 1h after 5 wrong tries. */
+export async function resetPasswordWithAnswer(uname, answer, new_password) {
+  const { error } = await supabase.rpc("reset_password_with_answer", { uname, answer, new_password });
+  if (error) throw error;
+}
+
 /* ---------- groups ---------- */
 
 /** Groups the signed-in user belongs to. */

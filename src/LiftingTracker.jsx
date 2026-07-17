@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef, lazy, Suspense, Fragment } from "react";
-import { supabase, loadUserState, saveUserState, listMyGroups, listMembers, createGroup, joinGroup, leaveGroup, listReactions, addReaction, removeReaction } from "./lib/storage.js";
+import { supabase, loadUserState, saveUserState, listMyGroups, listMembers, createGroup, joinGroup, leaveGroup, listReactions, addReaction, removeReaction, setSecurityQuestion } from "./lib/storage.js";
+import { SECURITY_QUESTIONS } from "./AuthScreen.jsx";
 
 /* ---------- theme (Robinhood-style: black + neon green) ---------- */
 export const T = {
@@ -1079,7 +1080,50 @@ function ExercisesTab({ data, setData }) {
         <button onClick={exportAll} style={outBtn}>Full backup (JSON)</button>
       </div>
     </div>
+
+    <SecurityCard />
   </>);
+}
+
+/* Set/change the password-reset security question (answers are hashed server-side). */
+function SecurityCard() {
+  const [q, setQ] = useState(SECURITY_QUESTIONS[0]);
+  const [a, setA] = useState("");
+  const [saved, setSaved] = useState(false);
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  const save = async () => {
+    if (a.trim().length < 2) return;
+    setBusy(true); setErr(""); setSaved(false);
+    try { await setSecurityQuestion(q, a); setSaved(true); setA(""); }
+    catch (e) { setErr(String(e?.message || e)); }
+    finally { setBusy(false); }
+  };
+  return (
+    <div className="card">
+      <div className="h" style={{fontSize:19, color:T.tealDk, marginBottom:4}}>🔒 Password reset question</div>
+      <div style={{fontSize:12.5, color:T.sub, marginBottom:12}}>
+        If you ever forget your password, answering this on the sign-in screen lets you set a new one — no email involved.
+        Saving here replaces whatever question you had before. Answers aren't case-sensitive.
+      </div>
+      <div style={{display:"grid", gap:10, marginBottom:12}}>
+        <label style={lbl}>Question
+          <select value={q} onChange={e=>setQ(e.target.value)}>
+            {SECURITY_QUESTIONS.map(x=><option key={x}>{x}</option>)}
+          </select>
+        </label>
+        <label style={lbl}>Your answer
+          <input value={a} onChange={e=>{setA(e.target.value); setSaved(false);}} placeholder="something you'll remember" />
+        </label>
+      </div>
+      <button onClick={save} disabled={busy || a.trim().length < 2}
+        style={{background:T.green, color:"#000", padding:"11px 20px", fontWeight:700, opacity:(busy || a.trim().length<2)?0.5:1}}>
+        {busy ? "Saving…" : "Save question"}
+      </button>
+      {saved && <span className="chip" style={{background:T.mint, color:T.green, marginLeft:10}}>✓ Saved</span>}
+      {err && <div style={{color:T.danger, fontSize:13, marginTop:8}}>{err}</div>}
+    </div>
+  );
 }
 
 /* ================= FRIENDS ================= */

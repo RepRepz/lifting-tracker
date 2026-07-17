@@ -1,5 +1,14 @@
 import { useState } from "react";
-import { supabase } from "./lib/storage.js";
+import { supabase, setSecurityQuestion, getSecurityQuestion, resetPasswordWithAnswer } from "./lib/storage.js";
+
+export const SECURITY_QUESTIONS = [
+  "What was your first pet's name?",
+  "What city were you born in?",
+  "What's your mom's first name?",
+  "What was your first car?",
+  "What elementary school did you go to?",
+  "What's your go-to gym machine?",
+];
 
 const C = {
   teal: "#00C805", btn: "#00C805", head: "#FFFFFF",
@@ -26,11 +35,47 @@ export default function AuthScreen() {
   const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
   const [error, setError] = useState("");
+  const [info, setInfo] = useState("");
   const [busy, setBusy] = useState(false);
+  const [secQ, setSecQ] = useState(SECURITY_QUESTIONS[0]);
+  const [secA, setSecA] = useState("");
+  const [fq, setFq] = useState(null); // fetched question in the forgot flow
+
+  const switchMode = (m) => { setMode(m); setError(""); setInfo(""); setFq(null); };
+
+  /* ----- forgot password: find the question, then verify + reset ----- */
+  const findQuestion = async () => {
+    setError(""); setInfo("");
+    const u = username.trim().toLowerCase();
+    if (!/^[a-z0-9_]{3,20}$/.test(u)) { setError("Type your username first."); return; }
+    setBusy(true);
+    try {
+      const q = await getSecurityQuestion(u);
+      if (!q) setError("That profile never set a security question, so it can't self-reset. Ask the group admin (dimi) to get you back in.");
+      else { setFq(q); setSecA(""); setPassword(""); }
+    } catch (err) { setError(String(err?.message || err)); }
+    finally { setBusy(false); }
+  };
+  const doReset = async (e) => {
+    e.preventDefault();
+    setError("");
+    if (!secA.trim()) { setError("Type your answer."); return; }
+    if (password.length < 6) { setError("New password needs at least 6 characters."); return; }
+    setBusy(true);
+    try {
+      await resetPasswordWithAnswer(username.trim().toLowerCase(), secA, password);
+      switchMode("signin");
+      setPassword("");
+      setInfo("✅ Password updated — sign in with your new password.");
+    } catch (err) {
+      const msg = String(err?.message || err);
+      setError(/wrong answer/i.test(msg) ? "Wrong answer — try again." : msg);
+    } finally { setBusy(false); }
+  };
 
   const submit = async (e) => {
     e.preventDefault();
-    setError("");
+    setError(""); setInfo("");
     const u = username.trim().toLowerCase();
     if (!/^[a-z0-9_]{3,20}$/.test(u)) {
       setError("Username must be 3–20 characters: letters, numbers, or underscore.");
@@ -38,6 +83,10 @@ export default function AuthScreen() {
     }
     if (password.length < 6) {
       setError("Password needs at least 6 characters.");
+      return;
+    }
+    if (mode === "signup" && secA.trim().length < 2) {
+      setError("Pick a security question and type your answer — it's how you reset a forgotten password.");
       return;
     }
     setBusy(true);
@@ -49,6 +98,8 @@ export default function AuthScreen() {
           options: { data: { username: u } },
         });
         if (error) throw error;
+        // save the reset question right away (signed in at this point)
+        try { await setSecurityQuestion(secQ, secA); } catch { /* can also be set later in Library */ }
       } else {
         const { error } = await supabase.auth.signInWithPassword({
           email: emailFor(u),
@@ -81,41 +132,84 @@ export default function AuthScreen() {
         🏋️ MY LIFTING TRACKER
       </div>
 
-      <form onSubmit={submit} style={{
+      <form onSubmit={mode === "forgot" ? (fq ? doReset : (e) => { e.preventDefault(); findQuestion(); }) : submit} style={{
         background: C.card, border: `1px solid ${C.line}`, borderRadius: 14,
         padding: 22, width: "100%", maxWidth: 380,
       }}>
         <div style={{ fontSize: 19, fontWeight: 700, color: C.head, marginBottom: 14 }}>
-          {mode === "signin" ? "Sign in" : "Create your profile"}
+          {mode === "signin" ? "Sign in" : mode === "signup" ? "Create your profile" : "Reset your password"}
         </div>
+
+        {info && (
+          <div style={{
+            background: "rgba(0,200,5,.12)", color: C.teal, borderRadius: 8,
+            padding: "9px 12px", fontSize: 13.5, marginBottom: 12, fontWeight: 600,
+          }}>
+            {info}
+          </div>
+        )}
 
         <label style={lbl}>
           Username
           <input
             style={inp} value={username} onChange={(e) => setUsername(e.target.value)}
             name="username" autoComplete="username" autoCapitalize="none" spellCheck={false}
-            placeholder="e.g. reprepz"
+            placeholder="e.g. reprepz" disabled={mode === "forgot" && !!fq}
           />
         </label>
 
-        <label style={{ ...lbl, marginTop: 12 }}>
-          Password
-          <div style={{ display: "flex", gap: 8 }}>
-            <input
-              style={{ ...inp, flex: 1 }} type={showPw ? "text" : "password"}
-              value={password} onChange={(e) => setPassword(e.target.value)}
-              name="password"
-              autoComplete={mode === "signup" ? "new-password" : "current-password"}
-              placeholder={mode === "signup" ? "at least 6 characters" : ""}
-            />
-            <button type="button" onClick={() => setShowPw(s => !s)} style={{
-              border: `1px solid ${C.line}`, borderRadius: 8, background: C.input,
-              padding: "0 12px", fontSize: 13, color: C.sub, cursor: "pointer",
+        {mode === "forgot" && fq && (
+          <>
+            <div style={{
+              background: C.input, border: `1px solid ${C.line}`, borderRadius: 8,
+              padding: "10px 12px", fontSize: 14, marginTop: 12,
             }}>
-              {showPw ? "Hide" : "Show"}
-            </button>
-          </div>
-        </label>
+              🔒 {fq}
+            </div>
+            <label style={{ ...lbl, marginTop: 12 }}>
+              Your answer
+              <input style={inp} value={secA} onChange={(e) => setSecA(e.target.value)}
+                autoCapitalize="none" placeholder="not case-sensitive" />
+            </label>
+          </>
+        )}
+
+        {(mode !== "forgot" || fq) && (
+          <label style={{ ...lbl, marginTop: 12 }}>
+            {mode === "forgot" ? "New password" : "Password"}
+            <div style={{ display: "flex", gap: 8 }}>
+              <input
+                style={{ ...inp, flex: 1 }} type={showPw ? "text" : "password"}
+                value={password} onChange={(e) => setPassword(e.target.value)}
+                name="password"
+                autoComplete={mode === "signin" ? "current-password" : "new-password"}
+                placeholder="at least 6 characters"
+              />
+              <button type="button" onClick={() => setShowPw(s => !s)} style={{
+                border: `1px solid ${C.line}`, borderRadius: 8, background: C.input,
+                padding: "0 12px", fontSize: 13, color: C.sub, cursor: "pointer",
+              }}>
+                {showPw ? "Hide" : "Show"}
+              </button>
+            </div>
+          </label>
+        )}
+
+        {mode === "signup" && (
+          <>
+            <label style={{ ...lbl, marginTop: 12 }}>
+              Security question <span style={{ fontWeight: 400, color: C.sub }}>(your password reset — no email needed)</span>
+              <select style={inp} value={secQ} onChange={(e) => setSecQ(e.target.value)}>
+                {SECURITY_QUESTIONS.map(q => <option key={q}>{q}</option>)}
+              </select>
+            </label>
+            <label style={{ ...lbl, marginTop: 12 }}>
+              Your answer
+              <input style={inp} value={secA} onChange={(e) => setSecA(e.target.value)}
+                autoCapitalize="none" placeholder="something you'll remember (not case-sensitive)" />
+            </label>
+          </>
+        )}
 
         {error && (
           <div style={{
@@ -131,20 +225,28 @@ export default function AuthScreen() {
           background: C.btn, color: "#000", fontWeight: 700, fontSize: 16,
           cursor: "pointer", opacity: busy ? 0.6 : 1,
         }}>
-          {busy ? "One sec…" : mode === "signin" ? "Sign in" : "Create profile"}
+          {busy ? "One sec…"
+            : mode === "signin" ? "Sign in"
+            : mode === "signup" ? "Create profile"
+            : fq ? "Set new password" : "Find my question"}
         </button>
 
         <div style={{ marginTop: 14, fontSize: 13.5, color: C.sub, textAlign: "center" }}>
-          {mode === "signin" ? (
+          {mode === "signin" && (
             <>New here?{" "}
-              <a href="#" onClick={(e) => { e.preventDefault(); setMode("signup"); setError(""); }} style={{ color: C.teal, fontWeight: 600 }}>
+              <a href="#" onClick={(e) => { e.preventDefault(); switchMode("signup"); }} style={{ color: C.teal, fontWeight: 600 }}>
                 Create a profile
               </a>
+              <span style={{ margin: "0 6px" }}>·</span>
+              <a href="#" onClick={(e) => { e.preventDefault(); switchMode("forgot"); }} style={{ color: C.teal, fontWeight: 600 }}>
+                Forgot password?
+              </a>
             </>
-          ) : (
-            <>Already have a profile?{" "}
-              <a href="#" onClick={(e) => { e.preventDefault(); setMode("signin"); setError(""); }} style={{ color: C.teal, fontWeight: 600 }}>
-                Sign in
+          )}
+          {mode !== "signin" && (
+            <>Remembered it?{" "}
+              <a href="#" onClick={(e) => { e.preventDefault(); switchMode("signin"); }} style={{ color: C.teal, fontWeight: 600 }}>
+                Back to sign in
               </a>
             </>
           )}
