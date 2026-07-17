@@ -38,6 +38,19 @@ const SEED_EXERCISES = [
   ["Plank","Abs"],["Hanging Leg Raise","Abs"],["Cable Crunch","Abs"],["Ab Wheel","Abs"],
 ];
 const BW_SET = new Set(["Pull-Up","Chin-Up","Push-Up","Dips","Triceps Dip","Plank","Hanging Leg Raise","Ab Wheel"]);
+/* Which seed moves load plates on a straight bar — drives the plate calculator. */
+const BARBELL_SEED = new Set([
+  "Bench Press","Incline Bench Press","Close-Grip Bench Press","Overhead Press",
+  "Deadlift","Barbell Row","T-Bar Row","Barbell Curl","Back Squat","Front Squat",
+  "Romanian Deadlift","Hip Thrust",
+]);
+/* An exercise uses plates if it's flagged barbell (or, for older data with no flag, matches a known barbell move). */
+const usesPlates = (ex) => !!ex && ex.type !== "Bodyweight" && (ex.barbell ?? BARBELL_SEED.has(ex.name));
+const EQUIP_OPTS = ["Barbell (plates)", "Weighted (other)", "Bodyweight"];
+const equipOf = (ex) => ex.type === "Bodyweight" ? "Bodyweight" : (ex.barbell ?? BARBELL_SEED.has(ex.name)) ? "Barbell (plates)" : "Weighted (other)";
+const fromEquip = (eq) => eq === "Bodyweight" ? { type: "Bodyweight", barbell: false }
+  : eq === "Barbell (plates)" ? { type: "Weighted", barbell: true }
+  : { type: "Weighted", barbell: false };
 const MUSCLES = ["Chest","Triceps","Shoulders","Back","Biceps","Legs","Abs"];
 const MUSCLE_COLORS = ["#009E04","#3D7FD9","#C08A1E","#9C4DE0","#D94F00","#17ABA0","#A83277"];
 const EFFORTS = ["Warm-up","Could've done more","Right amount","To failure"];
@@ -69,7 +82,7 @@ function platesPerSide(total, bar) {
 }
 
 const defaultData = {
-  exercises: SEED_EXERCISES.map(([name, muscle]) => ({ name, muscle, type: BW_SET.has(name) ? "Bodyweight" : "Weighted" })),
+  exercises: SEED_EXERCISES.map(([name, muscle]) => ({ name, muscle, type: BW_SET.has(name) ? "Bodyweight" : "Weighted", barbell: BARBELL_SEED.has(name) })),
   log: [], bodyweight: [], cardio: [], cardioActivities: [],
 };
 
@@ -380,7 +393,7 @@ function LogTab({ data, exMap, setData }) {
         {!isBW && <label style={lbl}>Weight (lb)<input type="number" inputMode="decimal" value={weight} onChange={e=>setWeight(e.target.value)} /></label>}
         <label style={lbl}>Reps<input type="number" inputMode="numeric" value={reps} onChange={e=>setReps(e.target.value)} /></label>
       </div>
-      {!isBW && exName && (
+      {usesPlates(exMap[exName]) && (
         <div style={{ background:T.cream, border:`1px solid ${T.creamLine}`, borderRadius:10, padding:"10px 12px", marginBottom:10, fontSize:13.5 }}>
           <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom: (plateMode==="build" || weight>0) ? 9 : 0, flexWrap:"wrap" }}>
             <span style={{fontWeight:700}}>🏋️ Plates</span>
@@ -1203,16 +1216,16 @@ function CardioTab({ data, setData, latestBW }) {
 
 /* ================= EXERCISES ================= */
 function ExercisesTab({ data, setData }) {
-  const [name, setName] = useState(""); const [muscle, setMuscle] = useState("Chest"); const [type, setType] = useState("Weighted");
+  const [name, setName] = useState(""); const [muscle, setMuscle] = useState("Chest"); const [equip, setEquip] = useState("Barbell (plates)");
 
-  const [edit, setEdit] = useState(null); // { orig, name, muscle, type }
+  const [edit, setEdit] = useState(null); // { orig, name, muscle, equip }
   const editValid = edit && edit.name.trim() &&
     !data.exercises.some(x => x.name === edit.name.trim() && x.name !== edit.orig);
   const saveEdit = () => {
     if (!editValid) return;
     const nn = edit.name.trim();
     setData(d=>({ ...d,
-      exercises: d.exercises.map(x => x.name===edit.orig ? { name:nn, muscle:edit.muscle, type:edit.type } : x),
+      exercises: d.exercises.map(x => x.name===edit.orig ? { name:nn, muscle:edit.muscle, ...fromEquip(edit.equip) } : x),
       log: nn !== edit.orig ? d.log.map(e => e.exercise===edit.orig ? { ...e, exercise:nn } : e) : d.log,
     }));
     setEdit(null);
@@ -1241,20 +1254,20 @@ function ExercisesTab({ data, setData }) {
   return (<>
     <div className="card">
       <div className="h" style={{fontSize:19, color:T.tealDk, marginBottom:4}}>📚 Exercise library</div>
-      <div style={{fontSize:12.5, color:T.sub, marginBottom:10}}>Add your own moves (e.g. Decline Push-Up). Bodyweight moves auto-track by reps.</div>
+      <div style={{fontSize:12.5, color:T.sub, marginBottom:10}}>Add your own moves (e.g. Decline Push-Up). Pick <b>Barbell</b> to get the plate helper when logging; <b>Bodyweight</b> moves auto-track by reps.</div>
       <div style={{display:"flex", gap:8, marginBottom:14, flexWrap:"wrap"}}>
         <input value={name} onChange={e=>setName(e.target.value)} placeholder="Exercise name" style={{flex:2, minWidth:150}} />
         <select value={muscle} onChange={e=>setMuscle(e.target.value)} style={{flex:1, minWidth:100}}>{MUSCLES.map(m=><option key={m}>{m}</option>)}</select>
-        <select value={type} onChange={e=>setType(e.target.value)} style={{flex:1, minWidth:110}}><option>Weighted</option><option>Bodyweight</option></select>
-        <button onClick={()=>{ if(!name.trim())return; setData(d=>({...d, exercises:[...d.exercises.filter(x=>x.name!==name.trim()), {name:name.trim(), muscle, type}]})); setName(""); }}
+        <select value={equip} onChange={e=>setEquip(e.target.value)} style={{flex:1, minWidth:150}}>{EQUIP_OPTS.map(o=><option key={o}>{o}</option>)}</select>
+        <button onClick={()=>{ if(!name.trim())return; setData(d=>({...d, exercises:[...d.exercises.filter(x=>x.name!==name.trim()), {name:name.trim(), muscle, ...fromEquip(equip)}]})); setName(""); }}
           style={{background:T.green, color:"#000", padding:"0 16px", fontWeight:700}}>Add</button>
       </div>
       <div style={{overflowX:"auto"}}>
-        <table><thead><tr><th>Exercise</th><th>Muscle</th><th>Type</th><th></th></tr></thead>
+        <table><thead><tr><th>Exercise</th><th>Muscle</th><th>Equipment</th><th></th></tr></thead>
           <tbody>{data.exercises.map(x=>(<Fragment key={x.name}>
-            <tr><td>{x.name}</td><td>{x.muscle}</td><td>{x.type}</td>
+            <tr><td>{x.name}</td><td>{x.muscle}</td><td>{equipOf(x)}</td>
               <td style={{whiteSpace:"nowrap"}}>
-                <PencilBtn onClick={()=>setEdit({ orig:x.name, name:x.name, muscle:x.muscle, type:x.type })} />
+                <PencilBtn onClick={()=>setEdit({ orig:x.name, name:x.name, muscle:x.muscle, equip:equipOf(x) })} />
                 <ConfirmX onConfirm={()=>setData(d=>({...d, exercises:d.exercises.filter(e=>e.name!==x.name)}))} />
               </td></tr>
             {edit?.orig === x.name && (
@@ -1264,7 +1277,7 @@ function ExercisesTab({ data, setData }) {
                   <div style={{display:"flex", gap:8, marginBottom:10, flexWrap:"wrap"}}>
                     <input value={edit.name} onChange={ev=>setEdit(s=>({...s, name:ev.target.value}))} style={{flex:2, minWidth:150}} />
                     <select value={edit.muscle} onChange={ev=>setEdit(s=>({...s, muscle:ev.target.value}))} style={{flex:1, minWidth:100}}>{MUSCLES.map(m=><option key={m}>{m}</option>)}</select>
-                    <select value={edit.type} onChange={ev=>setEdit(s=>({...s, type:ev.target.value}))} style={{flex:1, minWidth:110}}><option>Weighted</option><option>Bodyweight</option></select>
+                    <select value={edit.equip} onChange={ev=>setEdit(s=>({...s, equip:ev.target.value}))} style={{flex:1, minWidth:150}}>{EQUIP_OPTS.map(o=><option key={o}>{o}</option>)}</select>
                   </div>
                   <div style={{display:"flex", gap:8}}>
                     <button onClick={saveEdit} disabled={!editValid} style={{...saveSm, opacity:editValid?1:0.45}}>Save changes</button>
