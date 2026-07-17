@@ -300,8 +300,7 @@ function LogTab({ data, exMap, setData }) {
             <tr key={e.id}>
               <td>{fmtDate(e.date)}</td><td>{e.exercise}</td><td>{e.set}</td>
               <td>{e.weight ?? "BW"}</td><td>{e.reps}</td><td style={{color:T.sub}}>{e.effort||""}</td>
-              <td><button onClick={()=>setData(d=>({...d, log:d.log.filter(x=>x.id!==e.id)}))}
-                style={{background:"none", color:T.danger, fontSize:13}}>✕</button></td>
+              <td><ConfirmX onConfirm={()=>setData(d=>({...d, log:d.log.filter(x=>x.id!==e.id)}))} /></td>
             </tr>))}
             {!recent.length && <tr><td colSpan={7} style={{color:T.sub}}>Nothing logged yet — your first set goes here.</td></tr>}
           </tbody>
@@ -311,6 +310,32 @@ function LogTab({ data, exMap, setData }) {
   </>);
 }
 const lbl = { display:"block", fontSize:12.5, fontWeight:600, color:"#A9BDBA", marginBottom:0 };
+
+/* Two-tap delete: first tap arms it ("Sure?"), second tap deletes; disarms itself. */
+function ConfirmX({ onConfirm }) {
+  const [armed, setArmed] = useState(false);
+  useEffect(() => {
+    if (!armed) return;
+    const t = setTimeout(() => setArmed(false), 3500);
+    return () => clearTimeout(t);
+  }, [armed]);
+  if (armed) return (
+    <button onClick={onConfirm} style={{ background:T.down, color:"#000", fontSize:11.5, fontWeight:700, padding:"3px 10px", whiteSpace:"nowrap" }}>
+      Sure?
+    </button>
+  );
+  return <button onClick={()=>setArmed(true)} style={{ background:"none", color:T.danger, fontSize:13 }}>✕</button>;
+}
+
+/* ---------- export helpers ---------- */
+const csvEsc = (v) => { const s = v==null ? "" : String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+const download = (name, content, type) => {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+};
 
 /* ================= DASHBOARD ================= */
 function Dashboard({ data, exMap, setData }) {
@@ -587,7 +612,7 @@ function BodyTab({ data, setData }) {
       <table><thead><tr><th>Date</th><th>Weight</th><th>Creatine</th><th></th></tr></thead>
         <tbody>{[...rows].reverse().map(r=>(
           <tr key={r.date}><td>{fmtDate(r.date)}</td><td>{r.weight}</td><td>{r.creatine}</td>
-            <td><button onClick={()=>setData(d=>({...d, bodyweight:d.bodyweight.filter(x=>x.date!==r.date)}))} style={{background:"none",color:T.danger}}>✕</button></td></tr>
+            <td><ConfirmX onConfirm={()=>setData(d=>({...d, bodyweight:d.bodyweight.filter(x=>x.date!==r.date)}))} /></td></tr>
         ))}</tbody></table>
     </div>
   </>);
@@ -659,7 +684,7 @@ function CardioTab({ data, setData, latestBW }) {
       </div>
       {data.cardioActivities.map(a=>(
         <span key={a.name} className="chip" style={{background:T.mint, color:T.green, marginRight:6, marginBottom:6}}>
-          {a.name} · {a.type} <button onClick={()=>setData(d=>({...d, cardioActivities:d.cardioActivities.filter(x=>x.name!==a.name)}))} style={{background:"none", color:T.danger}}>✕</button>
+          {a.name} · {a.type} <ConfirmX onConfirm={()=>setData(d=>({...d, cardioActivities:d.cardioActivities.filter(x=>x.name!==a.name)}))} />
         </span>
       ))}
       <div style={{marginTop:12, fontSize:12.5, color:T.sub}}>
@@ -672,7 +697,7 @@ function CardioTab({ data, setData, latestBW }) {
       <table><thead><tr><th>Date</th><th>Activity</th><th>Min</th><th>Intensity</th><th>Cal</th><th></th></tr></thead>
         <tbody>{rows.map(e=>(
           <tr key={e.id}><td>{fmtDate(e.date)}</td><td>{e.activity}</td><td>{e.duration}</td><td>{e.intensity||"machine"}</td><td>{e.calories??"—"}</td>
-            <td><button onClick={()=>setData(d=>({...d, cardio:d.cardio.filter(x=>x.id!==e.id)}))} style={{background:"none",color:T.danger}}>✕</button></td></tr>
+            <td><ConfirmX onConfirm={()=>setData(d=>({...d, cardio:d.cardio.filter(x=>x.id!==e.id)}))} /></td></tr>
         ))}
         {!rows.length && <tr><td colSpan={6} style={{color:T.sub}}>No cardio logged yet.</td></tr>}
         </tbody></table>
@@ -683,7 +708,28 @@ function CardioTab({ data, setData, latestBW }) {
 /* ================= EXERCISES ================= */
 function ExercisesTab({ data, setData }) {
   const [name, setName] = useState(""); const [muscle, setMuscle] = useState("Chest"); const [type, setType] = useState("Weighted");
-  return (
+
+  const exMuscle = Object.fromEntries(data.exercises.map(x => [x.name, x.muscle]));
+  const stamp = todayStr();
+  const exportLog = () => download(`workout-log-${stamp}.csv`, "﻿" + [
+    "date,exercise,muscle,set,weight_lb,reps,effort,notes",
+    ...[...data.log].sort((a,b)=>a.date.localeCompare(b.date)||a.id-b.id)
+      .map(e => [e.date, e.exercise, exMuscle[e.exercise]||"", e.set, e.weight ?? "BW", e.reps, e.effort||"", e.notes||""].map(csvEsc).join(",")),
+  ].join("\n"), "text/csv");
+  const exportBW = () => download(`body-weight-${stamp}.csv`, "﻿" + [
+    "date,weight_lb,creatine",
+    ...[...data.bodyweight].sort((a,b)=>a.date.localeCompare(b.date))
+      .map(r => [r.date, r.weight, r.creatine||""].map(csvEsc).join(",")),
+  ].join("\n"), "text/csv");
+  const exportCardio = () => download(`cardio-${stamp}.csv`, "﻿" + [
+    "date,activity,duration_min,intensity,calories",
+    ...[...data.cardio].sort((a,b)=>a.date.localeCompare(b.date))
+      .map(e => [e.date, e.activity, e.duration, e.intensity||"machine", e.calories ?? ""].map(csvEsc).join(",")),
+  ].join("\n"), "text/csv");
+  const exportAll = () => download(`lifting-tracker-backup-${stamp}.json`, JSON.stringify(data, null, 2), "application/json");
+  const outBtn = { background:"none", border:`1px solid ${T.line}`, color:T.ink, padding:"9px 14px", fontSize:13.5, fontWeight:600 };
+
+  return (<>
     <div className="card">
       <div className="h" style={{fontSize:19, color:T.tealDk, marginBottom:4}}>📚 Exercise library</div>
       <div style={{fontSize:12.5, color:T.sub, marginBottom:10}}>Add your own moves (e.g. Decline Push-Up). Bodyweight moves auto-track by reps.</div>
@@ -698,9 +744,23 @@ function ExercisesTab({ data, setData }) {
         <table><thead><tr><th>Exercise</th><th>Muscle</th><th>Type</th><th></th></tr></thead>
           <tbody>{data.exercises.map(x=>(
             <tr key={x.name}><td>{x.name}</td><td>{x.muscle}</td><td>{x.type}</td>
-              <td><button onClick={()=>setData(d=>({...d, exercises:d.exercises.filter(e=>e.name!==x.name)}))} style={{background:"none",color:T.danger}}>✕</button></td></tr>
+              <td><ConfirmX onConfirm={()=>setData(d=>({...d, exercises:d.exercises.filter(e=>e.name!==x.name)}))} /></td></tr>
           ))}</tbody></table>
       </div>
     </div>
-  );
+
+    <div className="card">
+      <div className="h" style={{fontSize:19, color:T.tealDk, marginBottom:4}}>💾 Your data</div>
+      <div style={{fontSize:12.5, color:T.sub, marginBottom:12}}>
+        Download a copy any time — it's yours. CSV files open straight in Excel or Google Sheets.
+        The full backup holds everything in one file.
+      </div>
+      <div style={{display:"flex", gap:8, flexWrap:"wrap"}}>
+        <button onClick={exportLog} style={outBtn}>Workout log (CSV)</button>
+        <button onClick={exportBW} style={outBtn}>Body weight (CSV)</button>
+        <button onClick={exportCardio} style={outBtn}>Cardio (CSV)</button>
+        <button onClick={exportAll} style={outBtn}>Full backup (JSON)</button>
+      </div>
+    </div>
+  </>);
 }
