@@ -1,27 +1,40 @@
 import { createClient } from "@supabase/supabase-js";
 
-const supabase = createClient(
+export const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,
   import.meta.env.VITE_SUPABASE_ANON_KEY
 );
 
-const TABLE = "app_state";
-
-/** Returns the stored JSON value for `key`, or null if nothing saved yet. */
-export async function loadState(key) {
+/** Returns the signed-in user's saved tracker state, or null if none yet. */
+export async function loadUserState(userId) {
   const { data, error } = await supabase
-    .from(TABLE)
+    .from("user_state")
     .select("value")
-    .eq("key", key)
+    .eq("user_id", userId)
     .maybeSingle();
   if (error) throw error;
   return data?.value ?? null;
 }
 
-/** Upserts `value` (a plain JSON-serializable object) under `key`. */
-export async function saveState(key, value) {
+/** Upserts the signed-in user's tracker state (a plain JSON object). */
+export async function saveUserState(userId, value) {
   const { error } = await supabase
-    .from(TABLE)
-    .upsert({ key, value, updated_at: new Date().toISOString() });
+    .from("user_state")
+    .upsert({ user_id: userId, value, updated_at: new Date().toISOString() });
   if (error) throw error;
+}
+
+/** Data saved before accounts existed, kept for one-time import. */
+export async function loadLegacyState() {
+  try {
+    const { data, error } = await supabase
+      .from("app_state")
+      .select("value")
+      .eq("key", "lifting-tracker-v1")
+      .maybeSingle();
+    if (error) return null;
+    return data?.value ?? null;
+  } catch {
+    return null;
+  }
 }
