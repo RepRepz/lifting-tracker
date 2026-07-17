@@ -197,6 +197,10 @@ export default function LiftingTracker({ user }) {
         .vbar { transform-origin:bottom; animation:grow .5s ease-out both; }
         .chip { animation:pop .25s ease-out both; }
         .chip { display:inline-block; padding:2px 10px; border-radius:99px; font-size:12px; font-weight:600; }
+        @keyframes fadeSwap { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:none; } }
+        .tabview { animation:fadeSwap .2s ease-out both; }
+        .navicon { transition:transform .18s ease; }
+        .navicon.on { transform:translateY(-2px) scale(1.14); }
         @media(prefers-reduced-motion:reduce){ *{transition:none!important;animation:none!important} }
       `}</style>
 
@@ -217,13 +221,15 @@ export default function LiftingTracker({ user }) {
       )}
 
       <main style={{ maxWidth:860, margin:"0 auto", padding:"16px 14px" }}>
-        {tab==="dash" && <Dashboard data={data} exMap={exMap} setData={setData} />}
-        {tab==="log" && <LogTab data={data} exMap={exMap} setData={setData} />}
-        {tab==="records" && <RecordsTab data={data} exMap={exMap} />}
-        {tab==="friends" && <FriendsTab user={user} />}
-        {tab==="body" && <BodyTab data={data} setData={setData} />}
-        {tab==="cardio" && <CardioTab data={data} setData={setData} latestBW={latestBW} />}
-        {tab==="ex" && <ExercisesTab data={data} setData={setData} />}
+        <div className="tabview" key={tab}>
+          {tab==="dash" && <Dashboard data={data} exMap={exMap} setData={setData} />}
+          {tab==="log" && <LogTab data={data} exMap={exMap} setData={setData} />}
+          {tab==="records" && <RecordsTab data={data} exMap={exMap} />}
+          {tab==="friends" && <FriendsTab user={user} />}
+          {tab==="body" && <BodyTab data={data} setData={setData} />}
+          {tab==="cardio" && <CardioTab data={data} setData={setData} latestBW={latestBW} />}
+          {tab==="ex" && <ExercisesTab data={data} setData={setData} />}
+        </div>
       </main>
 
       <nav style={{ position:"fixed", bottom:0, left:0, right:0, background:T.bg, borderTop:`1px solid ${T.line}`, display:"flex", zIndex:10, paddingBottom:"env(safe-area-inset-bottom)" }}>
@@ -233,7 +239,7 @@ export default function LiftingTracker({ user }) {
             color: tab===id?T.tealDk:T.sub, fontWeight: tab===id?700:500, fontSize:11.5,
             borderTop: tab===id?`3px solid ${T.teal}`:"3px solid transparent",
           }}>
-            <span style={{fontSize:18}}>{icon}</span>{label}
+            <span className={"navicon" + (tab===id?" on":"")} style={{fontSize:18}}>{icon}</span>{label}
           </button>
         ))}
       </nav>
