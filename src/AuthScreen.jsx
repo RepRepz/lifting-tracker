@@ -154,7 +154,7 @@ export default function AuthScreen() {
           <input
             style={inp} value={username} onChange={(e) => setUsername(e.target.value)}
             name="username" autoComplete="username" autoCapitalize="none" spellCheck={false}
-            placeholder="e.g. reprepz" disabled={mode === "forgot" && !!fq}
+            placeholder="e.g. mike" disabled={mode === "forgot" && !!fq}
           />
         </label>
 
