@@ -2,18 +2,20 @@ import { useState } from "react";
 import { supabase } from "./lib/storage.js";
 
 const C = {
-  teal: "#0E7C7B", tealDk: "#0A5C5B", cream: "#FFF3D6",
-  bg: "#F7FAF9", ink: "#14201F", sub: "#5B6B69", line: "#DCE7E5",
+  teal: "#3BC9C6", btn: "#0E7C7B", head: "#7AD8D5",
+  bg: "#0D1312", card: "#161E1D", input: "#0F1716",
+  ink: "#E7EFED", sub: "#95A8A5", line: "#273432",
+  danger: "#F08A80", dangerBg: "#3B1E1B",
 };
 
 // Usernames double as login emails on a fake domain; Supabase never sends
 // mail to them (email confirmation is disabled in the project settings).
 const emailFor = (u) => `${u}@lifting.local`;
 
-const lbl = { display: "block", fontSize: 12.5, fontWeight: 600, color: "#3F5654", marginBottom: 4 };
+const lbl = { display: "block", fontSize: 12.5, fontWeight: 600, color: "#A9BDBA", marginBottom: 4 };
 const inp = {
   width: "100%", border: `1px solid ${C.line}`, borderRadius: 8,
-  padding: "11px 12px", fontSize: 15, background: "#fff", boxSizing: "border-box",
+  padding: "11px 12px", fontSize: 15, background: C.input, color: C.ink, boxSizing: "border-box",
 };
 
 export default function AuthScreen() {
@@ -72,16 +74,16 @@ export default function AuthScreen() {
     }}>
       <div style={{
         fontFamily: "'Barlow Condensed',system-ui", fontWeight: 700, letterSpacing: ".4px",
-        fontSize: 30, color: C.tealDk, marginBottom: 18,
+        fontSize: 30, color: C.head, marginBottom: 18,
       }}>
         🏋️ MY LIFTING TRACKER
       </div>
 
       <form onSubmit={submit} style={{
-        background: "#fff", border: `1px solid ${C.line}`, borderRadius: 14,
+        background: C.card, border: `1px solid ${C.line}`, borderRadius: 14,
         padding: 22, width: "100%", maxWidth: 380,
       }}>
-        <div style={{ fontSize: 19, fontWeight: 700, color: C.tealDk, marginBottom: 14 }}>
+        <div style={{ fontSize: 19, fontWeight: 700, color: C.head, marginBottom: 14 }}>
           {mode === "signin" ? "Sign in" : "Create your profile"}
         </div>
 
@@ -105,7 +107,7 @@ export default function AuthScreen() {
               placeholder={mode === "signup" ? "at least 6 characters" : ""}
             />
             <button type="button" onClick={() => setShowPw(s => !s)} style={{
-              border: `1px solid ${C.line}`, borderRadius: 8, background: "#fff",
+              border: `1px solid ${C.line}`, borderRadius: 8, background: C.input,
               padding: "0 12px", fontSize: 13, color: C.sub, cursor: "pointer",
             }}>
               {showPw ? "Hide" : "Show"}
@@ -115,7 +117,7 @@ export default function AuthScreen() {
 
         {error && (
           <div style={{
-            background: "#FDECEA", color: "#B33", borderRadius: 8,
+            background: C.dangerBg, color: C.danger, borderRadius: 8,
             padding: "9px 12px", fontSize: 13.5, marginTop: 12,
           }}>
             {error}
@@ -124,7 +126,7 @@ export default function AuthScreen() {
 
         <button type="submit" disabled={busy} style={{
           width: "100%", marginTop: 14, padding: 12, border: "none", borderRadius: 8,
-          background: C.teal, color: "#fff", fontWeight: 700, fontSize: 16,
+          background: C.btn, color: "#fff", fontWeight: 700, fontSize: 16,
           cursor: "pointer", opacity: busy ? 0.6 : 1,
         }}>
           {busy ? "One sec…" : mode === "signin" ? "Sign in" : "Create profile"}

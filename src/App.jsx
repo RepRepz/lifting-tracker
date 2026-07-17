@@ -14,7 +14,7 @@ export default function App() {
   }, []);
 
   if (session === undefined) {
-    return <div style={{ fontFamily: "system-ui", padding: 40, color: "#5B6B69" }}>Loading…</div>;
+    return <div style={{ fontFamily: "system-ui", padding: 40, color: "#95A8A5" }}>Loading…</div>;
   }
   if (!session) return <AuthScreen />;
   // key forces a clean remount (fresh data load) when a different user signs in

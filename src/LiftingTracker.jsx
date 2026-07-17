@@ -2,11 +2,18 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts";
 import { supabase, loadUserState, saveUserState, loadLegacyState } from "./lib/storage.js";
 
-/* ---------- theme (carried over from the spreadsheet) ---------- */
+/* ---------- theme (dark) ---------- */
 const T = {
-  teal: "#0E7C7B", tealDk: "#0A5C5B", mint: "#D9F0EE", cream: "#FFF3D6",
-  gold: "#B8860B", bg: "#F7FAF9", ink: "#14201F", sub: "#5B6B69", line: "#DCE7E5",
+  teal: "#0E7C7B",        // solid buttons, active-tab underline
+  tealBright: "#3BC9C6",  // chart lines, focus rings
+  tealDk: "#7AD8D5",      // heading text (light teal on dark)
+  deep: "#0A5C5B",        // header + table-header background
+  mint: "#123231", cream: "#2C2718", creamLine: "#4A4023",
+  gold: "#E3BE55", bg: "#0D1312", card: "#161E1D", cardAlt: "#1A2422",
+  input: "#0F1716", ink: "#E7EFED", sub: "#95A8A5", line: "#273432",
+  danger: "#F08A80", dangerBg: "#3B1E1B",
 };
+const tipStyle = { background: T.card, border: `1px solid ${T.line}`, borderRadius: 8, color: T.ink };
 
 /* ---------- seed exercise library (same as the sheet) ---------- */
 const SEED_EXERCISES = [
@@ -101,7 +108,7 @@ export default function LiftingTracker({ user }) {
 
   if (pendingImport) return (
     <div style={{ fontFamily:"'Inter',system-ui,sans-serif", background:T.bg, minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", padding:20, color:T.ink }}>
-      <div style={{ background:"#fff", border:`1px solid ${T.line}`, borderRadius:14, padding:22, maxWidth:420 }}>
+      <div style={{ background:T.card, border:`1px solid ${T.line}`, borderRadius:14, padding:22, maxWidth:420 }}>
         <div style={{ fontSize:19, fontWeight:700, color:T.tealDk, marginBottom:8 }}>Welcome, {username}! 👋</div>
         <div style={{ fontSize:14.5, lineHeight:1.5, marginBottom:16 }}>
           We found workout data saved before profiles existed
@@ -110,7 +117,7 @@ export default function LiftingTracker({ user }) {
         <button onClick={()=>chooseImport(true)} style={{ width:"100%", padding:12, background:T.teal, color:"#fff", fontWeight:700, fontSize:15, marginBottom:8 }}>
           Yes — import it into my profile
         </button>
-        <button onClick={()=>chooseImport(false)} style={{ width:"100%", padding:12, background:"#fff", border:`1px solid ${T.line}`, color:T.sub, fontWeight:600, fontSize:14 }}>
+        <button onClick={()=>chooseImport(false)} style={{ width:"100%", padding:12, background:T.input, border:`1px solid ${T.line}`, color:T.sub, fontWeight:600, fontSize:14 }}>
           No — start fresh
         </button>
       </div>
@@ -128,21 +135,24 @@ export default function LiftingTracker({ user }) {
     <div style={{ fontFamily:"'Inter',system-ui,sans-serif", background:T.bg, minHeight:"100vh", color:T.ink, paddingBottom:76 }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Inter:wght@400;500;600;700&display=swap');
+        html { color-scheme:dark; }
         * { box-sizing:border-box; } input,select,button { font-family:inherit; font-size:15px; }
-        input,select { border:1px solid ${T.line}; border-radius:8px; padding:9px 10px; background:#fff; width:100%; }
-        input:focus,select:focus { outline:2px solid ${T.teal}; outline-offset:0; border-color:${T.teal}; }
+        input,select { border:1px solid ${T.line}; border-radius:8px; padding:9px 10px; background:${T.input}; color:${T.ink}; width:100%; }
+        input::placeholder { color:${T.sub}; opacity:.75; }
+        input:focus,select:focus { outline:2px solid ${T.tealBright}; outline-offset:0; border-color:${T.tealBright}; }
         button { cursor:pointer; border:none; border-radius:8px; }
         table { border-collapse:collapse; width:100%; } td,th { padding:8px 10px; text-align:left; font-size:13.5px; }
-        th { background:${T.tealDk}; color:#fff; font-weight:600; white-space:nowrap; }
-        tr:nth-child(even) td { background:#fff; } tr:nth-child(odd) td { background:#FBFDFC; }
+        th { background:${T.deep}; color:#fff; font-weight:600; white-space:nowrap; }
+        tr:nth-child(even) td { background:${T.card}; } tr:nth-child(odd) td { background:${T.cardAlt}; }
         td { border-bottom:1px solid ${T.line}; }
-        .card { background:#fff; border:1px solid ${T.line}; border-radius:14px; padding:16px; margin-bottom:14px; }
+        .card { background:${T.card}; border:1px solid ${T.line}; border-radius:14px; padding:16px; margin-bottom:14px; }
+        .recharts-text { fill:${T.sub}; }
         .h { font-family:'Barlow Condensed',system-ui; font-weight:700; letter-spacing:.4px; }
         .chip { display:inline-block; padding:2px 10px; border-radius:99px; font-size:12px; font-weight:600; }
         @media(prefers-reduced-motion:reduce){ *{transition:none!important;animation:none!important} }
       `}</style>
 
-      <header style={{ background:T.tealDk, color:"#fff", padding:"14px 18px", position:"sticky", top:0, zIndex:5, display:"flex", justifyContent:"space-between", alignItems:"center", gap:10 }}>
+      <header style={{ background:T.deep, color:"#fff", padding:"14px 18px", position:"sticky", top:0, zIndex:5, display:"flex", justifyContent:"space-between", alignItems:"center", gap:10 }}>
         <div className="h" style={{ fontSize:24 }}>🏋️ MY LIFTING TRACKER</div>
         <div style={{ display:"flex", alignItems:"center", gap:10, flexShrink:0 }}>
           <span style={{ fontSize:13, fontWeight:600 }}>💪 {username}</span>
@@ -153,7 +163,7 @@ export default function LiftingTracker({ user }) {
       </header>
 
       {saveError && (
-        <div style={{ background:"#FDECEA", color:"#B33", padding:"8px 18px", fontSize:13, fontWeight:600 }}>
+        <div style={{ background:T.dangerBg, color:T.danger, padding:"8px 18px", fontSize:13, fontWeight:600 }}>
           ⚠️ Couldn't sync to the cloud — your latest changes may not be saved. Check your connection.
         </div>
       )}
@@ -167,7 +177,7 @@ export default function LiftingTracker({ user }) {
         {tab==="ex" && <ExercisesTab data={data} setData={setData} />}
       </main>
 
-      <nav style={{ position:"fixed", bottom:0, left:0, right:0, background:"#fff", borderTop:`1px solid ${T.line}`, display:"flex", zIndex:10 }}>
+      <nav style={{ position:"fixed", bottom:0, left:0, right:0, background:T.card, borderTop:`1px solid ${T.line}`, display:"flex", zIndex:10 }}>
         {tabs.map(([id,label,icon]) => (
           <button key={id} onClick={()=>setTab(id)} style={{
             flex:1, padding:"9px 2px 10px", background:"none", display:"flex", flexDirection:"column", alignItems:"center", gap:2,
@@ -248,7 +258,7 @@ function LogTab({ data, exMap, setData }) {
       </label>
 
       {exName && (
-        <div style={{ background:T.cream, border:`1px solid #EAD9A8`, borderRadius:10, padding:"9px 12px", margin:"10px 0", fontSize:14 }}>
+        <div style={{ background:T.cream, border:`1px solid ${T.creamLine}`, borderRadius:10, padding:"9px 12px", margin:"10px 0", fontSize:14 }}>
           {lastTime?.first
             ? <b>First time logging this!</b>
             : <>Last time: <b>{lastTime.text}</b> <span style={{color:T.sub}}>({fmtDate(lastTime.date)})</span> — beat it.</>}
@@ -289,7 +299,7 @@ function LogTab({ data, exMap, setData }) {
               <td>{fmtDate(e.date)}</td><td>{e.exercise}</td><td>{e.set}</td>
               <td>{e.weight ?? "BW"}</td><td>{e.reps}</td><td style={{color:T.sub}}>{e.effort||""}</td>
               <td><button onClick={()=>setData(d=>({...d, log:d.log.filter(x=>x.id!==e.id)}))}
-                style={{background:"none", color:"#B33", fontSize:13}}>✕</button></td>
+                style={{background:"none", color:T.danger, fontSize:13}}>✕</button></td>
             </tr>))}
             {!recent.length && <tr><td colSpan={7} style={{color:T.sub}}>Nothing logged yet — your first set goes here.</td></tr>}
           </tbody>
@@ -298,7 +308,7 @@ function LogTab({ data, exMap, setData }) {
     </div>
   </>);
 }
-const lbl = { display:"block", fontSize:12.5, fontWeight:600, color:"#3F5654", marginBottom:0 };
+const lbl = { display:"block", fontSize:12.5, fontWeight:600, color:"#A9BDBA", marginBottom:0 };
 
 /* ================= DASHBOARD ================= */
 function Dashboard({ data, exMap, setData }) {
@@ -419,7 +429,7 @@ function Dashboard({ data, exMap, setData }) {
       {pieData.length ? (
         <ResponsiveContainer width="100%" height={230}>
           <PieChart><Pie data={pieData} dataKey="value" nameKey="name" outerRadius={85} label={({name,value})=>`${name} ${value}`} />
-          <Tooltip /></PieChart>
+          <Tooltip contentStyle={tipStyle} itemStyle={{color:T.ink}} labelStyle={{color:T.sub}} /></PieChart>
         </ResponsiveContainer>
       ) : <div style={{color:T.sub, fontSize:14}}>Log some sets and your split shows up here.</div>}
     </div>
@@ -437,8 +447,8 @@ function ChartBody({ pts }) {
         <CartesianGrid stroke={T.line} strokeDasharray="0" vertical={false} />
         <XAxis dataKey="label" tick={{fontSize:11}} />
         <YAxis tick={{fontSize:11}} domain={["auto","auto"]} />
-        <Tooltip />
-        <Line type="linear" dataKey="value" stroke={T.teal} strokeWidth={2.5} dot={{r:4, fill:T.teal}} isAnimationActive={false} />
+        <Tooltip contentStyle={tipStyle} itemStyle={{color:T.ink}} labelStyle={{color:T.sub}} />
+        <Line type="linear" dataKey="value" stroke={T.tealBright} strokeWidth={2.5} dot={{r:4, fill:T.tealBright}} isAnimationActive={false} />
       </LineChart>
     </ResponsiveContainer>
   );
@@ -545,8 +555,8 @@ function BodyTab({ data, setData }) {
             <CartesianGrid stroke={T.line} vertical={false} />
             <XAxis dataKey="label" tick={{fontSize:11}} />
             <YAxis tick={{fontSize:11}} domain={["auto","auto"]} />
-            <Tooltip />
-            <Line type="linear" dataKey="value" stroke={T.teal} strokeWidth={2.5} dot={{r:4, fill:T.teal}} connectNulls isAnimationActive={false} />
+            <Tooltip contentStyle={tipStyle} itemStyle={{color:T.ink}} labelStyle={{color:T.sub}} />
+            <Line type="linear" dataKey="value" stroke={T.tealBright} strokeWidth={2.5} dot={{r:4, fill:T.tealBright}} connectNulls isAnimationActive={false} />
           </LineChart>
         </ResponsiveContainer>
       ) : <div style={{color:T.sub, fontSize:14}}>Log a weigh-in and the trend starts here.</div>}
@@ -567,7 +577,7 @@ function BodyTab({ data, setData }) {
       <table><thead><tr><th>Date</th><th>Weight</th><th>Creatine</th><th></th></tr></thead>
         <tbody>{[...rows].reverse().map(r=>(
           <tr key={r.date}><td>{fmtDate(r.date)}</td><td>{r.weight}</td><td>{r.creatine}</td>
-            <td><button onClick={()=>setData(d=>({...d, bodyweight:d.bodyweight.filter(x=>x.date!==r.date)}))} style={{background:"none",color:"#B33"}}>✕</button></td></tr>
+            <td><button onClick={()=>setData(d=>({...d, bodyweight:d.bodyweight.filter(x=>x.date!==r.date)}))} style={{background:"none",color:T.danger}}>✕</button></td></tr>
         ))}</tbody></table>
     </div>
   </>);
@@ -639,7 +649,7 @@ function CardioTab({ data, setData, latestBW }) {
       </div>
       {data.cardioActivities.map(a=>(
         <span key={a.name} className="chip" style={{background:T.mint, color:T.tealDk, marginRight:6, marginBottom:6}}>
-          {a.name} · {a.type} <button onClick={()=>setData(d=>({...d, cardioActivities:d.cardioActivities.filter(x=>x.name!==a.name)}))} style={{background:"none", color:"#B33"}}>✕</button>
+          {a.name} · {a.type} <button onClick={()=>setData(d=>({...d, cardioActivities:d.cardioActivities.filter(x=>x.name!==a.name)}))} style={{background:"none", color:T.danger}}>✕</button>
         </span>
       ))}
       <div style={{marginTop:12, fontSize:12.5, color:T.sub}}>
@@ -652,7 +662,7 @@ function CardioTab({ data, setData, latestBW }) {
       <table><thead><tr><th>Date</th><th>Activity</th><th>Min</th><th>Intensity</th><th>Cal</th><th></th></tr></thead>
         <tbody>{rows.map(e=>(
           <tr key={e.id}><td>{fmtDate(e.date)}</td><td>{e.activity}</td><td>{e.duration}</td><td>{e.intensity||"machine"}</td><td>{e.calories??"—"}</td>
-            <td><button onClick={()=>setData(d=>({...d, cardio:d.cardio.filter(x=>x.id!==e.id)}))} style={{background:"none",color:"#B33"}}>✕</button></td></tr>
+            <td><button onClick={()=>setData(d=>({...d, cardio:d.cardio.filter(x=>x.id!==e.id)}))} style={{background:"none",color:T.danger}}>✕</button></td></tr>
         ))}
         {!rows.length && <tr><td colSpan={6} style={{color:T.sub}}>No cardio logged yet.</td></tr>}
         </tbody></table>
@@ -678,7 +688,7 @@ function ExercisesTab({ data, setData }) {
         <table><thead><tr><th>Exercise</th><th>Muscle</th><th>Type</th><th></th></tr></thead>
           <tbody>{data.exercises.map(x=>(
             <tr key={x.name}><td>{x.name}</td><td>{x.muscle}</td><td>{x.type}</td>
-              <td><button onClick={()=>setData(d=>({...d, exercises:d.exercises.filter(e=>e.name!==x.name)}))} style={{background:"none",color:"#B33"}}>✕</button></td></tr>
+              <td><button onClick={()=>setData(d=>({...d, exercises:d.exercises.filter(e=>e.name!==x.name)}))} style={{background:"none",color:T.danger}}>✕</button></td></tr>
           ))}</tbody></table>
       </div>
     </div>
