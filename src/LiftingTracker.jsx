@@ -194,7 +194,7 @@ export default function LiftingTracker({ user }) {
       `}</style>
 
       <header style={{ background:T.bg, color:"#fff", padding:"14px 18px", position:"sticky", top:0, zIndex:5, display:"flex", justifyContent:"space-between", alignItems:"center", gap:10, borderBottom:`1px solid ${T.line}` }}>
-        <div className="h" style={{ fontSize:24 }}>🏋️ MY LIFTING TRACKER</div>
+        <div className="h" onClick={()=>setTab("dash")} style={{ fontSize:24, cursor:"pointer", userSelect:"none" }}>🏋️ MY LIFTING TRACKER</div>
         <div style={{ display:"flex", alignItems:"center", gap:10, flexShrink:0 }}>
           <span style={{ fontSize:13, fontWeight:600 }}>💪 {username}</span>
           <button onClick={()=>supabase.auth.signOut()} style={{ background:"rgba(255,255,255,.18)", color:"#fff", padding:"6px 12px", fontSize:12.5, fontWeight:600 }}>
