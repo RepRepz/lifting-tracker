@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, lazy, Suspense } from "react";
+import { useState, useEffect, useMemo, useRef, lazy, Suspense, Fragment } from "react";
 import { supabase, loadUserState, saveUserState, listMyGroups, listMembers, createGroup, joinGroup, leaveGroup, listReactions, addReaction, removeReaction } from "./lib/storage.js";
 
 /* ---------- theme (Robinhood-style: black + neon green) ---------- */
@@ -279,6 +279,19 @@ function LogTab({ data, exMap, setData }) {
 
   const recent = [...sorted].reverse().slice(0, 30);
 
+  const [edit, setEdit] = useState(null); // copy of the set being edited
+  const editIsBW = edit ? exMap[edit.exercise]?.type === "Bodyweight" : false;
+  const editValid = edit && edit.reps !== "" && edit.exercise && (editIsBW || edit.weight !== "");
+  const saveEdit = () => {
+    if (!editValid) return;
+    setData(d => ({ ...d, log: d.log.map(x => x.id === edit.id ? {
+      ...x, date: edit.date, exercise: edit.exercise, set: parseInt(edit.set) || 1,
+      weight: editIsBW ? null : parseFloat(edit.weight), reps: parseInt(edit.reps),
+      effort: edit.effort, notes: edit.notes,
+    } : x) }));
+    setEdit(null);
+  };
+
   return (<>
     <div className="card">
       <div className="h" style={{fontSize:19, color:T.tealDk, marginBottom:10}}>Log a set</div>
@@ -334,12 +347,51 @@ function LogTab({ data, exMap, setData }) {
       <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:8}}>Recent sets</div>
       <div style={{overflowX:"auto"}}>
         <table><thead><tr><th>Date</th><th>Exercise</th><th>Set</th><th>Weight</th><th>Reps</th><th>Effort</th><th></th></tr></thead>
-          <tbody>{recent.map(e => (
-            <tr key={e.id}>
+          <tbody>{recent.map(e => (<Fragment key={e.id}>
+            <tr>
               <td>{fmtDate(e.date)}</td><td>{e.exercise}</td><td>{e.set}</td>
               <td>{e.weight ?? "BW"}</td><td>{e.reps}</td><td style={{color:T.sub}}>{e.effort||""}</td>
-              <td><ConfirmX onConfirm={()=>setData(d=>({...d, log:d.log.filter(x=>x.id!==e.id)}))} /></td>
-            </tr>))}
+              <td style={{whiteSpace:"nowrap"}}>
+                <PencilBtn onClick={()=>setEdit({ id:e.id, date:e.date, exercise:e.exercise, set:e.set, weight:e.weight ?? "", reps:e.reps, effort:e.effort||"", notes:e.notes||"" })} />
+                <ConfirmX onConfirm={()=>setData(d=>({...d, log:d.log.filter(x=>x.id!==e.id)}))} />
+              </td>
+            </tr>
+            {edit?.id === e.id && (
+              <tr><td colSpan={7} style={{padding:"6px 4px"}}>
+                <div style={editBox}>
+                  <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:8}}>
+                    <label style={lbl}>Date<input type="date" value={edit.date} onChange={ev=>setEdit(s=>({...s, date:ev.target.value}))} /></label>
+                    <label style={lbl}>Set #<input type="number" min="1" value={edit.set} onChange={ev=>setEdit(s=>({...s, set:ev.target.value}))} /></label>
+                  </div>
+                  <label style={{...lbl, marginBottom:8, display:"block"}}>Exercise
+                    <select value={edit.exercise} onChange={ev=>setEdit(s=>({...s, exercise:ev.target.value}))}>
+                      {MUSCLES.map(m => (
+                        <optgroup key={m} label={m}>
+                          {data.exercises.filter(x=>x.muscle===m).map(x=><option key={x.name}>{x.name}</option>)}
+                        </optgroup>
+                      ))}
+                    </select>
+                  </label>
+                  <div style={{display:"grid", gridTemplateColumns: editIsBW ? "1fr" : "1fr 1fr", gap:8, marginBottom:8}}>
+                    {!editIsBW && <label style={lbl}>Weight (lb)<input type="number" inputMode="decimal" value={edit.weight} onChange={ev=>setEdit(s=>({...s, weight:ev.target.value}))} /></label>}
+                    <label style={lbl}>Reps<input type="number" inputMode="numeric" value={edit.reps} onChange={ev=>setEdit(s=>({...s, reps:ev.target.value}))} /></label>
+                  </div>
+                  <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:10}}>
+                    <label style={lbl}>Effort
+                      <select value={edit.effort} onChange={ev=>setEdit(s=>({...s, effort:ev.target.value}))}>
+                        <option value="">—</option>{EFFORTS.map(x=><option key={x}>{x}</option>)}
+                      </select>
+                    </label>
+                    <label style={lbl}>Notes<input value={edit.notes} onChange={ev=>setEdit(s=>({...s, notes:ev.target.value}))} /></label>
+                  </div>
+                  <div style={{display:"flex", gap:8}}>
+                    <button onClick={saveEdit} disabled={!editValid} style={{...saveSm, opacity:editValid?1:0.45}}>Save changes</button>
+                    <button onClick={()=>setEdit(null)} style={cancelSm}>Cancel</button>
+                  </div>
+                </div>
+              </td></tr>
+            )}
+          </Fragment>))}
             {!recent.length && <tr><td colSpan={7} style={{color:T.sub}}>Nothing logged yet — your first set goes here.</td></tr>}
           </tbody>
         </table>
@@ -348,6 +400,18 @@ function LogTab({ data, exMap, setData }) {
   </>);
 }
 const lbl = { display:"block", fontSize:12.5, fontWeight:600, color:"#A9BDBA", marginBottom:0 };
+
+/* Small pencil button that opens an inline editor. */
+function PencilBtn({ onClick }) {
+  return (
+    <button onClick={onClick} title="Edit" style={{ background:"none", color:T.sub, fontSize:14, padding:"2px 7px" }}>
+      ✎
+    </button>
+  );
+}
+const saveSm = { background:T.green, color:"#000", fontWeight:700, padding:"9px 18px", fontSize:13.5 };
+const cancelSm = { background:"none", border:`1px solid ${T.line}`, color:T.sub, padding:"9px 14px", fontSize:13.5 };
+const editBox = { background:T.cream, border:`1px solid ${T.creamLine}`, borderRadius:10, padding:12 };
 
 /* Two-tap delete: first tap arms it ("Sure?"), second tap confirms; disarms itself. */
 function ConfirmX({ onConfirm, label }) {
@@ -569,6 +633,15 @@ function BodyTab({ data, setData }) {
     setWeight("");
   };
 
+  const [edit, setEdit] = useState(null); // { orig (original date), date, weight, creatine }
+  const saveEdit = () => {
+    if (!edit.weight) return;
+    // drop the old row plus any row already on the new date, then add the edited one
+    setData(d=>({ ...d, bodyweight:[...d.bodyweight.filter(r=>r.date!==edit.orig && r.date!==edit.date),
+      { date:edit.date, weight:parseFloat(edit.weight), creatine:edit.creatine }] }));
+    setEdit(null);
+  };
+
   return (<>
     <div className="card">
       <div className="h" style={{fontSize:19, color:T.tealDk, marginBottom:10}}>⚖️ Log a weigh-in</div>
@@ -608,10 +681,28 @@ function BodyTab({ data, setData }) {
     <div className="card">
       <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:8}}>All weigh-ins</div>
       <table><thead><tr><th>Date</th><th>Weight</th><th>Creatine</th><th></th></tr></thead>
-        <tbody>{[...rows].reverse().map(r=>(
-          <tr key={r.date}><td>{fmtDate(r.date)}</td><td>{r.weight}</td><td>{r.creatine}</td>
-            <td><ConfirmX onConfirm={()=>setData(d=>({...d, bodyweight:d.bodyweight.filter(x=>x.date!==r.date)}))} /></td></tr>
-        ))}</tbody></table>
+        <tbody>{[...rows].reverse().map(r=>(<Fragment key={r.date}>
+          <tr><td>{fmtDate(r.date)}</td><td>{r.weight}</td><td>{r.creatine}</td>
+            <td style={{whiteSpace:"nowrap"}}>
+              <PencilBtn onClick={()=>setEdit({ orig:r.date, date:r.date, weight:r.weight, creatine:r.creatine||"No" })} />
+              <ConfirmX onConfirm={()=>setData(d=>({...d, bodyweight:d.bodyweight.filter(x=>x.date!==r.date)}))} />
+            </td></tr>
+          {edit?.orig === r.date && (
+            <tr><td colSpan={4} style={{padding:"6px 4px"}}>
+              <div style={editBox}>
+                <div style={{display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, marginBottom:10}}>
+                  <label style={lbl}>Date<input type="date" value={edit.date} onChange={ev=>setEdit(s=>({...s, date:ev.target.value}))} /></label>
+                  <label style={lbl}>Weight (lb)<input type="number" inputMode="decimal" value={edit.weight} onChange={ev=>setEdit(s=>({...s, weight:ev.target.value}))} /></label>
+                  <label style={lbl}>Creatine<select value={edit.creatine} onChange={ev=>setEdit(s=>({...s, creatine:ev.target.value}))}><option>No</option><option>Yes</option></select></label>
+                </div>
+                <div style={{display:"flex", gap:8}}>
+                  <button onClick={saveEdit} disabled={!edit.weight} style={{...saveSm, opacity:edit.weight?1:0.45}}>Save changes</button>
+                  <button onClick={()=>setEdit(null)} style={cancelSm}>Cancel</button>
+                </div>
+              </div>
+            </td></tr>
+          )}
+        </Fragment>))}</tbody></table>
     </div>
   </>);
 }
@@ -639,6 +730,34 @@ function CardioTab({ data, setData, latestBW }) {
   };
 
   const rows = [...data.cardio].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,40);
+
+  const [editAct, setEditAct] = useState(null); // { orig, name, type }
+  const actValid = editAct && editAct.name.trim() &&
+    !data.cardioActivities.some(a => a.name === editAct.name.trim() && a.name !== editAct.orig);
+  const saveAct = () => {
+    if (!actValid) return;
+    const nn = editAct.name.trim();
+    setData(d=>({ ...d,
+      cardioActivities: d.cardioActivities.map(a => a.name===editAct.orig ? { name:nn, type:editAct.type } : a),
+      cardio: nn !== editAct.orig ? d.cardio.map(c => c.activity===editAct.orig ? { ...c, activity:nn } : c) : d.cardio,
+    }));
+    setEditAct(null);
+  };
+
+  const [edit, setEdit] = useState(null); // { id, date, activity, duration, intensity, machineCal }
+  const editIsMachine = edit ? actMap[edit.activity]==="Machine" : false;
+  const saveEdit = () => {
+    if (!edit.activity || !edit.duration) return;
+    const dur = parseInt(edit.duration);
+    const calories = editIsMachine
+      ? (edit.machineCal ? parseInt(edit.machineCal) : null)
+      : (edit.intensity ? Math.round(MET[edit.intensity]*kg*(dur/60)) : null);
+    setData(d=>({ ...d, cardio: d.cardio.map(x => x.id===edit.id ? {
+      ...x, date:edit.date, activity:edit.activity, duration:dur,
+      intensity: editIsMachine ? null : (edit.intensity || null), calories,
+    } : x) }));
+    setEdit(null);
+  };
 
   return (<>
     <div className="card">
@@ -682,9 +801,25 @@ function CardioTab({ data, setData, latestBW }) {
       </div>
       {data.cardioActivities.map(a=>(
         <span key={a.name} className="chip" style={{background:T.mint, color:T.green, marginRight:6, marginBottom:6}}>
-          {a.name} · {a.type} <ConfirmX onConfirm={()=>setData(d=>({...d, cardioActivities:d.cardioActivities.filter(x=>x.name!==a.name)}))} />
+          {a.name} · {a.type}
+          <PencilBtn onClick={()=>setEditAct({ orig:a.name, name:a.name, type:a.type })} />
+          <ConfirmX onConfirm={()=>setData(d=>({...d, cardioActivities:d.cardioActivities.filter(x=>x.name!==a.name)}))} />
         </span>
       ))}
+      {editAct && (
+        <div style={{...editBox, marginTop:8}}>
+          <div style={{fontSize:12.5, color:T.sub, marginBottom:8}}>Editing <b>{editAct.orig}</b> — renaming updates all your past sessions too.</div>
+          <div style={{display:"flex", gap:8, marginBottom:10}}>
+            <input value={editAct.name} onChange={ev=>setEditAct(s=>({...s, name:ev.target.value}))} />
+            <select value={editAct.type} onChange={ev=>setEditAct(s=>({...s, type:ev.target.value}))} style={{width:120}}><option>Sport</option><option>Machine</option></select>
+          </div>
+          <div style={{display:"flex", gap:8}}>
+            <button onClick={saveAct} disabled={!actValid} style={{...saveSm, opacity:actValid?1:0.45}}>Save changes</button>
+            <button onClick={()=>setEditAct(null)} style={cancelSm}>Cancel</button>
+          </div>
+          {!actValid && editAct.name.trim() && <div style={{fontSize:12, color:T.danger, marginTop:6}}>That name is already taken by another activity.</div>}
+        </div>
+      )}
       <div style={{marginTop:12, fontSize:12.5, color:T.sub}}>
         <b>Intensity guide:</b> {Object.entries(INTENSITY_FEEL).map(([k,v])=><div key={k}>• <b>{k}</b> — {v}</div>)}
       </div>
@@ -693,10 +828,43 @@ function CardioTab({ data, setData, latestBW }) {
     <div className="card">
       <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:8}}>Recent cardio</div>
       <table><thead><tr><th>Date</th><th>Activity</th><th>Min</th><th>Intensity</th><th>Cal</th><th></th></tr></thead>
-        <tbody>{rows.map(e=>(
-          <tr key={e.id}><td>{fmtDate(e.date)}</td><td>{e.activity}</td><td>{e.duration}</td><td>{e.intensity||"machine"}</td><td>{e.calories??"—"}</td>
-            <td><ConfirmX onConfirm={()=>setData(d=>({...d, cardio:d.cardio.filter(x=>x.id!==e.id)}))} /></td></tr>
-        ))}
+        <tbody>{rows.map(e=>(<Fragment key={e.id}>
+          <tr><td>{fmtDate(e.date)}</td><td>{e.activity}</td><td>{e.duration}</td><td>{e.intensity||"machine"}</td><td>{e.calories??"—"}</td>
+            <td style={{whiteSpace:"nowrap"}}>
+              <PencilBtn onClick={()=>setEdit({ id:e.id, date:e.date, activity:e.activity, duration:e.duration, intensity:e.intensity||"", machineCal:e.calories ?? "" })} />
+              <ConfirmX onConfirm={()=>setData(d=>({...d, cardio:d.cardio.filter(x=>x.id!==e.id)}))} />
+            </td></tr>
+          {edit?.id === e.id && (
+            <tr><td colSpan={6} style={{padding:"6px 4px"}}>
+              <div style={editBox}>
+                <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:8}}>
+                  <label style={lbl}>Date<input type="date" value={edit.date} onChange={ev=>setEdit(s=>({...s, date:ev.target.value}))} /></label>
+                  <label style={lbl}>Activity
+                    <select value={edit.activity} onChange={ev=>setEdit(s=>({...s, activity:ev.target.value}))}>
+                      {data.cardioActivities.map(a=><option key={a.name}>{a.name}</option>)}
+                      {!data.cardioActivities.some(a=>a.name===edit.activity) && <option>{edit.activity}</option>}
+                    </select>
+                  </label>
+                </div>
+                <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:10}}>
+                  <label style={lbl}>Duration (min)<input type="number" inputMode="numeric" value={edit.duration} onChange={ev=>setEdit(s=>({...s, duration:ev.target.value}))} /></label>
+                  {editIsMachine
+                    ? <label style={lbl}>Machine calories<input type="number" inputMode="numeric" value={edit.machineCal} onChange={ev=>setEdit(s=>({...s, machineCal:ev.target.value}))} /></label>
+                    : <label style={lbl}>Intensity
+                        <select value={edit.intensity} onChange={ev=>setEdit(s=>({...s, intensity:ev.target.value}))}>
+                          <option value="">—</option>{Object.keys(MET).map(k=><option key={k}>{k}</option>)}
+                        </select>
+                      </label>}
+                </div>
+                {!editIsMachine && <div style={{fontSize:12, color:T.sub, marginBottom:10}}>Calories re-estimate automatically when you save.</div>}
+                <div style={{display:"flex", gap:8}}>
+                  <button onClick={saveEdit} disabled={!edit.activity||!edit.duration} style={{...saveSm, opacity:(edit.activity&&edit.duration)?1:0.45}}>Save changes</button>
+                  <button onClick={()=>setEdit(null)} style={cancelSm}>Cancel</button>
+                </div>
+              </div>
+            </td></tr>
+          )}
+        </Fragment>))}
         {!rows.length && <tr><td colSpan={6} style={{color:T.sub}}>No cardio logged yet.</td></tr>}
         </tbody></table>
     </div>
@@ -706,6 +874,19 @@ function CardioTab({ data, setData, latestBW }) {
 /* ================= EXERCISES ================= */
 function ExercisesTab({ data, setData }) {
   const [name, setName] = useState(""); const [muscle, setMuscle] = useState("Chest"); const [type, setType] = useState("Weighted");
+
+  const [edit, setEdit] = useState(null); // { orig, name, muscle, type }
+  const editValid = edit && edit.name.trim() &&
+    !data.exercises.some(x => x.name === edit.name.trim() && x.name !== edit.orig);
+  const saveEdit = () => {
+    if (!editValid) return;
+    const nn = edit.name.trim();
+    setData(d=>({ ...d,
+      exercises: d.exercises.map(x => x.name===edit.orig ? { name:nn, muscle:edit.muscle, type:edit.type } : x),
+      log: nn !== edit.orig ? d.log.map(e => e.exercise===edit.orig ? { ...e, exercise:nn } : e) : d.log,
+    }));
+    setEdit(null);
+  };
 
   const exMuscle = Object.fromEntries(data.exercises.map(x => [x.name, x.muscle]));
   const stamp = todayStr();
@@ -740,10 +921,30 @@ function ExercisesTab({ data, setData }) {
       </div>
       <div style={{overflowX:"auto"}}>
         <table><thead><tr><th>Exercise</th><th>Muscle</th><th>Type</th><th></th></tr></thead>
-          <tbody>{data.exercises.map(x=>(
-            <tr key={x.name}><td>{x.name}</td><td>{x.muscle}</td><td>{x.type}</td>
-              <td><ConfirmX onConfirm={()=>setData(d=>({...d, exercises:d.exercises.filter(e=>e.name!==x.name)}))} /></td></tr>
-          ))}</tbody></table>
+          <tbody>{data.exercises.map(x=>(<Fragment key={x.name}>
+            <tr><td>{x.name}</td><td>{x.muscle}</td><td>{x.type}</td>
+              <td style={{whiteSpace:"nowrap"}}>
+                <PencilBtn onClick={()=>setEdit({ orig:x.name, name:x.name, muscle:x.muscle, type:x.type })} />
+                <ConfirmX onConfirm={()=>setData(d=>({...d, exercises:d.exercises.filter(e=>e.name!==x.name)}))} />
+              </td></tr>
+            {edit?.orig === x.name && (
+              <tr><td colSpan={4} style={{padding:"6px 4px"}}>
+                <div style={editBox}>
+                  <div style={{fontSize:12.5, color:T.sub, marginBottom:8}}>Renaming updates every set you've logged for it — history stays intact.</div>
+                  <div style={{display:"flex", gap:8, marginBottom:10, flexWrap:"wrap"}}>
+                    <input value={edit.name} onChange={ev=>setEdit(s=>({...s, name:ev.target.value}))} style={{flex:2, minWidth:150}} />
+                    <select value={edit.muscle} onChange={ev=>setEdit(s=>({...s, muscle:ev.target.value}))} style={{flex:1, minWidth:100}}>{MUSCLES.map(m=><option key={m}>{m}</option>)}</select>
+                    <select value={edit.type} onChange={ev=>setEdit(s=>({...s, type:ev.target.value}))} style={{flex:1, minWidth:110}}><option>Weighted</option><option>Bodyweight</option></select>
+                  </div>
+                  <div style={{display:"flex", gap:8}}>
+                    <button onClick={saveEdit} disabled={!editValid} style={{...saveSm, opacity:editValid?1:0.45}}>Save changes</button>
+                    <button onClick={()=>setEdit(null)} style={cancelSm}>Cancel</button>
+                  </div>
+                  {!editValid && edit.name.trim() && <div style={{fontSize:12, color:T.danger, marginTop:6}}>That name is already used by another exercise.</div>}
+                </div>
+              </td></tr>
+            )}
+          </Fragment>))}</tbody></table>
       </div>
     </div>
 
