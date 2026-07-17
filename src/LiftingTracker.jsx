@@ -1,17 +1,20 @@
 import { useState, useEffect, useMemo, useRef } from "react";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts";
+import { LineChart, Line, XAxis, YAxis, ReferenceLine, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts";
 import { supabase, loadUserState, saveUserState, loadLegacyState } from "./lib/storage.js";
 
-/* ---------- theme (dark) ---------- */
+/* ---------- theme (Robinhood-style: black + neon green) ---------- */
 const T = {
-  teal: "#0E7C7B",        // solid buttons, active-tab underline
-  tealBright: "#3BC9C6",  // chart lines, focus rings
-  tealDk: "#7AD8D5",      // heading text (light teal on dark)
-  deep: "#0A5C5B",        // header + table-header background
-  mint: "#123231", cream: "#2C2718", creamLine: "#4A4023",
-  gold: "#E3BE55", bg: "#0D1312", card: "#161E1D", cardAlt: "#1A2422",
-  input: "#0F1716", ink: "#E7EFED", sub: "#95A8A5", line: "#273432",
-  danger: "#F08A80", dangerBg: "#3B1E1B",
+  green: "#00C805",       // the accent: buttons, gains, active controls
+  down: "#FF5000",        // declines / destructive
+  teal: "#00C805",        // (legacy alias)
+  tealBright: "#00C805",
+  tealDk: "#FFFFFF",      // headings: bold white
+  deep: "#000000",
+  mint: "rgba(0,200,5,.12)",
+  cream: "#111312", creamLine: "#26302B",
+  gold: "#00C805", bg: "#000000", card: "#0C0D0D", cardAlt: "#111213",
+  input: "#111213", ink: "#FFFFFF", sub: "#8C8F90", line: "#222527",
+  danger: "#FF5000", dangerBg: "#2A1105",
 };
 const tipStyle = { background: T.card, border: `1px solid ${T.line}`, borderRadius: 8, color: T.ink };
 
@@ -30,7 +33,7 @@ const SEED_EXERCISES = [
 ];
 const BW_SET = new Set(["Pull-Up","Chin-Up","Push-Up","Dips","Triceps Dip","Plank","Hanging Leg Raise","Ab Wheel"]);
 const MUSCLES = ["Chest","Triceps","Shoulders","Back","Biceps","Legs","Abs"];
-const MUSCLE_COLORS = ["#0E7C7B","#3FA7A5","#7BC5C3","#B8860B","#D9A94B","#6E8B8A","#2F4F4E"];
+const MUSCLE_COLORS = ["#009E04","#3D7FD9","#C08A1E","#9C4DE0","#D94F00","#17ABA0","#A83277"];
 const EFFORTS = ["Warm-up","Could've done more","Right amount","To failure"];
 const MET = { Light: 4, Moderate: 6, Vigorous: 9, "Max Effort": 12 };
 const INTENSITY_FEEL = {
@@ -114,7 +117,7 @@ export default function LiftingTracker({ user }) {
           We found workout data saved before profiles existed
           ({pendingImport.log?.length || 0} logged sets). Is it yours?
         </div>
-        <button onClick={()=>chooseImport(true)} style={{ width:"100%", padding:12, background:T.teal, color:"#fff", fontWeight:700, fontSize:15, marginBottom:8 }}>
+        <button onClick={()=>chooseImport(true)} style={{ width:"100%", padding:12, background:T.green, color:"#000", fontWeight:700, fontSize:15, marginBottom:8 }}>
           Yes — import it into my profile
         </button>
         <button onClick={()=>chooseImport(false)} style={{ width:"100%", padding:12, background:T.input, border:`1px solid ${T.line}`, color:T.sub, fontWeight:600, fontSize:14 }}>
@@ -134,25 +137,24 @@ export default function LiftingTracker({ user }) {
   return (
     <div style={{ fontFamily:"'Inter',system-ui,sans-serif", background:T.bg, minHeight:"100vh", color:T.ink, paddingBottom:76 }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Inter:wght@400;500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
         html { color-scheme:dark; }
         * { box-sizing:border-box; } input,select,button { font-family:inherit; font-size:15px; }
-        input,select { border:1px solid ${T.line}; border-radius:8px; padding:9px 10px; background:${T.input}; color:${T.ink}; width:100%; }
+        input,select { border:1px solid ${T.line}; border-radius:10px; padding:9px 10px; background:${T.input}; color:${T.ink}; width:100%; }
         input::placeholder { color:${T.sub}; opacity:.75; }
-        input:focus,select:focus { outline:2px solid ${T.tealBright}; outline-offset:0; border-color:${T.tealBright}; }
-        button { cursor:pointer; border:none; border-radius:8px; }
-        table { border-collapse:collapse; width:100%; } td,th { padding:8px 10px; text-align:left; font-size:13.5px; }
-        th { background:${T.deep}; color:#fff; font-weight:600; white-space:nowrap; }
-        tr:nth-child(even) td { background:${T.card}; } tr:nth-child(odd) td { background:${T.cardAlt}; }
+        input:focus,select:focus { outline:2px solid ${T.green}; outline-offset:0; border-color:${T.green}; }
+        button { cursor:pointer; border:none; border-radius:24px; }
+        table { border-collapse:collapse; width:100%; } td,th { padding:9px 10px; text-align:left; font-size:13.5px; }
+        th { background:none; color:${T.sub}; font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.8px; white-space:nowrap; border-bottom:1px solid ${T.line}; }
         td { border-bottom:1px solid ${T.line}; }
         .card { background:${T.card}; border:1px solid ${T.line}; border-radius:14px; padding:16px; margin-bottom:14px; }
         .recharts-text { fill:${T.sub}; }
-        .h { font-family:'Barlow Condensed',system-ui; font-weight:700; letter-spacing:.4px; }
+        .h { font-family:'Inter',system-ui; font-weight:800; letter-spacing:.2px; }
         .chip { display:inline-block; padding:2px 10px; border-radius:99px; font-size:12px; font-weight:600; }
         @media(prefers-reduced-motion:reduce){ *{transition:none!important;animation:none!important} }
       `}</style>
 
-      <header style={{ background:T.deep, color:"#fff", padding:"14px 18px", position:"sticky", top:0, zIndex:5, display:"flex", justifyContent:"space-between", alignItems:"center", gap:10 }}>
+      <header style={{ background:T.bg, color:"#fff", padding:"14px 18px", position:"sticky", top:0, zIndex:5, display:"flex", justifyContent:"space-between", alignItems:"center", gap:10, borderBottom:`1px solid ${T.line}` }}>
         <div className="h" style={{ fontSize:24 }}>🏋️ MY LIFTING TRACKER</div>
         <div style={{ display:"flex", alignItems:"center", gap:10, flexShrink:0 }}>
           <span style={{ fontSize:13, fontWeight:600 }}>💪 {username}</span>
@@ -177,7 +179,7 @@ export default function LiftingTracker({ user }) {
         {tab==="ex" && <ExercisesTab data={data} setData={setData} />}
       </main>
 
-      <nav style={{ position:"fixed", bottom:0, left:0, right:0, background:T.card, borderTop:`1px solid ${T.line}`, display:"flex", zIndex:10 }}>
+      <nav style={{ position:"fixed", bottom:0, left:0, right:0, background:T.bg, borderTop:`1px solid ${T.line}`, display:"flex", zIndex:10 }}>
         {tabs.map(([id,label,icon]) => (
           <button key={id} onClick={()=>setTab(id)} style={{
             flex:1, padding:"9px 2px 10px", background:"none", display:"flex", flexDirection:"column", alignItems:"center", gap:2,
@@ -279,13 +281,13 @@ function LogTab({ data, exMap, setData }) {
         <label style={lbl}>Notes<input value={notes} onChange={e=>setNotes(e.target.value)} placeholder="optional" /></label>
       </div>
       <button onClick={addSet} disabled={!exName || !reps || (!isBW && !weight)}
-        style={{ width:"100%", padding:"12px", background:T.teal, color:"#fff", fontWeight:700, fontSize:16, opacity:(!exName||!reps||(!isBW&&!weight))?0.45:1 }}>
+        style={{ width:"100%", padding:"12px", background:T.green, color:"#000", fontWeight:700, fontSize:16, opacity:(!exName||!reps||(!isBW&&!weight))?0.45:1 }}>
         Save set {setNum}
       </button>
       {justSaved && (
         <div style={{marginTop:10, textAlign:"center", fontSize:14}}>
           Saved: {justSaved.exercise} — set {justSaved.set}{justSaved.weight!=null?`, ${justSaved.weight}×${justSaved.reps}`:`, ${justSaved.reps} reps`}
-          {justSaved.pr && <span className="chip" style={{background:T.cream, color:T.gold, marginLeft:8}}>🎉 New PR!</span>}
+          {justSaved.pr && <span className="chip" style={{background:T.mint, color:T.green, marginLeft:8}}>🎉 New PR!</span>}
         </div>
       )}
     </div>
@@ -386,11 +388,16 @@ function Dashboard({ data, exMap, setData }) {
   const cardioMin = data.cardio.filter(e=>weekStart(e.date)===wkStart).reduce((s,e)=>s+(e.duration||0),0);
 
   return (<>
-    <div className="card" style={{display:"flex", justifyContent:"space-between", alignItems:"center", padding:"12px 16px"}}>
-      <div style={{fontSize:13, color:T.sub}}>Charts show best est. 1RM per session (or reps for bodyweight moves)</div>
-      <select value={range} onChange={e=>setRange(e.target.value)} style={{width:90, background:T.cream, fontWeight:700}}>
-        {Object.keys(RANGE_DAYS).map(r=><option key={r}>{r}</option>)}
-      </select>
+    <div className="card" style={{display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 16px", gap:8, flexWrap:"wrap"}}>
+      <div style={{fontSize:13, color:T.sub}}>Best est. 1RM per session (reps for bodyweight moves)</div>
+      <div style={{display:"flex", gap:2}}>
+        {Object.keys(RANGE_DAYS).map(r=>(
+          <button key={r} onClick={()=>setRange(r)} style={{
+            background:"none", padding:"5px 10px", fontSize:12, fontWeight:700, letterSpacing:".5px", borderRadius:0,
+            color: range===r?T.green:T.sub, borderBottom: range===r?`2px solid ${T.green}`:"2px solid transparent",
+          }}>{r.toUpperCase()}</button>
+        ))}
+      </div>
     </div>
 
     {picks.map((p,i)=>(
@@ -414,7 +421,8 @@ function Dashboard({ data, exMap, setData }) {
       <table><thead><tr><th>Muscle</th><th>Sets this week</th><th>Target</th><th>Status</th></tr></thead>
         <tbody>{MUSCLES.map(m=>(
           <tr key={m}><td>{m}</td><td style={{textAlign:"center"}}>{weekSets[m]}</td><td>12–16</td>
-            <td>{weekSets[m]<12?"↓ under — add sets":weekSets[m]<=16?"✓ on target":"↑ over"}</td></tr>
+            <td style={{color: weekSets[m]<12?T.sub:weekSets[m]<=16?T.green:T.down, fontWeight:600}}>
+              {weekSets[m]<12?"↓ under — add sets":weekSets[m]<=16?"✓ on target":"↑ over"}</td></tr>
         ))}</tbody></table>
     </div>
 
@@ -435,20 +443,22 @@ function Dashboard({ data, exMap, setData }) {
     </div>
   </>);
 }
-const kpiN = { fontFamily:"'Barlow Condensed'", fontWeight:700, fontSize:30, color:T.tealDk };
+const kpiN = { fontFamily:"'Inter',system-ui", fontWeight:800, fontSize:28, color:T.ink };
 const kpiL = { fontSize:11.5, color:T.sub };
 
 function ChartBody({ pts }) {
   if (!pts.length) return <div style={{color:T.sub, fontSize:14, padding:"28px 0", textAlign:"center"}}>No sessions logged for this lift yet.</div>;
   const display = pts.length===1 ? [pts[0], {...pts[0], label:pts[0].label+" "}] : pts;
+  const first = display[0].value, last = display[display.length-1].value;
+  const stroke = last >= first ? T.green : T.down; // green when trending up, orange when down
   return (
     <ResponsiveContainer width="100%" height={210}>
       <LineChart data={display} margin={{top:8,right:12,bottom:0,left:-14}}>
-        <CartesianGrid stroke={T.line} strokeDasharray="0" vertical={false} />
-        <XAxis dataKey="label" tick={{fontSize:11}} />
-        <YAxis tick={{fontSize:11}} domain={["auto","auto"]} />
-        <Tooltip contentStyle={tipStyle} itemStyle={{color:T.ink}} labelStyle={{color:T.sub}} />
-        <Line type="linear" dataKey="value" stroke={T.tealBright} strokeWidth={2.5} dot={{r:4, fill:T.tealBright}} isAnimationActive={false} />
+        <XAxis dataKey="label" tick={{fontSize:11}} axisLine={false} tickLine={false} />
+        <YAxis tick={{fontSize:11}} domain={["auto","auto"]} axisLine={false} tickLine={false} />
+        <Tooltip contentStyle={tipStyle} itemStyle={{color:T.ink}} labelStyle={{color:T.sub}} cursor={{stroke:T.line}} />
+        <ReferenceLine y={first} stroke="#4A4E50" strokeDasharray="2 6" />
+        <Line type="linear" dataKey="value" stroke={stroke} strokeWidth={2} dot={false} activeDot={{r:4, fill:stroke}} isAnimationActive={false} />
       </LineChart>
     </ResponsiveContainer>
   );
@@ -536,7 +546,7 @@ function BodyTab({ data, setData }) {
         <label style={lbl}>Weight (lb)<input type="number" inputMode="decimal" value={weight} onChange={e=>setWeight(e.target.value)} /></label>
         <label style={lbl}>Creatine today?<select value={creatine} onChange={e=>setCreatine(e.target.value)}><option>No</option><option>Yes</option></select></label>
       </div>
-      <button onClick={add} disabled={!weight} style={{width:"100%", padding:"12px", background:T.teal, color:"#fff", fontWeight:700, fontSize:16, opacity:weight?1:0.45}}>Save weigh-in</button>
+      <button onClick={add} disabled={!weight} style={{width:"100%", padding:"12px", background:T.green, color:"#000", fontWeight:700, fontSize:16, opacity:weight?1:0.45}}>Save weigh-in</button>
     </div>
 
     <div className="card" style={{display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:8, textAlign:"center"}}>
@@ -552,11 +562,11 @@ function BodyTab({ data, setData }) {
       {chartData.length ? (
         <ResponsiveContainer width="100%" height={220}>
           <LineChart data={chartData} margin={{top:8,right:12,bottom:0,left:-10}}>
-            <CartesianGrid stroke={T.line} vertical={false} />
-            <XAxis dataKey="label" tick={{fontSize:11}} />
-            <YAxis tick={{fontSize:11}} domain={["auto","auto"]} />
-            <Tooltip contentStyle={tipStyle} itemStyle={{color:T.ink}} labelStyle={{color:T.sub}} />
-            <Line type="linear" dataKey="value" stroke={T.tealBright} strokeWidth={2.5} dot={{r:4, fill:T.tealBright}} connectNulls isAnimationActive={false} />
+            <XAxis dataKey="label" tick={{fontSize:11}} axisLine={false} tickLine={false} />
+            <YAxis tick={{fontSize:11}} domain={["auto","auto"]} axisLine={false} tickLine={false} />
+            <Tooltip contentStyle={tipStyle} itemStyle={{color:T.ink}} labelStyle={{color:T.sub}} cursor={{stroke:T.line}} />
+            <ReferenceLine y={chartData.find(m=>m.value!=null)?.value} stroke="#4A4E50" strokeDasharray="2 6" />
+            <Line type="linear" dataKey="value" stroke="#FFFFFF" strokeWidth={2} dot={{r:3, fill:"#FFFFFF"}} connectNulls isAnimationActive={false} />
           </LineChart>
         </ResponsiveContainer>
       ) : <div style={{color:T.sub, fontSize:14}}>Log a weigh-in and the trend starts here.</div>}
@@ -635,7 +645,7 @@ function CardioTab({ data, setData, latestBW }) {
             </label>}
       </div>
       {estCal!=null && <div style={{background:T.cream, borderRadius:10, padding:"8px 12px", marginBottom:10, fontSize:14}}>Estimated: <b>{estCal} cal</b></div>}
-      <button onClick={add} disabled={!activity||!duration} style={{width:"100%", padding:"12px", background:T.teal, color:"#fff", fontWeight:700, fontSize:16, opacity:(activity&&duration)?1:0.45}}>Save session</button>
+      <button onClick={add} disabled={!activity||!duration} style={{width:"100%", padding:"12px", background:T.green, color:"#000", fontWeight:700, fontSize:16, opacity:(activity&&duration)?1:0.45}}>Save session</button>
     </div>
 
     <div className="card">
@@ -645,10 +655,10 @@ function CardioTab({ data, setData, latestBW }) {
         <input value={newAct} onChange={e=>setNewAct(e.target.value)} placeholder="Activity name" />
         <select value={newType} onChange={e=>setNewType(e.target.value)} style={{width:120}}><option>Sport</option><option>Machine</option></select>
         <button onClick={()=>{ if(!newAct.trim())return; setData(d=>({...d, cardioActivities:[...d.cardioActivities.filter(a=>a.name!==newAct.trim()), {name:newAct.trim(), type:newType}]})); setNewAct(""); }}
-          style={{background:T.teal, color:"#fff", padding:"0 16px", fontWeight:700}}>Add</button>
+          style={{background:T.green, color:"#000", padding:"0 16px", fontWeight:700}}>Add</button>
       </div>
       {data.cardioActivities.map(a=>(
-        <span key={a.name} className="chip" style={{background:T.mint, color:T.tealDk, marginRight:6, marginBottom:6}}>
+        <span key={a.name} className="chip" style={{background:T.mint, color:T.green, marginRight:6, marginBottom:6}}>
           {a.name} · {a.type} <button onClick={()=>setData(d=>({...d, cardioActivities:d.cardioActivities.filter(x=>x.name!==a.name)}))} style={{background:"none", color:T.danger}}>✕</button>
         </span>
       ))}
@@ -682,7 +692,7 @@ function ExercisesTab({ data, setData }) {
         <select value={muscle} onChange={e=>setMuscle(e.target.value)} style={{flex:1, minWidth:100}}>{MUSCLES.map(m=><option key={m}>{m}</option>)}</select>
         <select value={type} onChange={e=>setType(e.target.value)} style={{flex:1, minWidth:110}}><option>Weighted</option><option>Bodyweight</option></select>
         <button onClick={()=>{ if(!name.trim())return; setData(d=>({...d, exercises:[...d.exercises.filter(x=>x.name!==name.trim()), {name:name.trim(), muscle, type}]})); setName(""); }}
-          style={{background:T.teal, color:"#fff", padding:"0 16px", fontWeight:700}}>Add</button>
+          style={{background:T.green, color:"#000", padding:"0 16px", fontWeight:700}}>Add</button>
       </div>
       <div style={{overflowX:"auto"}}>
         <table><thead><tr><th>Exercise</th><th>Muscle</th><th>Type</th><th></th></tr></thead>

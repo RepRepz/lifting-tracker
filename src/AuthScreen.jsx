@@ -2,10 +2,10 @@ import { useState } from "react";
 import { supabase } from "./lib/storage.js";
 
 const C = {
-  teal: "#3BC9C6", btn: "#0E7C7B", head: "#7AD8D5",
-  bg: "#0D1312", card: "#161E1D", input: "#0F1716",
-  ink: "#E7EFED", sub: "#95A8A5", line: "#273432",
-  danger: "#F08A80", dangerBg: "#3B1E1B",
+  teal: "#00C805", btn: "#00C805", head: "#FFFFFF",
+  bg: "#000000", card: "#0C0D0D", input: "#111213",
+  ink: "#FFFFFF", sub: "#8C8F90", line: "#222527",
+  danger: "#FF5000", dangerBg: "#2A1105",
 };
 
 // Usernames double as login emails on a fake domain; Supabase never sends
@@ -73,8 +73,8 @@ export default function AuthScreen() {
       padding: 20, color: C.ink,
     }}>
       <div style={{
-        fontFamily: "'Barlow Condensed',system-ui", fontWeight: 700, letterSpacing: ".4px",
-        fontSize: 30, color: C.head, marginBottom: 18,
+        fontFamily: "'Inter',system-ui", fontWeight: 800, letterSpacing: ".2px",
+        fontSize: 26, color: C.head, marginBottom: 18,
       }}>
         🏋️ MY LIFTING TRACKER
       </div>
@@ -125,8 +125,8 @@ export default function AuthScreen() {
         )}
 
         <button type="submit" disabled={busy} style={{
-          width: "100%", marginTop: 14, padding: 12, border: "none", borderRadius: 8,
-          background: C.btn, color: "#fff", fontWeight: 700, fontSize: 16,
+          width: "100%", marginTop: 14, padding: 12, border: "none", borderRadius: 24,
+          background: C.btn, color: "#000", fontWeight: 700, fontSize: 16,
           cursor: "pointer", opacity: busy ? 0.6 : 1,
         }}>
           {busy ? "One sec…" : mode === "signin" ? "Sign in" : "Create profile"}
