@@ -58,6 +58,16 @@ const monthLabel = (k) => { const [y,m]=k.split("-"); return new Date(+y, +m-1, 
 const weekStart = (s) => { const d = new Date(s + "T00:00"); const day=(d.getDay()+6)%7; d.setDate(d.getDate()-day); return d.toISOString().slice(0,10); };
 const RANGE_DAYS = { "1M": 30, "1Y": 365, "5Y": 1826, All: Infinity };
 
+/* plate calculator: what to load per side, heaviest-first */
+const PLATES = [45, 35, 25, 10, 5, 2.5];
+function platesPerSide(total, bar) {
+  let side = (total - bar) / 2;
+  if (side <= 0) return null;
+  const out = [];
+  for (const p of PLATES) while (side >= p - 1e-9) { out.push(p); side = Math.round((side - p) * 100) / 100; }
+  return { plates: out, leftover: side };
+}
+
 const defaultData = {
   exercises: SEED_EXERCISES.map(([name, muscle]) => ({ name, muscle, type: BW_SET.has(name) ? "Bodyweight" : "Weighted" })),
   log: [], bodyweight: [], cardio: [], cardioActivities: [],
@@ -266,6 +276,7 @@ function LogTab({ data, exMap, setData }) {
   const [effort, setEffort] = useState("");
   const [notes, setNotes] = useState("");
   const [justSaved, setJustSaved] = useState(null);
+  const [bar, setBar] = useState(45);
 
   const isBW = exMap[exName]?.type === "Bodyweight";
 
@@ -363,6 +374,29 @@ function LogTab({ data, exMap, setData }) {
         {!isBW && <label style={lbl}>Weight (lb)<input type="number" inputMode="decimal" value={weight} onChange={e=>setWeight(e.target.value)} /></label>}
         <label style={lbl}>Reps<input type="number" inputMode="numeric" value={reps} onChange={e=>setReps(e.target.value)} /></label>
       </div>
+      {!isBW && weight > 0 && (() => {
+        const res = platesPerSide(parseFloat(weight), bar);
+        return (
+          <div style={{ background:T.cream, border:`1px solid ${T.creamLine}`, borderRadius:10, padding:"9px 12px", marginBottom:10, fontSize:13.5, display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+            <span style={{fontWeight:700}}>🏋️ Per side:</span>
+            {!res ? <span style={{color:T.sub}}>at or below the bar ({bar} lb) — no plates</span>
+              : <>
+                <span style={{display:"flex", gap:4, flexWrap:"wrap"}}>
+                  {res.plates.map((p,i)=>(
+                    <span key={i} style={{background:T.mint, color:T.green, borderRadius:6, padding:"1px 7px", fontWeight:700, fontSize:12.5}}>{p}</span>
+                  ))}
+                </span>
+                {res.leftover > 0 && <span style={{color:T.sub, fontSize:12}}>(+{res.leftover} left over — can't make it exactly)</span>}
+              </>}
+            <select value={bar} onChange={e=>setBar(parseFloat(e.target.value))} style={{width:"auto", marginLeft:"auto", padding:"4px 26px 4px 8px", fontSize:12.5, minHeight:0}}>
+              <option value={45}>45 lb bar</option>
+              <option value={35}>35 lb bar</option>
+              <option value={15}>15 lb bar</option>
+              <option value={0}>no bar</option>
+            </select>
+          </div>
+        );
+      })()}
       <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:12}}>
         <label style={lbl}>Effort / Warm-up
           <select value={effort} onChange={e=>setEffort(e.target.value)}>
@@ -511,6 +545,119 @@ const download = (name, content, type) => {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
 
+/* GitHub-style workout calendar: one cell per day, greener the more sets. */
+function WorkoutHeatmap({ log, cardio }) {
+  const { cols, monthMarks } = useMemo(() => {
+    const count = {};
+    for (const e of (log||[])) if (e.effort !== "Warm-up") count[e.date] = (count[e.date]||0) + 1;
+    for (const c of (cardio||[])) count[c.date] = (count[c.date]||0) + 1;
+    const WEEKS = 26;
+    const end = new Date(todayStr() + "T00:00");
+    const start = new Date(weekStart(todayStr()) + "T00:00");
+    start.setDate(start.getDate() - 7*(WEEKS-1));
+    const cols = []; const monthMarks = [];
+    let d = new Date(start), lastMonth = -1;
+    for (let w=0; w<WEEKS; w++) {
+      const days = [];
+      for (let i=0; i<7; i++) {
+        const key = d.toISOString().slice(0,10);
+        days.push({ key, n: count[key]||0, future: d > end });
+        if (d.getMonth() !== lastMonth && d.getDate() <= 7) { monthMarks.push({ col:w, label:d.toLocaleString("en-US",{month:"short"}) }); lastMonth = d.getMonth(); }
+        d.setDate(d.getDate()+1);
+      }
+      cols.push(days);
+    }
+    return { cols, monthMarks };
+  }, [log, cardio]);
+
+  const shade = (n, future) => {
+    if (future) return "transparent";
+    if (n === 0) return T.input;
+    if (n <= 2) return "rgba(0,200,5,.30)";
+    if (n <= 4) return "rgba(0,200,5,.55)";
+    if (n <= 6) return "rgba(0,200,5,.80)";
+    return T.green;
+  };
+  const CELL = 13, GAP = 3;
+  return (
+    <div style={{ overflowX:"auto", paddingBottom:4 }}>
+      <div style={{ display:"inline-block", minWidth:"min-content" }}>
+        <div style={{ position:"relative", height:14, marginLeft:0 }}>
+          {monthMarks.map((m,i)=>(
+            <span key={i} style={{ position:"absolute", left:m.col*(CELL+GAP), fontSize:10, color:T.sub }}>{m.label}</span>
+          ))}
+        </div>
+        <div style={{ display:"flex", gap:GAP }}>
+          {cols.map((week,wi)=>(
+            <div key={wi} style={{ display:"flex", flexDirection:"column", gap:GAP }}>
+              {week.map(day=>(
+                <div key={day.key} title={day.future ? "" : `${fmtDate(day.key)} — ${day.n} set${day.n===1?"":"s"}`}
+                  style={{ width:CELL, height:CELL, borderRadius:3, background:shade(day.n, day.future),
+                    border: day.key===todayStr() ? `1.5px solid ${T.ink}` : "none" }} />
+              ))}
+            </div>
+          ))}
+        </div>
+        <div style={{ display:"flex", alignItems:"center", gap:5, marginTop:8, fontSize:10.5, color:T.sub }}>
+          <span>Less</span>
+          {[T.input,"rgba(0,200,5,.30)","rgba(0,200,5,.55)","rgba(0,200,5,.80)",T.green].map((c,i)=>(
+            <span key={i} style={{ width:11, height:11, borderRadius:2, background:c, display:"inline-block" }} />
+          ))}
+          <span>More</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* Spotify-Wrapped-style yearly recap. */
+function YearRecap({ data }) {
+  const year = new Date().getFullYear();
+  const stats = useMemo(() => {
+    const log = (data.log||[]).filter(e => e.date.startsWith(String(year)));
+    const cardio = (data.cardio||[]).filter(c => c.date.startsWith(String(year)));
+    const days = new Set([...log.map(e=>e.date), ...cardio.map(c=>c.date)]);
+    const volume = log.reduce((s,e)=>s + (e.weight||0)*e.reps, 0);
+    const byMuscle = {};
+    const exMuscle = Object.fromEntries((data.exercises||[]).map(x=>[x.name,x.muscle]));
+    for (const e of log) { if (e.effort==="Warm-up") continue; const m=exMuscle[e.exercise]; if (m) byMuscle[m]=(byMuscle[m]||0)+1; }
+    const topMuscle = Object.entries(byMuscle).sort((a,b)=>b[1]-a[1])[0];
+    let bigPR = null;
+    for (const e of log) {
+      if (e.weight==null) continue;
+      const est = e1rm(e.weight, e.reps);
+      if (!bigPR || est > bigPR.est) bigPR = { est, text:`${e.weight}×${e.reps} ${e.exercise}` };
+    }
+    const cardioMin = cardio.reduce((s,c)=>s+(c.duration||0),0);
+    return { sets: log.length, days: days.size, volume: Math.round(volume), topMuscle, bigPR, cardioMin, empty: !log.length && !cardio.length };
+  }, [data, year]);
+
+  if (stats.empty) return null;
+  const Item = ({ big, label }) => (
+    <div style={{ textAlign:"center", padding:"6px 4px" }}>
+      <div style={{ fontSize:24, fontWeight:800, color:T.ink, lineHeight:1.15 }}>{big}</div>
+      <div style={{ fontSize:11.5, color:T.sub }}>{label}</div>
+    </div>
+  );
+  return (
+    <div className="card" style={{ background:"linear-gradient(160deg,#0C1A0E,#0C0D0D 60%)", border:`1px solid ${T.creamLine}` }}>
+      <div className="h" style={{ fontSize:19, color:T.green, marginBottom:2 }}>✨ {year} in review</div>
+      <div style={{ fontSize:12.5, color:T.sub, marginBottom:12 }}>Your year so far — screenshot it and flex in the group chat.</div>
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:6 }}>
+        <Item big={stats.sets} label="sets logged" />
+        <Item big={stats.days} label="workout days" />
+        <Item big={stats.volume.toLocaleString()} label="lb total volume" />
+        <Item big={stats.topMuscle ? stats.topMuscle[0] : "—"} label="most trained" />
+        <Item big={stats.cardioMin} label="cardio minutes" />
+        <Item big={stats.bigPR ? Math.round(stats.bigPR.est) : "—"} label="top est. 1RM" />
+      </div>
+      {stats.bigPR && <div style={{ marginTop:12, textAlign:"center", fontSize:13 }}>
+        🏆 Biggest lift: <b style={{color:T.green}}>{stats.bigPR.text}</b>
+      </div>}
+    </div>
+  );
+}
+
 /* ================= DASHBOARD ================= */
 function Dashboard({ data, exMap, setData }) {
   const [range, setRange] = useState("1Y");
@@ -625,11 +772,19 @@ function Dashboard({ data, exMap, setData }) {
     </div>
 
     <div className="card">
+      <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:2}}>Workout calendar</div>
+      <div style={{fontSize:12, color:T.sub, marginBottom:10}}>Last 26 weeks — each square is a day, greener the more sets. Today is outlined.</div>
+      <WorkoutHeatmap log={data.log} cardio={data.cardio} />
+    </div>
+
+    <div className="card">
       <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:4}}>Last 30 days — sets by muscle</div>
       {pieData.length ? (
         <Suspense fallback={<ChartFallback h={230} />}><MusclePie data={pieData} /></Suspense>
       ) : <div style={{color:T.sub, fontSize:14}}>Log some sets and your split shows up here.</div>}
     </div>
+
+    <YearRecap data={data} />
   </>);
 }
 const kpiN = { fontWeight:800, fontSize:28, color:T.ink };
