@@ -88,7 +88,10 @@ function computeStreak(log, cardio) {
 
 export default function LiftingTracker({ user }) {
   const [data, setData] = useState(defaultData);
-  const [tab, setTab] = useState("log");
+  const [startTab, setStartTab] = useState(() => localStorage.getItem("lt-start-tab") || "dash");
+  const [tab, setTab] = useState(() => localStorage.getItem("lt-start-tab") || "dash");
+  const [showSettings, setShowSettings] = useState(false);
+  useEffect(() => { localStorage.setItem("lt-start-tab", startTab); }, [startTab]);
   const [loaded, setLoaded] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
   const [syncState, setSyncState] = useState("synced"); // "synced" | "offline"
@@ -198,6 +201,7 @@ export default function LiftingTracker({ user }) {
         .chip { animation:pop .25s ease-out both; }
         .chip { display:inline-block; padding:2px 10px; border-radius:99px; font-size:12px; font-weight:600; }
         @keyframes fadeSwap { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:none; } }
+        @keyframes sheetUp { from { transform:translateY(100%); } to { transform:none; } }
         .tabview { animation:fadeSwap .2s ease-out both; }
         .navicon { transition:transform .18s ease; }
         .navicon.on { transform:translateY(-2px) scale(1.14); }
@@ -206,13 +210,16 @@ export default function LiftingTracker({ user }) {
 
       <header style={{ background:T.bg, color:"#fff", padding:"calc(14px + env(safe-area-inset-top)) 18px 14px", position:"sticky", top:0, zIndex:5, display:"flex", justifyContent:"space-between", alignItems:"center", gap:10, borderBottom:`1px solid ${T.line}` }}>
         <div className="h" onClick={()=>setTab("dash")} style={{ fontSize:24, cursor:"pointer", userSelect:"none" }}>🏋️ MY LIFTING TRACKER</div>
-        <div style={{ display:"flex", alignItems:"center", gap:10, flexShrink:0 }}>
-          <span style={{ fontSize:13, fontWeight:600 }}>💪 {username}</span>
-          <button onClick={()=>supabase.auth.signOut()} style={{ background:"rgba(255,255,255,.18)", color:"#fff", padding:"6px 12px", fontSize:12.5, fontWeight:600 }}>
-            Sign out
-          </button>
-        </div>
+        <button onClick={()=>setShowSettings(true)} style={{ display:"flex", alignItems:"center", gap:7, flexShrink:0, background:"rgba(255,255,255,.10)", color:"#fff", padding:"6px 12px 6px 13px", fontSize:13, fontWeight:600 }}>
+          💪 {username} <span style={{ fontSize:15, opacity:.8 }}>⚙️</span>
+        </button>
       </header>
+
+      {showSettings && (
+        <SettingsModal user={user} username={username} data={data}
+          startTab={startTab} setStartTab={setStartTab} tabs={tabs}
+          onClose={()=>setShowSettings(false)} />
+      )}
 
       {syncState === "offline" && (
         <div style={{ background:"#2A2416", color:"#E3BE55", padding:"8px 18px", fontSize:13, fontWeight:600 }}>
@@ -1086,9 +1093,100 @@ function ExercisesTab({ data, setData }) {
         <button onClick={exportAll} style={outBtn}>Full backup (JSON)</button>
       </div>
     </div>
-
-    <SecurityCard />
   </>);
+}
+
+/* ================= SETTINGS / ACCOUNT ================= */
+function SettingsModal({ user, username, data, startTab, setStartTab, tabs, onClose }) {
+  const memberSince = user.created_at ? new Date(user.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}) : "—";
+  const totalSets = (data.log||[]).length;
+
+  // close on Escape
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div onClick={onClose} style={{
+      position:"fixed", inset:0, zIndex:50, background:"rgba(0,0,0,.6)", backdropFilter:"blur(2px)",
+      display:"flex", alignItems:"flex-end", justifyContent:"center",
+      animation:"fadeSwap .18s ease-out both",
+    }}>
+      <div onClick={e=>e.stopPropagation()} style={{
+        background:T.card, borderTop:`1px solid ${T.line}`, borderRadius:"18px 18px 0 0",
+        width:"100%", maxWidth:520, maxHeight:"88vh", overflowY:"auto",
+        padding:"18px 16px calc(20px + env(safe-area-inset-bottom))",
+        animation:"sheetUp .26s cubic-bezier(.22,1,.36,1) both",
+      }}>
+        <div style={{ width:38, height:4, background:T.line, borderRadius:99, margin:"0 auto 14px" }} />
+
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
+          <div>
+            <div className="h" style={{ fontSize:22, color:T.tealDk }}>💪 {username}</div>
+            <div style={{ fontSize:12.5, color:T.sub, marginTop:2 }}>Member since {memberSince} · {totalSets} sets logged</div>
+          </div>
+          <button onClick={onClose} style={{ background:T.input, color:T.sub, width:34, height:34, borderRadius:99, fontSize:16, flexShrink:0 }}>✕</button>
+        </div>
+
+        {/* view preference */}
+        <div style={{ ...sCard }}>
+          <div style={{ fontSize:14, fontWeight:700, color:T.ink, marginBottom:2 }}>Open the app on</div>
+          <div style={{ fontSize:12, color:T.sub, marginBottom:10 }}>Pick the tab you land on each time — set it to Log for the fastest gym start.</div>
+          <select value={startTab} onChange={e=>setStartTab(e.target.value)}>
+            {tabs.map(([id,label,icon])=><option key={id} value={id}>{icon} {label}</option>)}
+          </select>
+        </div>
+
+        <ChangePasswordCard />
+        <SecurityCard />
+
+        <button onClick={()=>supabase.auth.signOut()} style={{
+          width:"100%", marginTop:6, padding:13, background:T.dangerBg, color:T.danger, fontWeight:700, fontSize:15,
+        }}>
+          Sign out
+        </button>
+      </div>
+    </div>
+  );
+}
+const sCard = { background:T.cream, border:`1px solid ${T.creamLine}`, borderRadius:12, padding:14, marginBottom:12 };
+
+/* Change the password while signed in (no current-password needed — session proves identity). */
+function ChangePasswordCard() {
+  const [pw, setPw] = useState("");
+  const [pw2, setPw2] = useState("");
+  const [show, setShow] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null); // {ok, text}
+  const save = async () => {
+    setMsg(null);
+    if (pw.length < 6) { setMsg({ ok:false, text:"At least 6 characters." }); return; }
+    if (pw !== pw2) { setMsg({ ok:false, text:"The two passwords don't match." }); return; }
+    setBusy(true);
+    try {
+      const { error } = await supabase.auth.updateUser({ password: pw });
+      if (error) throw error;
+      setMsg({ ok:true, text:"✅ Password changed — your browser will offer to update the saved one." });
+      setPw(""); setPw2("");
+    } catch (e) { setMsg({ ok:false, text:String(e?.message || e) }); }
+    finally { setBusy(false); }
+  };
+  return (
+    <div style={{ ...sCard }}>
+      <div style={{ fontSize:14, fontWeight:700, color:T.ink, marginBottom:10 }}>Change password</div>
+      <div style={{ display:"flex", gap:8, marginBottom:8 }}>
+        <input type={show?"text":"password"} value={pw} onChange={e=>{setPw(e.target.value); setMsg(null);}} placeholder="new password" autoComplete="new-password" />
+        <button onClick={()=>setShow(s=>!s)} style={{ background:T.input, color:T.sub, padding:"0 12px", fontSize:13, border:`1px solid ${T.line}` }}>{show?"Hide":"Show"}</button>
+      </div>
+      <input type={show?"text":"password"} value={pw2} onChange={e=>{setPw2(e.target.value); setMsg(null);}} placeholder="confirm new password" autoComplete="new-password" style={{ marginBottom:10 }} />
+      <button onClick={save} disabled={busy || !pw || !pw2} style={{ background:T.green, color:"#000", padding:"10px 18px", fontWeight:700, opacity:(busy||!pw||!pw2)?0.5:1 }}>
+        {busy ? "Saving…" : "Update password"}
+      </button>
+      {msg && <div style={{ marginTop:8, fontSize:13, color: msg.ok?T.green:T.danger }}>{msg.text}</div>}
+    </div>
+  );
 }
 
 /* Set/change the password-reset security question (answers are hashed server-side). */
