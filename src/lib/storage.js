@@ -63,17 +63,3 @@ export async function leaveGroup(groupId, userId) {
   if (error) throw error;
 }
 
-/** Data saved before accounts existed, kept for one-time import. */
-export async function loadLegacyState() {
-  try {
-    const { data, error } = await supabase
-      .from("app_state")
-      .select("value")
-      .eq("key", "lifting-tracker-v1")
-      .maybeSingle();
-    if (error) return null;
-    return data?.value ?? null;
-  } catch {
-    return null;
-  }
-}

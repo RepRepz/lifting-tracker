@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { LineChart, Line, XAxis, YAxis, ReferenceLine, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts";
-import { supabase, loadUserState, saveUserState, loadLegacyState, listMyGroups, listMembers, createGroup, joinGroup, leaveGroup } from "./lib/storage.js";
+import { supabase, loadUserState, saveUserState, listMyGroups, listMembers, createGroup, joinGroup, leaveGroup } from "./lib/storage.js";
 
 /* ---------- theme (Robinhood-style: black + neon green) ---------- */
 const T = {
@@ -85,7 +85,6 @@ export default function LiftingTracker({ user }) {
   const [tab, setTab] = useState("log");
   const [loaded, setLoaded] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
-  const [pendingImport, setPendingImport] = useState(null);
   const [syncState, setSyncState] = useState("synced"); // "synced" | "offline"
   const saveTimer = useRef(null);
   const dataRef = useRef(data);
@@ -107,12 +106,6 @@ export default function LiftingTracker({ user }) {
         setData({ ...defaultData, ...v });
         localStorage.setItem(cacheKey, JSON.stringify(v));
         setLoaded(true); return;
-      }
-      // First sign-in on this profile: offer data saved before accounts existed
-      const legacy = await loadLegacyState();
-      if (legacy && (legacy.log?.length || legacy.bodyweight?.length || legacy.cardio?.length)) {
-        setPendingImport(legacy);
-        return; // wait for the user's choice; saving stays off until then
       }
       setLoaded(true);
     } catch (e) {
@@ -148,11 +141,6 @@ export default function LiftingTracker({ user }) {
     return () => { window.removeEventListener("online", retry); clearInterval(iv); };
   }, [user.id]);
 
-  const chooseImport = (imported) => {
-    setData(imported ? { ...defaultData, ...pendingImport } : defaultData);
-    setPendingImport(null);
-    setLoaded(true); // enables saving; the choice is written to the cloud right away
-  };
 
   const exMap = useMemo(() => Object.fromEntries(data.exercises.map(e => [e.name, e])), [data.exercises]);
   const latestBW = useMemo(() => {
@@ -164,24 +152,6 @@ export default function LiftingTracker({ user }) {
     <div style={{fontFamily:"system-ui",padding:40,color:T.sub}}>
       ⚠️ Couldn't load your data — check your internet connection and refresh the page.
       (Saving is switched off so nothing gets overwritten.)
-    </div>
-  );
-
-  if (pendingImport) return (
-    <div style={{ fontFamily:"'Inter',system-ui,sans-serif", background:T.bg, minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", padding:20, color:T.ink }}>
-      <div style={{ background:T.card, border:`1px solid ${T.line}`, borderRadius:14, padding:22, maxWidth:420 }}>
-        <div style={{ fontSize:19, fontWeight:700, color:T.tealDk, marginBottom:8 }}>Welcome, {username}! 👋</div>
-        <div style={{ fontSize:14.5, lineHeight:1.5, marginBottom:16 }}>
-          We found workout data saved before profiles existed
-          ({pendingImport.log?.length || 0} logged sets). Is it yours?
-        </div>
-        <button onClick={()=>chooseImport(true)} style={{ width:"100%", padding:12, background:T.green, color:"#000", fontWeight:700, fontSize:15, marginBottom:8 }}>
-          Yes — import it into my profile
-        </button>
-        <button onClick={()=>chooseImport(false)} style={{ width:"100%", padding:12, background:T.input, border:`1px solid ${T.line}`, color:T.sub, fontWeight:600, fontSize:14 }}>
-          No — start fresh
-        </button>
-      </div>
     </div>
   );
 
