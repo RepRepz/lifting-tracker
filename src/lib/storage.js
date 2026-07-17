@@ -24,6 +24,45 @@ export async function saveUserState(userId, value) {
   if (error) throw error;
 }
 
+/* ---------- groups ---------- */
+
+/** Groups the signed-in user belongs to. */
+export async function listMyGroups() {
+  const { data, error } = await supabase.from("groups").select("id, name, invite_code").order("created_at");
+  if (error) throw error;
+  return data ?? [];
+}
+
+/** Members of one group (only visible if you're in it). */
+export async function listMembers(groupId) {
+  const { data, error } = await supabase
+    .from("group_members").select("user_id, username")
+    .eq("group_id", groupId).order("joined_at");
+  if (error) throw error;
+  return data ?? [];
+}
+
+/** Creates a group and returns { group_id, invite_code }. */
+export async function createGroup(name) {
+  const { data, error } = await supabase.rpc("create_group", { p_name: name });
+  if (error) throw error;
+  return Array.isArray(data) ? data[0] : data;
+}
+
+/** Joins a group by invite code; returns { group_id, group_name }. */
+export async function joinGroup(code) {
+  const { data, error } = await supabase.rpc("join_group", { p_code: code });
+  if (error) throw error;
+  return Array.isArray(data) ? data[0] : data;
+}
+
+export async function leaveGroup(groupId, userId) {
+  const { error } = await supabase
+    .from("group_members").delete()
+    .eq("group_id", groupId).eq("user_id", userId);
+  if (error) throw error;
+}
+
 /** Data saved before accounts existed, kept for one-time import. */
 export async function loadLegacyState() {
   try {

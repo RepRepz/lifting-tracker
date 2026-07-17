@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { LineChart, Line, XAxis, YAxis, ReferenceLine, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts";
-import { supabase, loadUserState, saveUserState, loadLegacyState } from "./lib/storage.js";
+import { supabase, loadUserState, saveUserState, loadLegacyState, listMyGroups, listMembers, createGroup, joinGroup, leaveGroup } from "./lib/storage.js";
 
 /* ---------- theme (Robinhood-style: black + neon green) ---------- */
 const T = {
@@ -57,21 +57,57 @@ const defaultData = {
   log: [], bodyweight: [], cardio: [], cardioActivities: [],
 };
 
+/* weekly streak (lifting OR cardio) with mid-week protection */
+function computeStreak(log, cardio) {
+  const weeks = new Set([...(log||[]).map(e=>weekStart(e.date)), ...(cardio||[]).map(e=>weekStart(e.date))]);
+  if (!weeks.size) return { cur:0, best:0 };
+  let best=0, cur=0;
+  const thisWk = weekStart(todayStr());
+  let run=0;
+  const sortedWeeks=[...weeks].sort();
+  const first=sortedWeeks[0];
+  for (let d=new Date(first+"T00:00"); ; d.setDate(d.getDate()+7)) {
+    const key=d.toISOString().slice(0,10);
+    if (weeks.has(key)) { run++; best=Math.max(best,run); } else run=0;
+    if (key===thisWk) { cur = run; break; }
+    if (key>thisWk) break;
+  }
+  if (!weeks.has(thisWk)) { // mid-week protection: use last week's run
+    let r=0; const lw=new Date(thisWk+"T00:00"); lw.setDate(lw.getDate()-7);
+    for (let d=lw; ; d.setDate(d.getDate()-7)) { const k=d.toISOString().slice(0,10); if (weeks.has(k)) r++; else break; }
+    cur=r;
+  }
+  return { cur, best };
+}
+
 export default function LiftingTracker({ user }) {
   const [data, setData] = useState(defaultData);
   const [tab, setTab] = useState("log");
   const [loaded, setLoaded] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
   const [pendingImport, setPendingImport] = useState(null);
-  const [saveError, setSaveError] = useState(false);
+  const [syncState, setSyncState] = useState("synced"); // "synced" | "offline"
   const saveTimer = useRef(null);
+  const dataRef = useRef(data);
+  useEffect(() => { dataRef.current = data; }, [data]);
 
   const username = user.user_metadata?.username || "you";
+  const cacheKey = `lt-cache-${user.id}`;
+  const pendKey = `lt-pending-${user.id}`;
 
   useEffect(() => { (async () => {
+    const cachedRaw = localStorage.getItem(cacheKey);
+    // Unsynced offline edits from a previous session win (accepted trade-off)
+    if (localStorage.getItem(pendKey) === "1" && cachedRaw) {
+      try { setData({ ...defaultData, ...JSON.parse(cachedRaw) }); setLoaded(true); return; } catch {}
+    }
     try {
       const v = await loadUserState(user.id);
-      if (v) { setData({ ...defaultData, ...v }); setLoaded(true); return; }
+      if (v) {
+        setData({ ...defaultData, ...v });
+        localStorage.setItem(cacheKey, JSON.stringify(v));
+        setLoaded(true); return;
+      }
       // First sign-in on this profile: offer data saved before accounts existed
       const legacy = await loadLegacyState();
       if (legacy && (legacy.log?.length || legacy.bodyweight?.length || legacy.cardio?.length)) {
@@ -79,16 +115,38 @@ export default function LiftingTracker({ user }) {
         return; // wait for the user's choice; saving stays off until then
       }
       setLoaded(true);
-    } catch (e) { console.error("load failed", e); setLoadFailed(true); }
+    } catch (e) {
+      console.error("load failed", e);
+      if (cachedRaw) {
+        // no signal, but we have this device's last copy — keep going offline
+        try { setData({ ...defaultData, ...JSON.parse(cachedRaw) }); setSyncState("offline"); setLoaded(true); return; } catch {}
+      }
+      setLoadFailed(true);
+    }
   })(); }, [user.id]);
 
   useEffect(() => { if (!loaded) return;
+    // Always land the change on this device instantly; the cloud follows.
+    localStorage.setItem(cacheKey, JSON.stringify(data));
+    localStorage.setItem(pendKey, "1");
     clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(async () => {
-      try { await saveUserState(user.id, data); setSaveError(false); }
-      catch (e) { console.error("save failed", e); setSaveError(true); }
+      try { await saveUserState(user.id, data); localStorage.removeItem(pendKey); setSyncState("synced"); }
+      catch (e) { console.error("save failed", e); setSyncState("offline"); }
     }, 500);
   }, [data, loaded, user.id]);
+
+  // When signal returns (or every 30s), push anything still pending.
+  useEffect(() => {
+    const retry = async () => {
+      if (localStorage.getItem(pendKey) !== "1") return;
+      try { await saveUserState(user.id, dataRef.current); localStorage.removeItem(pendKey); setSyncState("synced"); }
+      catch { /* still offline — keep waiting */ }
+    };
+    window.addEventListener("online", retry);
+    const iv = setInterval(retry, 30000);
+    return () => { window.removeEventListener("online", retry); clearInterval(iv); };
+  }, [user.id]);
 
   const chooseImport = (imported) => {
     setData(imported ? { ...defaultData, ...pendingImport } : defaultData);
@@ -130,8 +188,8 @@ export default function LiftingTracker({ user }) {
   if (!loaded) return <div style={{fontFamily:"system-ui",padding:40,color:T.sub}}>Loading your tracker…</div>;
 
   const tabs = [
-    ["dash","Dashboard","📊"],["log","Log","📝"],["records","Records","🏆"],
-    ["body","Body Wt","⚖️"],["cardio","Cardio","🏃"],["ex","Exercises","📚"],
+    ["dash","Dash","📊"],["log","Log","📝"],["records","Records","🏆"],
+    ["friends","Friends","👥"],["body","Body","⚖️"],["cardio","Cardio","🏃"],["ex","Library","📚"],
   ];
 
   return (
@@ -164,9 +222,9 @@ export default function LiftingTracker({ user }) {
         </div>
       </header>
 
-      {saveError && (
-        <div style={{ background:T.dangerBg, color:T.danger, padding:"8px 18px", fontSize:13, fontWeight:600 }}>
-          ⚠️ Couldn't sync to the cloud — your latest changes may not be saved. Check your connection.
+      {syncState === "offline" && (
+        <div style={{ background:"#2A2416", color:"#E3BE55", padding:"8px 18px", fontSize:13, fontWeight:600 }}>
+          📴 Offline — your sets are saved on this device and will sync automatically when signal returns.
         </div>
       )}
 
@@ -174,6 +232,7 @@ export default function LiftingTracker({ user }) {
         {tab==="dash" && <Dashboard data={data} exMap={exMap} setData={setData} />}
         {tab==="log" && <LogTab data={data} exMap={exMap} setData={setData} />}
         {tab==="records" && <RecordsTab data={data} exMap={exMap} />}
+        {tab==="friends" && <FriendsTab user={user} />}
         {tab==="body" && <BodyTab data={data} setData={setData} />}
         {tab==="cardio" && <CardioTab data={data} setData={setData} latestBW={latestBW} />}
         {tab==="ex" && <ExercisesTab data={data} setData={setData} />}
@@ -311,8 +370,8 @@ function LogTab({ data, exMap, setData }) {
 }
 const lbl = { display:"block", fontSize:12.5, fontWeight:600, color:"#A9BDBA", marginBottom:0 };
 
-/* Two-tap delete: first tap arms it ("Sure?"), second tap deletes; disarms itself. */
-function ConfirmX({ onConfirm }) {
+/* Two-tap delete: first tap arms it ("Sure?"), second tap confirms; disarms itself. */
+function ConfirmX({ onConfirm, label }) {
   const [armed, setArmed] = useState(false);
   useEffect(() => {
     if (!armed) return;
@@ -324,7 +383,11 @@ function ConfirmX({ onConfirm }) {
       Sure?
     </button>
   );
-  return <button onClick={()=>setArmed(true)} style={{ background:"none", color:T.danger, fontSize:13 }}>✕</button>;
+  return (
+    <button onClick={()=>setArmed(true)} style={{ background:"none", color:label?T.sub:T.danger, fontSize:label?12.5:13, textDecoration:label?"underline":"none" }}>
+      {label || "✕"}
+    </button>
+  );
 }
 
 /* ---------- export helpers ---------- */
@@ -387,28 +450,7 @@ function Dashboard({ data, exMap, setData }) {
   }, [data.log, exMap]);
 
   /* weekly streak (lifting OR cardio) with mid-week protection */
-  const streak = useMemo(() => {
-    const weeks = new Set([...data.log.map(e=>weekStart(e.date)), ...data.cardio.map(e=>weekStart(e.date))]);
-    if (!weeks.size) return { cur:0, best:0 };
-    let best=0, cur=0;
-    const thisWk = weekStart(todayStr());
-    let run=0, w=null;
-    const sortedWeeks=[...weeks].sort();
-    const first=sortedWeeks[0];
-    for (let d=new Date(first+"T00:00"); ; d.setDate(d.getDate()+7)) {
-      const key=d.toISOString().slice(0,10);
-      if (weeks.has(key)) { run++; best=Math.max(best,run); } else run=0;
-      if (key===thisWk) { cur = weeks.has(thisWk) ? run : run; break; }
-      if (key>thisWk) break;
-      w=key;
-    }
-    if (!weeks.has(thisWk)) { // mid-week protection: use last week's run
-      let r=0; const lw=new Date(thisWk+"T00:00"); lw.setDate(lw.getDate()-7);
-      for (let d=lw; ; d.setDate(d.getDate()-7)) { const k=d.toISOString().slice(0,10); if (weeks.has(k)) r++; else break; }
-      cur=r;
-    }
-    return { cur, best };
-  }, [data.log, data.cardio]);
+  const streak = useMemo(() => computeStreak(data.log, data.cardio), [data.log, data.cardio]);
 
   const cardioMin = data.cardio.filter(e=>weekStart(e.date)===wkStart).reduce((s,e)=>s+(e.duration||0),0);
 
@@ -762,5 +804,271 @@ function ExercisesTab({ data, setData }) {
         <button onClick={exportAll} style={outBtn}>Full backup (JSON)</button>
       </div>
     </div>
+  </>);
+}
+
+/* ================= FRIENDS ================= */
+const BIG_LIFTS = ["Bench Press","Back Squat","Deadlift","Overhead Press"];
+const LIFT_SHORT = { "Bench Press":"Bench", "Back Squat":"Squat", "Deadlift":"Dead", "Overhead Press":"OHP" };
+
+function FriendsTab({ user }) {
+  const [groups, setGroups] = useState(null);        // null = loading
+  const [active, setActive] = useState(null);        // selected group
+  const [members, setMembers] = useState(null);
+  const [states, setStates] = useState({});          // user_id -> tracker data
+  const [profile, setProfile] = useState(null);      // member whose profile is open
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [gname, setGname] = useState("");
+  const [code, setCode] = useState("");
+  const [copied, setCopied] = useState(false);
+
+  const refreshGroups = async () => {
+    try { setGroups(await listMyGroups()); setErr(""); }
+    catch (e) { setGroups([]); setErr("Couldn't load groups — check your connection. (If this is the first time, the database part may not be set up yet.)"); }
+  };
+  useEffect(() => { refreshGroups(); }, []);
+
+  useEffect(() => {
+    if (!active) return;
+    (async () => {
+      setMembers(null); setStates({});
+      try {
+        const ms = await listMembers(active.id);
+        setMembers(ms);
+        const st = {};
+        await Promise.all(ms.map(async (m) => {
+          try { st[m.user_id] = await loadUserState(m.user_id); } catch { /* member has no data yet */ }
+        }));
+        setStates(st);
+      } catch (e) { setErr("Couldn't load this group."); }
+    })();
+  }, [active?.id]);
+
+  const doCreate = async () => {
+    if (!gname.trim()) return;
+    setBusy(true); setErr("");
+    try { await createGroup(gname.trim()); setGname(""); await refreshGroups(); }
+    catch (e) { setErr(String(e?.message || e)); }
+    finally { setBusy(false); }
+  };
+  const doJoin = async () => {
+    if (!code.trim()) return;
+    setBusy(true); setErr("");
+    try { await joinGroup(code.trim()); setCode(""); await refreshGroups(); }
+    catch (e) { setErr(/no group/i.test(String(e?.message)) ? "No group found with that invite code — double-check it." : String(e?.message || e)); }
+    finally { setBusy(false); }
+  };
+  const copyCode = () => {
+    navigator.clipboard?.writeText(active.invite_code).then(() => {
+      setCopied(true); setTimeout(() => setCopied(false), 2000);
+    }).catch(()=>{});
+  };
+
+  /* ---- feed + scoreboards, computed from members' data ---- */
+  const feed = useMemo(() => {
+    if (!members) return [];
+    const evs = [];
+    for (const m of members) {
+      const st = states[m.user_id]; if (!st) continue;
+      const exType = Object.fromEntries((st.exercises || []).map(x => [x.name, x.type]));
+      const sorted = [...(st.log || [])].sort((a,b)=>a.date.localeCompare(b.date)||(a.id||0)-(b.id||0));
+      const bestSoFar = {}; const prsByDate = {}; const byDate = {};
+      for (const e of sorted) {
+        (byDate[e.date] ||= []).push(e);
+        const isBW = exType[e.exercise] === "Bodyweight";
+        const score = isBW ? e.reps : e1rm(e.weight || 0, e.reps);
+        if (bestSoFar[e.exercise] != null && score > bestSoFar[e.exercise]) {
+          (prsByDate[e.date] ||= []).push(isBW ? `${e.exercise} ${e.reps} reps` : `${e.exercise} ${e.weight}×${e.reps}`);
+        }
+        bestSoFar[e.exercise] = Math.max(bestSoFar[e.exercise] ?? -1, score);
+      }
+      for (const [date, entries] of Object.entries(byDate)) {
+        const names = [...new Set(entries.map(e=>e.exercise))];
+        evs.push({ key:`${m.user_id}-${date}-lift`, date, user:m.username, kind:"lift",
+          sets: entries.length, names: names.slice(0,3), more: Math.max(0, names.length-3),
+          prs: [...new Set(prsByDate[date] || [])] });
+      }
+      for (const c of (st.cardio || [])) {
+        evs.push({ key:`${m.user_id}-${c.id}-cardio`, date:c.date, user:m.username, kind:"cardio",
+          text: `${c.duration} min ${c.activity}` });
+      }
+    }
+    return evs.sort((a,b)=>b.date.localeCompare(a.date)).slice(0, 25);
+  }, [members, states]);
+
+  const consistency = useMemo(() => {
+    if (!members) return [];
+    const thisWk = weekStart(todayStr());
+    return members.map(m => {
+      const st = states[m.user_id] || {};
+      const days = new Set([
+        ...(st.log || []).filter(e=>weekStart(e.date)===thisWk).map(e=>e.date),
+        ...(st.cardio || []).filter(e=>weekStart(e.date)===thisWk).map(e=>e.date),
+      ]);
+      return { user: m.username, uid: m.user_id, workouts: days.size, streak: computeStreak(st.log, st.cardio).cur };
+    }).sort((a,b)=>b.workouts-a.workouts || b.streak-a.streak);
+  }, [members, states]);
+
+  const strength = useMemo(() => {
+    if (!members) return { rows: [], best: {} };
+    const rows = members.map(m => {
+      const st = states[m.user_id] || {};
+      const lifts = {};
+      for (const lift of BIG_LIFTS) {
+        const entries = (st.log || []).filter(e => e.exercise === lift && e.weight != null);
+        lifts[lift] = entries.length ? Math.round(Math.max(...entries.map(e => e1rm(e.weight, e.reps)))) : null;
+      }
+      return { user: m.username, uid: m.user_id, lifts };
+    });
+    const best = {};
+    for (const lift of BIG_LIFTS) best[lift] = Math.max(0, ...rows.map(r => r.lifts[lift] || 0));
+    return { rows, best };
+  }, [members, states]);
+
+  /* ---- read-only profile view ---- */
+  if (profile) {
+    const raw = states[profile.user_id];
+    const pdata = raw ? { ...defaultData, ...raw } : null;
+    const pexMap = pdata ? Object.fromEntries(pdata.exercises.map(e=>[e.name,e])) : {};
+    const bw = pdata ? [...pdata.bodyweight].sort((a,b)=>a.date.localeCompare(b.date)) : [];
+    const recentCardio = pdata ? [...pdata.cardio].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,10) : [];
+    return (<>
+      <button onClick={()=>setProfile(null)} style={{ background:"none", color:T.green, fontWeight:700, fontSize:14, marginBottom:10 }}>← Back to group</button>
+      <div className="card" style={{display:"flex", justifyContent:"space-between", alignItems:"center"}}>
+        <div className="h" style={{fontSize:19, color:T.tealDk}}>💪 {profile.username}</div>
+        <span className="chip" style={{background:T.mint, color:T.green}}>read-only</span>
+      </div>
+      {!pdata ? (
+        <div className="card" style={{color:T.sub}}>They haven't logged anything yet.</div>
+      ) : (<>
+        <Dashboard data={pdata} exMap={pexMap} setData={()=>{}} />
+        <RecordsTab data={pdata} exMap={pexMap} />
+        <div className="card" style={{display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, textAlign:"center"}}>
+          <div><div style={kpiN}>{bw.length ? bw[bw.length-1].weight : "—"}</div><div style={kpiL}>Body wt (lb)</div></div>
+          <div><div style={kpiN}>{bw.length ? (b=>{const c=bw[bw.length-1].weight-bw[0].weight; return (c>0?"+":"")+Math.round(c*10)/10;})() : "—"}</div><div style={kpiL}>Change (lb)</div></div>
+          <div><div style={kpiN}>{pdata.cardio.length}</div><div style={kpiL}>Cardio sessions</div></div>
+        </div>
+        {recentCardio.length > 0 && (
+          <div className="card">
+            <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:8}}>Recent cardio</div>
+            <table><thead><tr><th>Date</th><th>Activity</th><th>Min</th><th>Cal</th></tr></thead>
+              <tbody>{recentCardio.map(e=>(
+                <tr key={e.id}><td>{fmtDate(e.date)}</td><td>{e.activity}</td><td>{e.duration}</td><td>{e.calories ?? "—"}</td></tr>
+              ))}</tbody></table>
+          </div>
+        )}
+      </>)}
+    </>);
+  }
+
+  /* ---- group view ---- */
+  if (active) {
+    return (<>
+      <button onClick={()=>{setActive(null); setMembers(null);}} style={{ background:"none", color:T.green, fontWeight:700, fontSize:14, marginBottom:10 }}>← All groups</button>
+      <div className="card">
+        <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", gap:8, flexWrap:"wrap"}}>
+          <div className="h" style={{fontSize:19, color:T.tealDk}}>👥 {active.name}</div>
+          <ConfirmX label="Leave group" onConfirm={async ()=>{ try { await leaveGroup(active.id, user.id); setActive(null); refreshGroups(); } catch(e){ setErr(String(e?.message||e)); } }} />
+        </div>
+        <div style={{marginTop:8, fontSize:13.5, color:T.sub}}>
+          Invite code: <b style={{color:T.green, letterSpacing:"1px"}}>{active.invite_code}</b>
+          <button onClick={copyCode} style={{background:"none", color:T.green, fontSize:12.5, marginLeft:8, textDecoration:"underline"}}>{copied ? "Copied!" : "Copy"}</button>
+          <span style={{marginLeft:6}}>— send it to a friend; they enter it under Friends → Join.</span>
+        </div>
+      </div>
+
+      {err && <div className="card" style={{color:T.danger, fontSize:13.5}}>{err}</div>}
+      {!members && <div className="card" style={{color:T.sub}}>Loading group…</div>}
+
+      {members && (<>
+        <div className="card">
+          <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:8}}>🏁 This week</div>
+          <table><thead><tr><th>Member</th><th>Workouts</th><th>Streak (wks)</th><th></th></tr></thead>
+            <tbody>{consistency.map((r,i)=>(
+              <tr key={r.uid}>
+                <td style={{fontWeight: r.uid===user.id?700:400}}>{i===0 && r.workouts>0 ? "👑 " : ""}{r.user}{r.uid===user.id?" (you)":""}</td>
+                <td style={{textAlign:"center", color: r.workouts>0?T.green:T.sub, fontWeight:700}}>{r.workouts}</td>
+                <td style={{textAlign:"center"}}>{r.streak}</td>
+                <td><button onClick={()=>setProfile(members.find(m=>m.user_id===r.uid))} style={{background:"none", color:T.green, fontSize:12.5, textDecoration:"underline"}}>View profile</button></td>
+              </tr>
+            ))}</tbody></table>
+        </div>
+
+        <div className="card">
+          <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:2}}>🏋️ Strength — best est. 1RM (lb)</div>
+          <div style={{fontSize:12, color:T.sub, marginBottom:8}}>Green = group best.</div>
+          <div style={{overflowX:"auto"}}>
+            <table><thead><tr><th>Member</th>{BIG_LIFTS.map(l=><th key={l}>{LIFT_SHORT[l]}</th>)}</tr></thead>
+              <tbody>{strength.rows.map(r=>(
+                <tr key={r.uid}>
+                  <td style={{fontWeight: r.uid===user.id?700:400}}>{r.user}</td>
+                  {BIG_LIFTS.map(l=>(
+                    <td key={l} style={{ color: r.lifts[l] && r.lifts[l]===strength.best[l] ? T.green : T.ink, fontWeight: r.lifts[l] && r.lifts[l]===strength.best[l] ? 700 : 400 }}>
+                      {r.lifts[l] ?? "—"}
+                    </td>
+                  ))}
+                </tr>
+              ))}</tbody></table>
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:8}}>📣 Recent activity</div>
+          {!feed.length && <div style={{color:T.sub, fontSize:14}}>Nothing yet — someone go lift something.</div>}
+          {feed.map(ev=>(
+            <div key={ev.key} style={{padding:"9px 0", borderBottom:`1px solid ${T.line}`, fontSize:14}}>
+              <span style={{color:T.sub, fontSize:12.5}}>{fmtDate(ev.date)}</span>{" "}
+              <b>{ev.user}</b>{" "}
+              {ev.kind==="cardio" ? <>🏃 {ev.text}</> : <>
+                logged {ev.sets} set{ev.sets===1?"":"s"} — {ev.names.join(", ")}{ev.more>0?` +${ev.more} more`:""}
+              </>}
+              {ev.prs?.map(pr=>(
+                <span key={pr} className="chip" style={{background:T.mint, color:T.green, marginLeft:6}}>🎉 PR: {pr}</span>
+              ))}
+            </div>
+          ))}
+        </div>
+      </>)}
+    </>);
+  }
+
+  /* ---- groups list / create / join ---- */
+  return (<>
+    <div className="card">
+      <div className="h" style={{fontSize:19, color:T.tealDk, marginBottom:4}}>👥 Friends</div>
+      <div style={{fontSize:12.5, color:T.sub, marginBottom:10}}>
+        Make a group, send friends the invite code, and see each other's workouts, PRs, and a friendly weekly race.
+      </div>
+      {groups === null && <div style={{color:T.sub}}>Loading…</div>}
+      {groups !== null && !groups.length && <div style={{color:T.sub, fontSize:14, marginBottom:4}}>You're not in a group yet — create one below or join with a friend's code.</div>}
+      {groups?.map(g=>(
+        <button key={g.id} onClick={()=>setActive(g)} style={{
+          display:"flex", justifyContent:"space-between", alignItems:"center", width:"100%",
+          background:T.input, border:`1px solid ${T.line}`, borderRadius:10, padding:"12px 14px",
+          color:T.ink, fontSize:15, fontWeight:600, marginBottom:8, textAlign:"left",
+        }}>
+          <span>👥 {g.name}</span><span style={{color:T.green}}>→</span>
+        </button>
+      ))}
+    </div>
+
+    <div className="card">
+      <div className="h" style={{fontSize:16, color:T.tealDk, marginBottom:8}}>Create a group</div>
+      <div style={{display:"flex", gap:8}}>
+        <input value={gname} onChange={e=>setGname(e.target.value)} placeholder="e.g. Gym Rats" maxLength={40} />
+        <button onClick={doCreate} disabled={busy||!gname.trim()} style={{background:T.green, color:"#000", padding:"0 18px", fontWeight:700, opacity:(busy||!gname.trim())?0.5:1}}>Create</button>
+      </div>
+    </div>
+
+    <div className="card">
+      <div className="h" style={{fontSize:16, color:T.tealDk, marginBottom:8}}>Join with an invite code</div>
+      <div style={{display:"flex", gap:8}}>
+        <input value={code} onChange={e=>setCode(e.target.value.toUpperCase())} placeholder="6-character code" maxLength={6} style={{letterSpacing:"2px"}} />
+        <button onClick={doJoin} disabled={busy||code.trim().length<6} style={{background:T.green, color:"#000", padding:"0 18px", fontWeight:700, opacity:(busy||code.trim().length<6)?0.5:1}}>Join</button>
+      </div>
+    </div>
+
+    {err && <div className="card" style={{color:T.danger, fontSize:13.5}}>{err}</div>}
   </>);
 }
