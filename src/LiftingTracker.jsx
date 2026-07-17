@@ -277,6 +277,12 @@ function LogTab({ data, exMap, setData }) {
   const [notes, setNotes] = useState("");
   const [justSaved, setJustSaved] = useState(null);
   const [bar, setBar] = useState(45);
+  const [plateMode, setPlateMode] = useState("weight"); // "weight" = type total | "build" = tap plates
+  const [built, setBuilt] = useState([]); // plates on ONE side, in the build tool
+  const sumSide = built.reduce((s,p)=>s+p, 0);
+  const addPlate = (p) => { const nb=[...built,p].sort((a,b)=>b-a); setBuilt(nb); setWeight(String(bar + 2*nb.reduce((s,x)=>s+x,0))); };
+  const undoPlate = () => { const nb=built.slice(0,-1); setBuilt(nb); setWeight(nb.length ? String(bar + 2*nb.reduce((s,x)=>s+x,0)) : ""); };
+  const clearPlates = () => { setBuilt([]); setWeight(""); };
 
   const isBW = exMap[exName]?.type === "Bodyweight";
 
@@ -374,29 +380,66 @@ function LogTab({ data, exMap, setData }) {
         {!isBW && <label style={lbl}>Weight (lb)<input type="number" inputMode="decimal" value={weight} onChange={e=>setWeight(e.target.value)} /></label>}
         <label style={lbl}>Reps<input type="number" inputMode="numeric" value={reps} onChange={e=>setReps(e.target.value)} /></label>
       </div>
-      {!isBW && weight > 0 && (() => {
-        const res = platesPerSide(parseFloat(weight), bar);
-        return (
-          <div style={{ background:T.cream, border:`1px solid ${T.creamLine}`, borderRadius:10, padding:"9px 12px", marginBottom:10, fontSize:13.5, display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
-            <span style={{fontWeight:700}}>🏋️ Per side:</span>
-            {!res ? <span style={{color:T.sub}}>at or below the bar ({bar} lb) — no plates</span>
-              : <>
-                <span style={{display:"flex", gap:4, flexWrap:"wrap"}}>
-                  {res.plates.map((p,i)=>(
-                    <span key={i} style={{background:T.mint, color:T.green, borderRadius:6, padding:"1px 7px", fontWeight:700, fontSize:12.5}}>{p}</span>
-                  ))}
-                </span>
-                {res.leftover > 0 && <span style={{color:T.sub, fontSize:12}}>(+{res.leftover} left over — can't make it exactly)</span>}
-              </>}
-            <select value={bar} onChange={e=>setBar(parseFloat(e.target.value))} style={{width:"auto", marginLeft:"auto", padding:"4px 26px 4px 8px", fontSize:12.5, minHeight:0}}>
+      {!isBW && exName && (
+        <div style={{ background:T.cream, border:`1px solid ${T.creamLine}`, borderRadius:10, padding:"10px 12px", marginBottom:10, fontSize:13.5 }}>
+          <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom: (plateMode==="build" || weight>0) ? 9 : 0, flexWrap:"wrap" }}>
+            <span style={{fontWeight:700}}>🏋️ Plates</span>
+            <div style={{ display:"flex", background:T.input, borderRadius:8, padding:2 }}>
+              <button onClick={()=>setPlateMode("weight")} style={{ padding:"4px 10px", fontSize:12, borderRadius:6, background: plateMode==="weight"?T.green:"none", color: plateMode==="weight"?"#000":T.sub, fontWeight:700 }}>Show for weight</button>
+              <button onClick={()=>setPlateMode("build")} style={{ padding:"4px 10px", fontSize:12, borderRadius:6, background: plateMode==="build"?T.green:"none", color: plateMode==="build"?"#000":T.sub, fontWeight:700 }}>Tap what's loaded</button>
+            </div>
+            <select value={bar} onChange={e=>{ const nb=parseFloat(e.target.value); setBar(nb); if(plateMode==="build") setWeight(built.length? String(nb + 2*sumSide) : ""); }}
+              style={{width:"auto", marginLeft:"auto", padding:"4px 26px 4px 8px", fontSize:12.5, minHeight:0}}>
               <option value={45}>45 lb bar</option>
               <option value={35}>35 lb bar</option>
               <option value={15}>15 lb bar</option>
               <option value={0}>no bar</option>
             </select>
           </div>
-        );
-      })()}
+
+          {plateMode==="weight" ? (
+            weight>0 ? (() => {
+              const res = platesPerSide(parseFloat(weight), bar);
+              return (
+                <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+                  <span style={{color:T.sub, fontSize:12.5}}>Load per side:</span>
+                  {!res ? <span style={{color:T.sub}}>at or below the bar — no plates</span>
+                    : <>
+                      <span style={{display:"flex", gap:4, flexWrap:"wrap"}}>
+                        {res.plates.map((p,i)=>(<span key={i} style={{background:T.mint, color:T.green, borderRadius:6, padding:"1px 7px", fontWeight:700, fontSize:12.5}}>{p}</span>))}
+                      </span>
+                      {res.leftover > 0 && <span style={{color:T.sub, fontSize:12}}>(+{res.leftover} left over)</span>}
+                    </>}
+                </div>
+              );
+            })() : <div style={{color:T.sub, fontSize:12.5}}>Type a weight above and I'll show the plates to load.</div>
+          ) : (
+            <>
+              <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:9 }}>
+                {PLATES.map(p=>(
+                  <button key={p} onClick={()=>addPlate(p)} style={{ background:T.input, border:`1px solid ${T.line}`, color:T.ink, borderRadius:8, padding:"7px 12px", fontWeight:700, fontSize:13.5 }}>+{p}</button>
+                ))}
+              </div>
+              <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+                <span style={{color:T.sub, fontSize:12.5}}>Per side:</span>
+                {built.length ? (
+                  <span style={{display:"flex", gap:4, flexWrap:"wrap"}}>
+                    {built.map((p,i)=>(<span key={i} style={{background:T.mint, color:T.green, borderRadius:6, padding:"1px 7px", fontWeight:700, fontSize:12.5}}>{p}</span>))}
+                  </span>
+                ) : <span style={{color:T.sub, fontSize:12.5}}>nothing yet — tap the plates on the bar</span>}
+                {built.length>0 && <>
+                  <button onClick={undoPlate} style={{ background:"none", color:T.sub, fontSize:12.5, textDecoration:"underline", padding:"0 4px", marginLeft:"auto" }}>undo</button>
+                  <button onClick={clearPlates} style={{ background:"none", color:T.danger, fontSize:12.5, textDecoration:"underline", padding:"0 4px" }}>clear</button>
+                </>}
+              </div>
+              <div style={{ marginTop:9, fontSize:15 }}>
+                Total: <b style={{color:T.green, fontSize:17}}>{bar + 2*sumSide} lb</b>
+                <span style={{color:T.sub, fontSize:12, marginLeft:6}}>({bar} bar + {sumSide}×2)</span>
+              </div>
+            </>
+          )}
+        </div>
+      )}
       <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:12}}>
         <label style={lbl}>Effort / Warm-up
           <select value={effort} onChange={e=>setEffort(e.target.value)}>
@@ -642,7 +685,7 @@ function YearRecap({ data }) {
   return (
     <div className="card" style={{ background:"linear-gradient(160deg,#0C1A0E,#0C0D0D 60%)", border:`1px solid ${T.creamLine}` }}>
       <div className="h" style={{ fontSize:19, color:T.green, marginBottom:2 }}>✨ {year} in review</div>
-      <div style={{ fontSize:12.5, color:T.sub, marginBottom:12 }}>Your year so far — screenshot it and flex in the group chat.</div>
+      <div style={{ fontSize:12.5, color:T.sub, marginBottom:12 }}>Your year so far.</div>
       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:6 }}>
         <Item big={stats.sets} label="sets logged" />
         <Item big={stats.days} label="workout days" />
