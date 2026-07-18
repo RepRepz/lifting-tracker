@@ -161,6 +161,7 @@ const defaultData = {
   log: [], bodyweight: [], cardio: [], cardioActivities: SEED_CARDIO,
   routines: [], // optional workout templates (feature toggled in Settings)
   foods: [], nutritionGoals: {}, // optional macro tracking (feature toggled in Settings)
+  customFoods: [], recipes: [], recurringSkips: [], water: [], waterPrefs: {}, fasting: {}, dayDone: [],
   profile: {}, // heightIn (inches) lives here once set
   pins: [],    // pinned dashboard charts (exercise names)
   libraryV: 4, // bumped when the seed library changes, so existing users get the update once
