@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, lazy, Suspense, Fragment, createContext, useContext } from "react";
-import { supabase, loadUserState, saveUserState, listMyGroups, listMembers, createGroup, joinGroup, leaveGroup, listReactions, addReaction, removeReaction, setSecurityQuestion } from "./lib/storage.js";
+import { supabase, loadUserState, saveUserState, listMyGroups, listMembers, createGroup, joinGroup, leaveGroup, listReactions, addReaction, removeReaction, setSecurityQuestion, getSecurityQuestion } from "./lib/storage.js";
 import { SECURITY_QUESTIONS } from "./AuthScreen.jsx";
 
 /* ---------- theme (Robinhood-style: black + neon green) ---------- */
@@ -927,6 +927,10 @@ function Dashboard({ data, exMap, setData, own = true }) {
       return cur.length === pins.length && cur.every((p, i) => p === pins[i]) ? d : { ...d, pins };
     });
   }, [pins, own, setData]);
+  // read-only profiles: always mirror THAT person's pins (data can arrive/switch after mount)
+  useEffect(() => {
+    if (!own) setPins(Array.isArray(data.pins) ? data.pins : []);
+  }, [own, data.pins]);
 
   /* exercises with at least one working set, newest session first */
   const logged = useMemo(() => {
@@ -968,14 +972,19 @@ function Dashboard({ data, exMap, setData, own = true }) {
     const entries = data.log.filter(e => e.exercise===exName && !(e.effort==="Warm-up"));
     if (!entries.length) return [];
     const isBWex = ex.type==="Bodyweight";
-    const byDate = {};
-    for (const e of entries) {
-      // bodyweight moves: TOTAL reps that day (climbs as you do more sets); weighted: best est. 1RM
-      if (isBWex) byDate[e.date] = (byDate[e.date]||0) + e.reps;
-      else byDate[e.date] = Math.max(byDate[e.date]||0, dispW(e1rm(e.weight||0, e.reps), units));
+    let pts;
+    if (isBWex) {
+      // bodyweight moves: one point PER SET, running total of all reps ever done —
+      // the line only ever climbs (25 -> 50 -> 80 ...)
+      const bySet = entries.slice().sort((a,b)=>a.date.localeCompare(b.date) || (a.id||0)-(b.id||0));
+      let run = 0;
+      pts = bySet.map(e => { run += e.reps; return { date:e.date, label:fmtDate(e.date), value:run }; });
+    } else {
+      const byDate = {};
+      for (const e of entries) byDate[e.date] = Math.max(byDate[e.date]||0, dispW(e1rm(e.weight||0, e.reps), units));
+      pts = Object.entries(byDate).sort((a,b)=>a[0].localeCompare(b[0]))
+        .map(([d,v])=>({ date:d, label:fmtDate(d), value:Math.round(v*10)/10 }));
     }
-    let pts = Object.entries(byDate).sort((a,b)=>a[0].localeCompare(b[0]))
-      .map(([d,v])=>({ date:d, label:fmtDate(d), value:Math.round(v*10)/10 }));
     const days = RANGE_DAYS[range];
     if (days!==Infinity && pts.length) {
       const latest = new Date(pts[pts.length-1].date+"T00:00");
@@ -1016,7 +1025,7 @@ function Dashboard({ data, exMap, setData, own = true }) {
 
   return (<>
     <div className="card" style={{display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 16px", gap:8, flexWrap:"wrap"}}>
-      <div style={{fontSize:13, color:T.sub}}>Best est. 1RM per session (total reps for bodyweight moves)<br/>
+      <div style={{fontSize:13, color:T.sub}}>Best est. 1RM per session (all-time total reps for bodyweight moves)<br/>
         <span style={{fontSize:11.5}}>Charts follow your most recent lifts — 📌 pin one to keep it there.</span></div>
       <div style={{display:"flex", gap:2}}>
         {Object.keys(RANGE_DAYS).map(r=>(
@@ -1067,10 +1076,10 @@ function Dashboard({ data, exMap, setData, own = true }) {
           </div>
         )}
         <div style={{fontSize:11.5, color:T.sub, fontStyle:"italic", marginBottom:4}}>
-          {exMap[p]?.type==="Bodyweight" ? "Tracked by total reps per workout" : `Tracked by est. 1RM (${uLabel(units)})`}
+          {exMap[p]?.type==="Bodyweight" ? "Tracked by all-time total reps — every set pushes the line up" : `Tracked by est. 1RM (${uLabel(units)})`}
         </div>
         {pts.length
-          ? <Suspense fallback={<ChartFallback h={210} />}><TrendChart pts={pts} unit={exMap[p]?.type==="Bodyweight" ? "" : " "+uLabel(units)} /></Suspense>
+          ? <Suspense fallback={<ChartFallback h={210} />}><TrendChart pts={pts} unit={exMap[p]?.type==="Bodyweight" ? " reps" : " "+uLabel(units)} /></Suspense>
           : <div style={{color:T.sub, fontSize:14, padding:"28px 0", textAlign:"center"}}>No sessions logged for this lift yet.</div>}
       </div>
       );
@@ -1226,6 +1235,16 @@ function BMICard({ data, setData, hunit, current }) {
             <span style={{fontSize:34, fontWeight:800, color:cat.color}}>{bmi}</span>
             <span className="chip" style={{background:"none", border:`1px solid ${cat.color}`, color:cat.color}}>{cat.label}</span>
           </div>
+          {current.weight < lo && (
+            <div style={{fontSize:13.5, fontWeight:700, color:cat.color, marginTop:6}}>
+              {Math.round(dispW(lo - current.weight, units))} {uLabel(units)} below the healthy range — gaining that puts you at Normal.
+            </div>
+          )}
+          {current.weight > hi && (
+            <div style={{fontSize:13.5, fontWeight:700, color:cat.color, marginTop:6}}>
+              {Math.round(dispW(current.weight - hi, units))} {uLabel(units)} above the healthy range.
+            </div>
+          )}
           <div style={{fontSize:12.5, color:T.sub, marginTop:6}}>
             {hLabel} · {showW(current.weight, units)} (latest weigh-in, {fmtDate(current.date)})
             <br/>Healthy-BMI weight range for your height: <b style={{color:T.ink}}>{Math.round(dispW(lo,units))}–{Math.round(dispW(hi,units))} {uLabel(units)}</b>
@@ -1766,7 +1785,7 @@ function SettingsModal({ user, username, data, startTab, setStartTab, tabs, unit
         </div>
 
         <ChangePasswordCard />
-        <SecurityCard />
+        <SecurityCard username={username} />
 
         <button onClick={()=>supabase.auth.signOut()} style={{
           width:"100%", marginTop:6, padding:13, background:T.dangerBg, color:T.danger, fontWeight:700, fontSize:15,
@@ -1816,16 +1835,27 @@ function ChangePasswordCard() {
 }
 
 /* Set/change the password-reset security question (answers are hashed server-side). */
-function SecurityCard() {
+function SecurityCard({ username }) {
   const [q, setQ] = useState(SECURITY_QUESTIONS[0]);
   const [a, setA] = useState("");
+  const [cur, setCur] = useState(null); // question currently saved on the server
   const [saved, setSaved] = useState(false);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    let live = true;
+    (async () => {
+      try {
+        const sq = await getSecurityQuestion(username);
+        if (live && sq) { setCur(sq); if (SECURITY_QUESTIONS.includes(sq)) setQ(sq); }
+      } catch { /* card still works without it */ }
+    })();
+    return () => { live = false; };
+  }, [username]);
   const save = async () => {
     if (a.trim().length < 2) return;
     setBusy(true); setErr(""); setSaved(false);
-    try { await setSecurityQuestion(q, a); setSaved(true); setA(""); }
+    try { await setSecurityQuestion(q, a); setSaved(true); setCur(q); setA(""); }
     catch (e) { setErr(String(e?.message || e)); }
     finally { setBusy(false); }
   };
@@ -1836,6 +1866,11 @@ function SecurityCard() {
         If you ever forget your password, answering this on the sign-in screen lets you set a new one — no email involved.
         Saving here replaces whatever question you had before. Answers aren't case-sensitive.
       </div>
+      {cur && (
+        <div style={{fontSize:13, background:T.input, border:`1px solid ${T.line}`, borderRadius:8, padding:"9px 12px", marginBottom:12}}>
+          Currently active: <b>{cur}</b>
+        </div>
+      )}
       <div style={{display:"grid", gap:10, marginBottom:12}}>
         <label style={lbl}>Question
           <select value={q} onChange={e=>setQ(e.target.value)}>

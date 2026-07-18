@@ -100,16 +100,17 @@ function ActiveSlice(props) {
    "Name 32%", anchored left or right of the donut. */
 const RAD = Math.PI / 180;
 function PieLabel({ cx, cy, midAngle, outerRadius, fill, name, percent }) {
+  if (percent < 0.05) return null; // tiny slices: the legend chips below cover them
   const cos = Math.cos(-RAD * midAngle), sin = Math.sin(-RAD * midAngle);
-  const sx = cx + (outerRadius + 4) * cos,  sy = cy + (outerRadius + 4) * sin;   // start on the slice edge
-  const mx = cx + (outerRadius + 14) * cos, my = cy + (outerRadius + 14) * sin;  // bend point
-  const ex = mx + (cos >= 0 ? 12 : -12),    ey = my;                             // horizontal tail
+  const sx = cx + (outerRadius + 3) * cos,  sy = cy + (outerRadius + 3) * sin;   // start on the slice edge
+  const mx = cx + (outerRadius + 12) * cos, my = cy + (outerRadius + 12) * sin;  // bend point
+  const ex = mx + (cos >= 0 ? 10 : -10),    ey = my;                             // horizontal tail
   const anchor = cos >= 0 ? "start" : "end";
   return (
     <g>
       <polyline points={`${sx},${sy} ${mx},${my} ${ex},${ey}`} fill="none" stroke={fill} strokeWidth={1.3} opacity={0.85} />
-      <text x={ex + (cos >= 0 ? 4 : -4)} y={ey} textAnchor={anchor} dominantBaseline="central"
-        fill="#FFFFFF" fontSize={11.5} fontWeight={600}>
+      <text x={ex + (cos >= 0 ? 3 : -3)} y={ey} textAnchor={anchor} dominantBaseline="central"
+        fill="#FFFFFF" fontSize={11} fontWeight={600}>
         {name} <tspan fill={fill} fontWeight={700}>{Math.round(percent * 100)}%</tspan>
       </text>
     </g>
@@ -123,10 +124,10 @@ export function MusclePie({ data }) {
   return (
     <div>
       <div style={{ position: "relative" }}>
-        <ResponsiveContainer width="100%" height={270}>
-          <PieChart margin={{ top: 14, right: 10, bottom: 14, left: 10 }}>
+        <ResponsiveContainer width="100%" height={280}>
+          <PieChart margin={{ top: 22, right: 26, bottom: 22, left: 26 }}>
             <Pie data={data} dataKey="value" nameKey="name"
-              innerRadius={52} outerRadius={76} paddingAngle={2} cornerRadius={5}
+              innerRadius={44} outerRadius={64} paddingAngle={2} cornerRadius={5}
               stroke="none" activeIndex={active} activeShape={<ActiveSlice />}
               labelLine={false} label={<PieLabel />}
               onMouseEnter={(_, i) => setActive(i)} onMouseLeave={() => setActive(-1)}
@@ -140,12 +141,12 @@ export function MusclePie({ data }) {
           alignItems: "center", justifyContent: "center", pointerEvents: "none", textAlign: "center",
         }}>
           {cur ? (<>
-            <div style={{ fontSize: 26, fontWeight: 800, color: cur.fill, lineHeight: 1.1 }}>{cur.value}</div>
-            <div style={{ fontSize: 12.5, fontWeight: 700, color: "#FFF" }}>{cur.name}</div>
-            <div style={{ fontSize: 11, color: T.sub }}>{Math.round(cur.value / total * 100)}% of work</div>
+            <div style={{ fontSize: 21, fontWeight: 800, color: cur.fill, lineHeight: 1.1 }}>{cur.value}</div>
+            <div style={{ fontSize: 11.5, fontWeight: 700, color: "#FFF" }}>{cur.name}</div>
+            <div style={{ fontSize: 10, color: T.sub }}>{Math.round(cur.value / total * 100)}% of work</div>
           </>) : (<>
-            <div style={{ fontSize: 26, fontWeight: 800, color: "#FFF", lineHeight: 1.1 }}>{total}</div>
-            <div style={{ fontSize: 11.5, color: T.sub }}>muscle hits · 30 days</div>
+            <div style={{ fontSize: 21, fontWeight: 800, color: "#FFF", lineHeight: 1.1 }}>{total}</div>
+            <div style={{ fontSize: 10.5, color: T.sub }}>muscle hits<br/>30 days</div>
           </>)}
         </div>
       </div>
