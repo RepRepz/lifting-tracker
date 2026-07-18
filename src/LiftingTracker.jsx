@@ -508,6 +508,14 @@ function LogTab({ data, exMap, setData }) {
 
   const startNewExercise = (name) => { setExName(name); setSetNum(1); setWeight(""); setReps(""); setJustSaved(null); };
 
+  // exercise search (matches anywhere in the name)
+  const [exQ, setExQ] = useState("");
+  const exMatches = useMemo(() => {
+    const q = exQ.trim().toLowerCase();
+    if (!q) return [];
+    return data.exercises.filter(x => x.name.toLowerCase().includes(q)).slice(0, 8);
+  }, [exQ, data.exercises]);
+
   const recent = [...sorted].reverse().slice(0, 30);
 
   const [edit, setEdit] = useState(null); // copy of the set being edited
@@ -552,6 +560,22 @@ function LogTab({ data, exMap, setData }) {
         <label style={lbl}>Set #<input type="number" min="1" value={setNum} onChange={e=>setSetNum(parseInt(e.target.value)||1)} /></label>
       </div>
       <label style={lbl}>Exercise
+        <input value={exQ} onChange={e=>setExQ(e.target.value)} placeholder="🔍 Type to search (e.g. push)…"
+          autoCapitalize="none" autoCorrect="off" spellCheck={false} style={{marginBottom:6}} />
+        {exMatches.length > 0 && (
+          <div style={{border:`1px solid ${T.line}`, borderRadius:10, overflow:"hidden", marginBottom:6}}>
+            {exMatches.map(x=>(
+              <button key={x.name} type="button" onClick={()=>{ startNewExercise(x.name); setExQ(""); }}
+                style={{display:"block", width:"100%", textAlign:"left", padding:"11px 13px", background:T.input,
+                  color:T.ink, borderRadius:0, borderBottom:`1px solid ${T.line}`, fontSize:14.5, fontWeight:600}}>
+                {x.name} <span style={{color:T.sub, fontSize:12, fontWeight:500}}>· {muscleOf(x)}</span>
+              </button>
+            ))}
+          </div>
+        )}
+        {exQ.trim() && !exMatches.length && (
+          <div style={{fontSize:12.5, color:T.sub, marginBottom:6}}>No match — you can add new moves in the 📚 Library tab.</div>
+        )}
         <select value={exName} onChange={e=>startNewExercise(e.target.value)}>
           <option value="">— pick an exercise —</option>
           {MUSCLES.map(m => (
@@ -862,6 +886,60 @@ function WorkoutHeatmap({ log, cardio, exMap = {} }) {
 
   const weeks = CAL_VIEWS[view];
   const gap = weeks > 26 ? 2 : 4;
+  const pick = (d) => { if (!d.future) setSel(d.key); };
+  const outlineFor = (d) =>
+    sel===d.key ? `2px solid ${T.ink}` : d.key===todayStr() ? `1.5px solid ${T.sub}` : "none";
+
+  /* 1M: a real calendar — 7 columns (Mon–Sun), day numbers, exactly the last 30 days */
+  const monthGrid = () => {
+    const days = cols.flat();
+    const cutoff = new Date(todayStr() + "T00:00"); cutoff.setDate(cutoff.getDate() - 29);
+    const cutKey = cutoff.toISOString().slice(0,10);
+    return (
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(7, 1fr)", gap:6, maxWidth:380 }}>
+        {["M","T","W","T","F","S","S"].map((w,i)=>(
+          <div key={i} style={{ textAlign:"center", fontSize:10.5, color:T.sub, fontWeight:600 }}>{w}</div>
+        ))}
+        {days.map(d=>{
+          const hidden = d.future || d.key < cutKey;
+          return (
+            <div key={d.key} onClick={()=>pick(d)} onMouseEnter={()=>pick(d)}
+              style={{ aspectRatio:"1", borderRadius:8, background:shade(d.n, d.future),
+                visibility: hidden ? "hidden" : "visible", cursor:"pointer",
+                display:"flex", alignItems:"center", justifyContent:"center",
+                fontSize:12.5, fontWeight:600, color: d.n > 4 ? "#000" : T.sub,
+                outline: outlineFor(d), outlineOffset:-1 }}>
+              {Number(d.key.slice(8))}
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  /* 3M/6M/1Y: GitHub-style week columns, capped so cells never balloon */
+  const weekGrid = () => (
+    <div style={{ maxWidth: weeks===13 ? 400 : weeks===26 ? 700 : "none" }}>
+      <div style={{ position:"relative", height:14 }}>
+        {monthMarks.map((m,i)=>(
+          <span key={i} style={{ position:"absolute", left:`${m.col/weeks*100}%`, fontSize:10, color:T.sub }}>{m.label}</span>
+        ))}
+      </div>
+      <div style={{ display:"grid", gridTemplateColumns:`repeat(${weeks}, 1fr)`, gap }}>
+        {cols.map((week,wi)=>(
+          <div key={wi} style={{ display:"flex", flexDirection:"column", gap }}>
+            {week.map(d=>(
+              <div key={d.key} onClick={()=>pick(d)} onMouseEnter={()=>pick(d)}
+                style={{ aspectRatio:"1", borderRadius: weeks > 26 ? 2 : 4, background:shade(d.n, d.future),
+                  cursor: d.future ? "default" : "pointer",
+                  outline: outlineFor(d), outlineOffset:-1 }} />
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
   return (
     <div>
       {/* view switcher — remembered */}
@@ -873,27 +951,7 @@ function WorkoutHeatmap({ log, cardio, exMap = {} }) {
           }}>{v}</button>
         ))}
       </div>
-      {/* grid stretches to the card width — cells grow into easy tap targets */}
-      <div style={{ position:"relative", height:14 }}>
-        {monthMarks.map((m,i)=>(
-          <span key={i} style={{ position:"absolute", left:`${m.col/weeks*100}%`, fontSize:10, color:T.sub }}>{m.label}</span>
-        ))}
-      </div>
-      <div style={{ display:"grid", gridTemplateColumns:`repeat(${weeks}, 1fr)`, gap }}>
-        {cols.map((week,wi)=>(
-          <div key={wi} style={{ display:"flex", flexDirection:"column", gap }}>
-            {week.map(d=>(
-              <div key={d.key}
-                onClick={()=>{ if (!d.future) setSel(d.key); }}
-                onMouseEnter={()=>{ if (!d.future) setSel(d.key); }}
-                style={{ aspectRatio:"1", borderRadius: weeks > 26 ? 2 : 4, background:shade(d.n, d.future),
-                  cursor: d.future ? "default" : "pointer",
-                  outline: sel===d.key ? `2px solid ${T.ink}` : d.key===todayStr() ? `1.5px solid ${T.sub}` : "none",
-                  outlineOffset:-1 }} />
-            ))}
-          </div>
-        ))}
-      </div>
+      {view === "1M" ? monthGrid() : weekGrid()}
 
       {/* tapped-day details */}
       <div style={{ marginTop:12, background:T.input, border:`1px solid ${T.line}`, borderRadius:10, padding:"10px 13px" }} key={sel}>
@@ -1098,8 +1156,7 @@ function Dashboard({ data, exMap, setData, own = true }) {
 
   return (<>
     <div className="card" style={{display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 16px", gap:8, flexWrap:"wrap"}}>
-      <div style={{fontSize:13, color:T.sub}}>Best est. 1RM per session (daily total reps for bodyweight moves) · 1D = latest session set-by-set<br/>
-        <span style={{fontSize:11.5}}>Charts follow your most recent lifts — 📌 pin one to keep it there.</span></div>
+      <div className="h" style={{fontSize:16, color:T.tealDk}}>📈 Progress</div>
       <div style={{display:"flex", gap:2}}>
         {Object.keys(RANGE_DAYS).map(r=>(
           <button key={r} onClick={()=>setRange(r)} style={{
