@@ -215,7 +215,9 @@ export default function LiftingTracker({ user }) {
   const [liftingOn, setLiftingOn] = useState(() => localStorage.getItem("lt-lifting-on") !== "0"); // default on
   const [nutritionOn, setNutritionOn] = useState(() => localStorage.getItem("lt-nutrition-on") !== "0"); // default on
   const [streaksOn, setStreaksOn] = useState(() => localStorage.getItem("lt-streaks-on") !== "0"); // default on
+  const [waterOn, setWaterOn] = useState(() => localStorage.getItem("lt-water-on") !== "0"); // default on
   useEffect(() => { localStorage.setItem("lt-streaks-on", streaksOn ? "1" : "0"); }, [streaksOn]);
+  useEffect(() => { localStorage.setItem("lt-water-on", waterOn ? "1" : "0"); }, [waterOn]);
   useEffect(() => { localStorage.setItem("lt-start-tab", startTab); }, [startTab]);
   useEffect(() => { localStorage.setItem("lt-units", units); }, [units]);
   useEffect(() => { localStorage.setItem("lt-hunit", hunit); }, [hunit]);
@@ -412,6 +414,7 @@ export default function LiftingTracker({ user }) {
           liftingOn={liftingOn} setLiftingOn={setLiftingOn}
           nutritionOn={nutritionOn} setNutritionOn={setNutritionOn}
           streaksOn={streaksOn} setStreaksOn={setStreaksOn}
+          waterOn={waterOn} setWaterOn={setWaterOn}
           onClose={()=>setShowSettings(false)} />
       )}
 
@@ -427,7 +430,7 @@ export default function LiftingTracker({ user }) {
           {tab==="log" && liftingOn && <LogTab data={data} exMap={exMap} setData={setData} routinesOn={routinesOn} />}
           {tab==="records" && liftingOn && <RecordsTab data={data} exMap={exMap} />}
           {tab==="friends" && <FriendsTab user={user} nutritionOn={nutritionOn} streaksOn={streaksOn} />}
-          {tab==="macros" && nutritionOn && <MacroTab data={data} setData={setData} streaksOn={streaksOn} />}
+          {tab==="macros" && nutritionOn && <MacroTab data={data} setData={setData} streaksOn={streaksOn} waterOn={waterOn} />}
           {tab==="body" && liftingOn && <BodyTab data={data} setData={setData} hunit={hunit} />}
           {tab==="cardio" && liftingOn && <CardioTab data={data} setData={setData} latestBW={latestBW} />}
           {tab==="ex" && liftingOn && <ExercisesTab data={data} setData={setData} />}
@@ -2528,6 +2531,10 @@ function SettingsModal({ user, username, data, startTab, setStartTab, tabs, unit
         {/* workout routines / templates (optional) */}
         <FeatureToggle label="Workout routines" on={routinesOn} setOn={setRoutinesOn}
           desc="Adds a Routines section to the Log tab: build templates like “Push Day,” then tap Start to log them exercise-by-exercise. Off by default. Turning it off just hides it — your saved routines stay." />
+
+        {/* water tracker on/off */}
+        <FeatureToggle label="Water tracker" on={waterOn} setOn={setWaterOn}
+          desc="Shows the 💧 water card on the Macros tab. Turn it off if you don't want to count cups — your logged water stays saved." />
 
         {/* streaks on/off */}
         <FeatureToggle label="Streaks & fire" on={streaksOn} setOn={setStreaksOn}

@@ -25,6 +25,31 @@ async function offSearch(q) {
   const j2 = await r2.json();
   return rankResults((j2.products || []).filter(p => p.product_name && p.nutriments).map(offToFood), q);
 }
+/* USDA FoodData Central — generic whole foods (banana, chicken breast…) that the
+   barcode database is weak on. DEMO_KEY is rate-limited but fine at family scale;
+   failures are silently ignored so it can only ever ADD results. */
+async function usdaSearch(q) {
+  const r = await fetch(`https://api.nal.usda.gov/fdc/v1/foods/search?api_key=DEMO_KEY&query=${encodeURIComponent(q)}&pageSize=8&dataType=Foundation,SR%20Legacy`);
+  if (!r.ok) throw new Error("usda failed");
+  const j = await r.json();
+  const get = (f, id) => num(f.foodNutrients?.find(n => n.nutrientId === id)?.value);
+  return (j.foods || []).map(f => ({
+    name: f.description.charAt(0) + f.description.slice(1).toLowerCase(),
+    src: "USDA",
+    per100: { kcal: get(f, 1008), protein: get(f, 1003), carb: get(f, 1005), fat: get(f, 1004), fiber: get(f, 1079), sodium: get(f, 1093) },
+    barcode: "",
+  })).filter(f => f.per100.kcal > 0);
+}
+
+/* both databases at once — whichever answers contributes; only fails if BOTH fail */
+async function searchAll(q) {
+  const [usda, off] = await Promise.allSettled([usdaSearch(q), offSearch(q)]);
+  const list = [...(usda.value || []), ...(off.value || [])];
+  if (!list.length && usda.status === "rejected" && off.status === "rejected") throw new Error("all failed");
+  const seen = new Set();
+  return rankResults(list.filter(f => { const k = f.name.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; }), q);
+}
+
 /* names that start with (or contain early) what you typed float to the top */
 function rankResults(list, q) {
   const s = q.toLowerCase();
@@ -159,15 +184,23 @@ function AddFoodModal({ meal, date, data, setData, onSave, onClose }) {
   const customFoods = data.customFoods || [];
   const recipes = data.recipes || [];
 
-  // live search: suggestions appear as you type (or backspace), no button needed
+  // live search: suggestions appear as you type (or backspace), no button needed.
+  // Old results stay on screen while new ones load; a failed attempt retries itself
+  // once before showing any error, and stale responses are discarded.
+  const reqId = useRef(0);
   useEffect(() => {
     if (mode !== "search") return;
     const s = q.trim();
-    if (s.length < 2) { setResults(null); setErr(""); return; }
+    if (s.length < 2) { setResults(null); setErr(""); setBusy(false); return; }
     setBusy(true);
+    const id = ++reqId.current;
     const t = setTimeout(async () => {
-      try { setResults(await offSearch(s)); setErr(""); }
-      catch { setErr("Search failed — check your connection."); }
+      let r = null;
+      try { r = await searchAll(s); }
+      catch { try { r = await searchAll(s); } catch {} } // auto-retry once
+      if (reqId.current !== id) return; // user kept typing — this answer is stale
+      if (r) { setResults(r); setErr(""); }
+      else setErr("Couldn't reach the food databases — still trying as you type.");
       setBusy(false);
     }, 300);
     return () => clearTimeout(t);
@@ -277,8 +310,8 @@ function AddFoodModal({ meal, date, data, setData, onSave, onClose }) {
             {results?.length === 0 && !busy && <div style={{ color: T.sub, fontSize: 13 }}>No results — try a simpler term, or use Manual.</div>}
             {results?.map((f, i) => (
               <button key={i} onClick={() => setPicked(f)} style={{ display: "block", width: "100%", textAlign: "left", background: T.input, border: `1px solid ${T.line}`, borderRadius: 10, padding: "10px 12px", marginBottom: 6 }}>
-                <div style={{ fontSize: 14, color: T.ink, fontWeight: 600 }}>{f.name}</div>
-                <div style={{ fontSize: 12, color: T.sub }}>{Math.round(f.per100.kcal)} cal / 100g · P{Math.round(f.per100.protein)} C{Math.round(f.per100.carb)} F{Math.round(f.per100.fat)}</div>
+                <div style={{ fontSize: 14, color: T.ink, fontWeight: 600 }}>{f.name}{f.src === "USDA" && <span style={{ fontSize: 10, color: T.green, background: T.mint, borderRadius: 6, padding: "1px 6px", marginLeft: 6, fontWeight: 700, verticalAlign: "middle" }}>USDA</span>}</div>
+                <div style={{ fontSize: 12, color: T.sub }}>{Math.round(f.per100.kcal)} cal / 100g · {Math.round(f.per100.protein)}g protein · {Math.round(f.per100.carb)}g carbs · {Math.round(f.per100.fat)}g fat</div>
               </button>
             ))}
           </>
@@ -313,13 +346,13 @@ function AddFoodModal({ meal, date, data, setData, onSave, onClose }) {
             {recipes.map(r => (
               <button key={r.id} onClick={() => setPicked({ name: r.name, fixed: r.perServing })} style={{ display: "block", width: "100%", textAlign: "left", background: T.input, border: `1px solid ${T.line}`, borderRadius: 10, padding: "10px 12px", marginBottom: 6 }}>
                 <div style={{ fontSize: 14, color: T.ink, fontWeight: 600 }}>🍲 {r.name}</div>
-                <div style={{ fontSize: 12, color: T.sub }}>{Math.round(r.perServing.kcal)} cal / serving · P{Math.round(r.perServing.protein)} C{Math.round(r.perServing.carb)} F{Math.round(r.perServing.fat)}</div>
+                <div style={{ fontSize: 12, color: T.sub }}>{Math.round(r.perServing.kcal)} cal / serving · {Math.round(r.perServing.protein)}g protein · {Math.round(r.perServing.carb)}g carbs · {Math.round(r.perServing.fat)}g fat</div>
               </button>
             ))}
             {customFoods.map(f => (
               <button key={f.id} onClick={() => setPicked({ name: f.name, fixed: f.fixed })} style={{ display: "block", width: "100%", textAlign: "left", background: T.input, border: `1px solid ${T.line}`, borderRadius: 10, padding: "10px 12px", marginBottom: 6 }}>
                 <div style={{ fontSize: 14, color: T.ink, fontWeight: 600 }}>{f.recurring ? "🔁 " : "⭐ "}{f.name}</div>
-                <div style={{ fontSize: 12, color: T.sub }}>{Math.round(f.fixed.kcal)} cal · P{Math.round(f.fixed.protein)} C{Math.round(f.fixed.carb)} F{Math.round(f.fixed.fat)}</div>
+                <div style={{ fontSize: 12, color: T.sub }}>{Math.round(f.fixed.kcal)} cal · {Math.round(f.fixed.protein)}g protein · {Math.round(f.fixed.carb)}g carbs · {Math.round(f.fixed.fat)}g fat</div>
               </button>
             ))}
           </div>
@@ -332,13 +365,13 @@ function AddFoodModal({ meal, date, data, setData, onSave, onClose }) {
               <label style={{ fontSize: 12, color: T.sub }}>Amount (grams)</label>
               <input type="number" inputMode="decimal" value={grams} onChange={e => setGrams(e.target.value)} style={{ marginBottom: 10 }} />
               <div style={{ fontSize: 13, color: T.sub, marginBottom: 12 }}>
-                {(() => { const m = scale(picked.per100, grams); return `${m.kcal} cal · P${m.protein} C${m.carb} F${m.fat}`; })()}
+                {(() => { const m = scale(picked.per100, grams); return `${m.kcal} cal · ${m.protein}g protein · ${m.carb}g carbs · ${m.fat}g fat`; })()}
               </div>
             </>) : (<>
               <label style={{ fontSize: 12, color: T.sub }}>Servings</label>
               <input type="number" inputMode="decimal" value={servings} onChange={e => setServings(e.target.value)} style={{ marginBottom: 10 }} />
               <div style={{ fontSize: 13, color: T.sub, marginBottom: 12 }}>
-                {Math.round(picked.fixed.kcal * num(servings, 1))} cal · P{+(picked.fixed.protein * num(servings, 1)).toFixed(1)} C{+(picked.fixed.carb * num(servings, 1)).toFixed(1)} F{+(picked.fixed.fat * num(servings, 1)).toFixed(1)}
+                {Math.round(picked.fixed.kcal * num(servings, 1))} cal · {+(picked.fixed.protein * num(servings, 1)).toFixed(1)}g protein · {+(picked.fixed.carb * num(servings, 1)).toFixed(1)}g carbs · {+(picked.fixed.fat * num(servings, 1)).toFixed(1)}g fat
               </div>
             </>)}
             <div style={{ display: "flex", gap: 8 }}>
@@ -540,7 +573,7 @@ function RecipeModal({ data, setData, onClose }) {
         </div>
         <button onClick={addRow} style={{ ...btnGhost, color: T.green, fontWeight: 700, width: "100%", padding: "9px 0", marginBottom: 12 }}>+ Add ingredient</button>
         <div style={{ background: T.input, borderRadius: 10, padding: "10px 12px", marginBottom: 12, fontSize: 13.5, color: T.ink }}>
-          Total: <b style={{ color: T.green }}>{Math.round(tot.kcal)} cal</b> · P {Math.round(tot.protein)} C {Math.round(tot.carb)} F {Math.round(tot.fat)}
+          Total: <b style={{ color: T.green }}>{Math.round(tot.kcal)} cal</b> · {Math.round(tot.protein)}g protein · {Math.round(tot.carb)}g carbs · {Math.round(tot.fat)}g fat
           {num(servings, 1) > 1 && <span style={{ color: T.sub }}> — {Math.round(tot.kcal / num(servings, 1))} cal / serving</span>}
         </div>
         <div style={{ display: "flex", gap: 8 }}>
@@ -725,13 +758,15 @@ const NT_CSS = `
 .nt-cal-grid { max-width:420px; margin:0 auto; }
 `;
 const NTStyle = () => <style>{NT_CSS}</style>;
-export function MacroTab({ data, setData, streaksOn = true }) {
+export function MacroTab({ data, setData, streaksOn = true, waterOn = true }) {
   const [sel, setSel] = useState(todayStr());
   const [addMeal, setAddMeal] = useState(null);
   const [showGoals, setShowGoals] = useState(false);
   const [showRecipe, setShowRecipe] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [moveId, setMoveId] = useState(null); // food id showing the move-to-meal chips
+  const [delId, setDelId] = useState(null);   // food id awaiting delete confirmation
+  useEffect(() => { if (!delId) return; const t = setTimeout(() => setDelId(null), 4000); return () => clearTimeout(t); }, [delId]);
   const foods = data.foods || [];
   const goals = { ...DEFAULT_GOALS, ...(data.nutritionGoals || {}) };
   const firstTime = !data.nutritionGoals?.set;
@@ -820,7 +855,7 @@ export function MacroTab({ data, setData, streaksOn = true }) {
         {expanded && (
           <div style={{ fontSize: 12.5, color: T.sub, marginTop: 6, borderTop: `1px solid ${T.line}`, paddingTop: 8, animation: "ntUp .25s ease both" }}>
             Fiber: {Math.round(totals.fiber)}g · Sodium: {Math.round(totals.sodium)}mg
-            <br />Remaining: {Math.max(0, goals.kcal - Math.round(totals.kcal))} cal · P {Math.max(0, goals.protein - Math.round(totals.protein))}g · C {Math.max(0, goals.carb - Math.round(totals.carb))}g · F {Math.max(0, goals.fat - Math.round(totals.fat))}g
+            <br />Remaining: {Math.max(0, goals.kcal - Math.round(totals.kcal))} cal · {Math.max(0, goals.protein - Math.round(totals.protein))}g protein · {Math.max(0, goals.carb - Math.round(totals.carb))}g carbs · {Math.max(0, goals.fat - Math.round(totals.fat))}g fat
           </div>
         )}
       </div>
@@ -844,14 +879,16 @@ export function MacroTab({ data, setData, streaksOn = true }) {
                       <div style={{ fontSize: 13, color: T.ink, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.recurringId ? "🔁 " : ""}{f.name}{f.grams ? <span style={{ color: T.sub, fontWeight: 400 }}> · {f.grams}g</span> : ""}</div>
                       <div style={{ fontSize: 11, color: T.sub }}>
                         <b style={{ color: T.ink }}>{f.kcal} cal</b>
-                        {" · "}<span style={{ color: T.green }}>P {f.protein}</span>
-                        {" · "}<span style={{ color: CARB_BLUE }}>C {f.carb}</span>
-                        {" · "}<span style={{ color: FAT_ORANGE }}>F {f.fat}</span>
+                        {" · "}<span style={{ color: T.green }}>{f.protein}g protein</span>
+                        {" · "}<span style={{ color: CARB_BLUE }}>{f.carb}g carbs</span>
+                        {" · "}<span style={{ color: FAT_ORANGE }}>{f.fat}g fat</span>
                       </div>
                     </div>
-                    <div style={{ display: "flex", flexShrink: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", flexShrink: 0 }}>
                       <button className="nt-press" onClick={() => setMoveId(m => m === f.id ? null : f.id)} title="Move to another meal" style={{ background: "none", border: "none", color: moveId === f.id ? T.green : T.sub, fontSize: 14, padding: 4 }}>↪</button>
-                      <button className="nt-press" onClick={() => removeFood(f)} style={{ background: "none", border: "none", color: T.sub, fontSize: 14, padding: 4 }}>🗑</button>
+                      {delId === f.id
+                        ? <button className="nt-press" onClick={() => { removeFood(f); setDelId(null); }} style={{ background: T.dangerBg, color: T.danger, border: `1px solid ${T.danger}`, borderRadius: 8, padding: "3px 10px", fontSize: 12, fontWeight: 700 }}>Sure? Tap again</button>
+                        : <button className="nt-press" onClick={() => setDelId(f.id)} style={{ background: "none", border: "none", color: T.sub, fontSize: 14, padding: 4 }}>🗑</button>}
                     </div>
                   </div>
                   {moveId === f.id && (
@@ -876,7 +913,7 @@ export function MacroTab({ data, setData, streaksOn = true }) {
         })}
       </div>
 
-      <div className="nt-card" style={{ animationDelay: ".1s" }}><WaterCard data={data} setData={setData} date={sel} /></div>
+      {waterOn && <div className="nt-card" style={{ animationDelay: ".1s" }}><WaterCard data={data} setData={setData} date={sel} /></div>}
       <div className="nt-card" style={{ animationDelay: ".15s" }}><FastingCard data={data} setData={setData} /></div>
 
       {/* weekly averages */}
@@ -886,7 +923,7 @@ export function MacroTab({ data, setData, streaksOn = true }) {
           {[["This week", thisWeek], ["Last week", lastWeek]].map(([label, w]) => w && (
             <div key={label} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderTop: `1px solid ${T.line}`, fontSize: 13 }}>
               <span style={{ color: T.ink, fontWeight: 600 }}>{label} <span style={{ color: T.sub, fontWeight: 400, fontSize: 11 }}>({w.n}d)</span></span>
-              <span style={{ color: T.sub }}><b style={{ color: T.green }}>{w.kcal}</b> cal · P {w.protein}g · F {w.fat}g</span>
+              <span style={{ color: T.sub }}><b style={{ color: T.green }}>{w.kcal}</b> cal · {w.protein}g protein · {w.fat}g fat</span>
             </div>
           ))}
         </div>
@@ -914,6 +951,8 @@ export function MacroTab({ data, setData, streaksOn = true }) {
 export function MacroCalendar({ data, title = "🥗 Nutrition calendar" }) {
   const [month, setMonth] = useState(() => todayStr().slice(0, 7)); // "YYYY-MM"
   const [selDay, setSelDay] = useState(todayStr());
+  const [shadeBy, setShadeBy] = useState(() => localStorage.getItem("lt-cal-shade") || "kcal");
+  useEffect(() => { localStorage.setItem("lt-cal-shade", shadeBy); }, [shadeBy]);
   const foods = data.foods || [];
   const totalsByDate = useMemo(() => {
     const m = {};
@@ -945,26 +984,39 @@ export function MacroCalendar({ data, title = "🥗 Nutrition calendar" }) {
           <button className="nt-press" onClick={() => shiftMonth(1)} style={{ ...btnGhost, color: T.ink, padding: "3px 10px", fontSize: 13 }}>›</button>
         </div>
       </div>
+      {/* shade the calendar by calories or protein — tap to switch */}
+      <div style={{ display: "flex", gap: 5, marginBottom: 8, maxWidth: 420, margin: "0 auto 8px" }}>
+        {[["kcal", "Shade by calories"], ["protein", "Shade by protein"]].map(([id, l]) => (
+          <button key={id} className="nt-press" onClick={() => setShadeBy(id)} style={{
+            flex: 1, padding: "6px 0", borderRadius: 8, fontWeight: 700, fontSize: 11.5,
+            border: `1px solid ${shadeBy === id ? T.green : T.line}`,
+            background: shadeBy === id ? T.mint : T.input, color: shadeBy === id ? T.green : T.sub,
+          }}>{l}</button>
+        ))}
+      </div>
       <div className="nt-cal-grid">
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4, marginBottom: 4 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 5, marginBottom: 5 }}>
         {["M", "T", "W", "T", "F", "S", "S"].map((d, i) => <div key={i} style={{ textAlign: "center", fontSize: 10, color: T.sub, fontWeight: 700 }}>{d}</div>)}
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 5 }}>
         {cells.map((d, i) => {
           if (!d) return <div key={i} />;
           const t = totalsByDate[d];
           const future = d > todayStr();
+          const isToday = d === todayStr();
           const isSel = d === selDay;
+          const depth = t ? Math.min(.5, .13 + (shadeBy === "protein" ? t.protein / 320 : t.kcal / 5500)) : 0;
           return (
             <button key={d} className="nt-press" onClick={() => setSelDay(d)}
               title={t ? `${Math.round(t.kcal)} cal · ${Math.round(t.protein)}g protein` : "nothing logged"}
               style={{
-                aspectRatio: "1", borderRadius: 8, fontSize: 11.5, fontWeight: 700, padding: 0,
-                border: `1.5px solid ${isSel ? T.green : "transparent"}`,
-                // logged days glow green (deeper = more calories); unlogged past days a clearly
+                aspectRatio: "1", borderRadius: 10, fontSize: 11.5, fontWeight: 700, padding: 0,
+                border: isSel ? `1.5px solid ${T.green}` : isToday ? `1.5px dashed ${T.sub}` : "1.5px solid transparent",
+                // logged days glow green (deeper = bigger day); unlogged past days a clearly
                 // different grey; future days nearly invisible
-                background: t ? `rgba(0,200,5,${Math.min(.45, .12 + t.kcal / 6000)})` : future ? "#0A0B0B" : "#1A1D1C",
+                background: t ? `rgba(0,200,5,${depth})` : future ? "#0A0B0B" : "#1A1D1C",
                 color: t ? T.green : future ? "#3A3E3D" : T.sub,
+                boxShadow: t ? `0 0 ${8 * depth}px rgba(0,200,5,${depth * .8})` : "none",
               }}>{Number(d.slice(8))}</button>
           );
         })}
@@ -987,7 +1039,7 @@ export function MacroCalendar({ data, title = "🥗 Nutrition calendar" }) {
               {items.map(f => (
                 <div key={f.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: T.ink, padding: "2px 0" }}>
                   <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", paddingRight: 8 }}>{f.name}</span>
-                  <span style={{ color: T.sub, flexShrink: 0 }}>{f.kcal} cal · P{Math.round(f.protein)}</span>
+                  <span style={{ color: T.sub, flexShrink: 0 }}>{f.kcal} cal · {Math.round(f.protein)}g protein</span>
                 </div>
               ))}
             </div>
