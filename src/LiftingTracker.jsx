@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, lazy, Suspense, Fragment } from "react";
+import { useState, useEffect, useMemo, useRef, lazy, Suspense, Fragment, createContext, useContext } from "react";
 import { supabase, loadUserState, saveUserState, listMyGroups, listMembers, createGroup, joinGroup, leaveGroup, listReactions, addReaction, removeReaction, setSecurityQuestion } from "./lib/storage.js";
 import { SECURITY_QUESTIONS } from "./AuthScreen.jsx";
 
@@ -71,13 +71,28 @@ const monthLabel = (k) => { const [y,m]=k.split("-"); return new Date(+y, +m-1, 
 const weekStart = (s) => { const d = new Date(s + "T00:00"); const day=(d.getDay()+6)%7; d.setDate(d.getDate()-day); return d.toISOString().slice(0,10); };
 const RANGE_DAYS = { "1M": 30, "1Y": 365, "5Y": 1826, All: Infinity };
 
-/* plate calculator: what to load per side, heaviest-first */
-const PLATES = [45, 35, 25, 10, 5, 2.5];
-function platesPerSide(total, bar) {
+/* ---------- units (data is always stored in lb; we convert only for display/input) ---------- */
+const LB_PER_KG = 2.2046226218;
+const UnitCtx = createContext("lb");
+const useUnit = () => useContext(UnitCtx);
+const uLabel = (u) => u === "kg" ? "kg" : "lb";
+// lb -> display number (kg rounded to 1 dp, lb left whole-ish)
+const dispW = (lb, u) => lb == null ? lb : (u === "kg" ? Math.round((lb / LB_PER_KG) * 10) / 10 : Math.round(lb * 10) / 10);
+// a typed display-unit value -> lb for storage
+const toLb = (v, u) => u === "kg" ? v * LB_PER_KG : v;
+// "135 lb" / "61.2 kg" from a stored-lb number
+const showW = (lb, u) => lb == null ? "—" : `${dispW(lb, u)} ${uLabel(u)}`;
+
+/* plate calculator: what to load per side, heaviest-first. Plates/bar depend on unit. */
+const PLATES_LB = [45, 35, 25, 10, 5, 2.5];
+const PLATES_KG = [25, 20, 15, 10, 5, 2.5, 1.25];
+const BARS_LB = [45, 35, 15, 0];
+const BARS_KG = [20, 15, 10, 0];
+function platesPerSide(total, bar, plates) {
   let side = (total - bar) / 2;
   if (side <= 0) return null;
   const out = [];
-  for (const p of PLATES) while (side >= p - 1e-9) { out.push(p); side = Math.round((side - p) * 100) / 100; }
+  for (const p of plates) while (side >= p - 1e-9) { out.push(p); side = Math.round((side - p) * 100) / 100; }
   return { plates: out, leftover: side };
 }
 
@@ -114,7 +129,9 @@ export default function LiftingTracker({ user }) {
   const [startTab, setStartTab] = useState(() => localStorage.getItem("lt-start-tab") || "dash");
   const [tab, setTab] = useState(() => localStorage.getItem("lt-start-tab") || "dash");
   const [showSettings, setShowSettings] = useState(false);
+  const [units, setUnits] = useState(() => localStorage.getItem("lt-units") || "lb");
   useEffect(() => { localStorage.setItem("lt-start-tab", startTab); }, [startTab]);
+  useEffect(() => { localStorage.setItem("lt-units", units); }, [units]);
   const [loaded, setLoaded] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
   const [syncState, setSyncState] = useState("synced"); // "synced" | "offline"
@@ -195,6 +212,7 @@ export default function LiftingTracker({ user }) {
   ];
 
   return (
+    <UnitCtx.Provider value={units}>
     <div style={{ fontFamily:"system-ui,-apple-system,'Segoe UI',Roboto,sans-serif", background:T.bg, minHeight:"100dvh", color:T.ink, paddingBottom:"calc(76px + env(safe-area-inset-bottom))" }}>
       <style>{`
         html { color-scheme:dark; scroll-behavior:smooth; }
@@ -226,6 +244,13 @@ export default function LiftingTracker({ user }) {
         @keyframes fadeSwap { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:none; } }
         @keyframes sheetUp { from { transform:translateY(100%); } to { transform:none; } }
         .tabview { animation:fadeSwap .2s ease-out both; }
+        /* staggered card entrance — transform/opacity only, one-shot, GPU-cheap */
+        .tabview > .card:nth-child(2) { animation-delay:.05s; }
+        .tabview > .card:nth-child(3) { animation-delay:.10s; }
+        .tabview > .card:nth-child(4) { animation-delay:.15s; }
+        .tabview > .card:nth-child(5) { animation-delay:.20s; }
+        .tabview > .card:nth-child(n+6) { animation-delay:.24s; }
+        @media(hover:hover){ .card { transition:border-color .2s ease; } .card:hover { border-color:#2E3234; } }
         .navicon { transition:transform .18s ease; }
         .navicon.on { transform:translateY(-2px) scale(1.14); }
         @media(prefers-reduced-motion:reduce){ *{transition:none!important;animation:none!important} }
@@ -241,6 +266,7 @@ export default function LiftingTracker({ user }) {
       {showSettings && (
         <SettingsModal user={user} username={username} data={data}
           startTab={startTab} setStartTab={setStartTab} tabs={tabs}
+          units={units} setUnits={setUnits}
           onClose={()=>setShowSettings(false)} />
       )}
 
@@ -274,6 +300,7 @@ export default function LiftingTracker({ user }) {
         ))}
       </nav>
     </div>
+    </UnitCtx.Provider>
   );
 }
 
@@ -289,13 +316,31 @@ function LogTab({ data, exMap, setData }) {
   const [effort, setEffort] = useState("");
   const [notes, setNotes] = useState("");
   const [justSaved, setJustSaved] = useState(null);
-  const [bar, setBar] = useState(45);
+  const units = useUnit();
+  const plateSet = units === "kg" ? PLATES_KG : PLATES_LB;
+  const barOpts = units === "kg" ? BARS_KG : BARS_LB;
+  const [bar, setBar] = useState(units === "kg" ? 20 : 45);
   const [plateMode, setPlateMode] = useState("weight"); // "weight" = type total | "build" = tap plates
   const [built, setBuilt] = useState([]); // plates on ONE side, in the build tool
   const sumSide = built.reduce((s,p)=>s+p, 0);
   const addPlate = (p) => { const nb=[...built,p].sort((a,b)=>b-a); setBuilt(nb); setWeight(String(bar + 2*nb.reduce((s,x)=>s+x,0))); };
   const undoPlate = () => { const nb=built.slice(0,-1); setBuilt(nb); setWeight(nb.length ? String(bar + 2*nb.reduce((s,x)=>s+x,0)) : ""); };
   const clearPlates = () => { setBuilt([]); setWeight(""); };
+  // switching units resets the bar/plates to that unit's defaults
+  useEffect(() => { setBar(units === "kg" ? 20 : 45); setBuilt([]); }, [units]);
+
+  // rest timer
+  const [restDur, setRestDur] = useState(() => Number(localStorage.getItem("lt-rest")) || 90);
+  const [restLeft, setRestLeft] = useState(0);
+  useEffect(() => { localStorage.setItem("lt-rest", restDur); }, [restDur]);
+  useEffect(() => {
+    if (restLeft <= 0) return;
+    const t = setInterval(() => setRestLeft(s => {
+      if (s <= 1) { clearInterval(t); navigator.vibrate?.([250,120,250]); return 0; }
+      return s - 1;
+    }), 1000);
+    return () => clearInterval(t);
+  }, [restLeft > 0]);
 
   const isBW = exMap[exName]?.type === "Bodyweight";
 
@@ -305,10 +350,18 @@ function LogTab({ data, exMap, setData }) {
     if (!prior.length) return { first:true };
     const lastDate = prior[prior.length-1].date;
     const sess = prior.filter(e => e.date===lastDate);
-    if (isBW) { const best = Math.max(...sess.map(s=>s.reps)); return { text:`${best} reps`, date:lastDate }; }
+    if (isBW) { const best = Math.max(...sess.map(s=>s.reps)); return { text:`${best} reps`, date:lastDate, bestVal:best }; }
     const best = sess.reduce((a,b)=> e1rm(b.weight||0,b.reps) > e1rm(a.weight||0,a.reps) ? b : a);
-    return { text:`${best.weight} × ${best.reps}`, date:lastDate };
-  }, [exName, date, sorted, isBW]);
+    return { text:`${dispW(best.weight,units)} × ${best.reps}`, date:lastDate, bestVal:e1rm(best.weight||0,best.reps) };
+  }, [exName, date, sorted, isBW, units]);
+
+  // live "are you beating last time?" from the current inputs
+  const beaten = useMemo(() => {
+    if (!lastTime || lastTime.first || !reps) return false;
+    if (isBW) return parseInt(reps) > lastTime.bestVal;
+    if (!weight) return false;
+    return e1rm(toLb(parseFloat(weight), units), parseInt(reps)) > lastTime.bestVal;
+  }, [lastTime, isBW, weight, reps, units]);
 
   /* session-best history for the picked exercise (last 10 sessions before today's date) */
   const sparkPts = useMemo(() => {
@@ -332,11 +385,18 @@ function LogTab({ data, exMap, setData }) {
   const addSet = () => {
     if (!exName || !reps || (!isBW && !weight)) return;
     const entry = { id: Date.now(), date, exercise: exName, set: setNum,
-      weight: isBW ? null : parseFloat(weight), reps: parseInt(reps), effort, notes };
+      weight: isBW ? null : toLb(parseFloat(weight), units), reps: parseInt(reps), effort, notes };
     const pr = checkPR(entry);
     setData(d => ({ ...d, log: [...d.log, entry] }));
     setJustSaved({ ...entry, pr });
     setSetNum(n => n + 1); setNotes(""); setEffort("");
+    if (effort !== "Warm-up") setRestLeft(restDur); // auto-start rest between working sets
+  };
+  const sameAgain = () => {
+    if (!justSaved) return;
+    setReps(String(justSaved.reps));
+    if (justSaved.weight != null) setWeight(String(dispW(justSaved.weight, units)));
+    setJustSaved(null);
   };
 
   const startNewExercise = (name) => { setExName(name); setSetNum(1); setWeight(""); setReps(""); setJustSaved(null); };
@@ -350,13 +410,28 @@ function LogTab({ data, exMap, setData }) {
     if (!editValid) return;
     setData(d => ({ ...d, log: d.log.map(x => x.id === edit.id ? {
       ...x, date: edit.date, exercise: edit.exercise, set: parseInt(edit.set) || 1,
-      weight: editIsBW ? null : parseFloat(edit.weight), reps: parseInt(edit.reps),
+      weight: editIsBW ? null : toLb(parseFloat(edit.weight), units), reps: parseInt(edit.reps),
       effort: edit.effort, notes: edit.notes,
     } : x) }));
     setEdit(null);
   };
 
   return (<>
+    {restLeft > 0 && (
+      <div className="card" style={{ padding:"12px 16px", marginBottom:14, borderColor:T.green }}>
+        <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+          <span style={{ fontSize:26, fontWeight:800, color:T.green, fontVariantNumeric:"tabular-nums", minWidth:74 }}>
+            {Math.floor(restLeft/60)}:{String(restLeft%60).padStart(2,"0")}
+          </span>
+          <span style={{ fontSize:13, color:T.sub, flex:1 }}>Rest timer</span>
+          <button onClick={()=>setRestLeft(s=>s+30)} style={{ background:T.input, color:T.ink, border:`1px solid ${T.line}`, padding:"7px 12px", fontSize:13, fontWeight:600 }}>+30s</button>
+          <button onClick={()=>setRestLeft(0)} style={{ background:T.input, color:T.sub, padding:"7px 12px", fontSize:13, fontWeight:600 }}>Skip</button>
+        </div>
+        <div style={{ height:5, background:T.input, borderRadius:99, marginTop:10, overflow:"hidden" }}>
+          <div style={{ height:"100%", width:`${restLeft/restDur*100}%`, background:T.green, borderRadius:99, transition:"width 1s linear" }} />
+        </div>
+      </div>
+    )}
     <div className="card">
       <div className="h" style={{fontSize:19, color:T.tealDk, marginBottom:10}}>Log a set</div>
       <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:10}}>
@@ -378,7 +453,8 @@ function LogTab({ data, exMap, setData }) {
         <div style={{ background:T.cream, border:`1px solid ${T.creamLine}`, borderRadius:10, padding:"9px 12px", margin:"10px 0", fontSize:14 }}>
           {lastTime?.first
             ? <b>First time logging this!</b>
-            : <>Last time: <b>{lastTime.text}</b> <span style={{color:T.sub}}>({fmtDate(lastTime.date)})</span> — beat it.</>}
+            : <>Last time: <b>{lastTime.text}</b> <span style={{color:T.sub}}>({fmtDate(lastTime.date)})</span> — beat it.
+              {beaten && <span className="chip" style={{background:T.mint, color:T.green, marginLeft:8}}>🔥 Beating last time!</span>}</>}
           {isBW && <div style={{fontSize:12, color:T.sub, marginTop:2}}>Bodyweight move — tracked by reps, no weight needed.</div>}
           {sparkPts && sparkPts.length >= 2 && (
             <div style={{display:"flex", alignItems:"center", gap:10, marginTop:8}}>
@@ -390,7 +466,7 @@ function LogTab({ data, exMap, setData }) {
       )}
 
       <div style={{display:"grid", gridTemplateColumns: isBW ? "1fr" : "1fr 1fr", gap:10, marginBottom:10}}>
-        {!isBW && <label style={lbl}>Weight (lb)<input type="number" inputMode="decimal" value={weight} onChange={e=>setWeight(e.target.value)} /></label>}
+        {!isBW && <label style={lbl}>Weight ({uLabel(units)})<input type="number" inputMode="decimal" value={weight} onChange={e=>setWeight(e.target.value)} /></label>}
         <label style={lbl}>Reps<input type="number" inputMode="numeric" value={reps} onChange={e=>setReps(e.target.value)} /></label>
       </div>
       {usesPlates(exMap[exName]) && (
@@ -403,16 +479,13 @@ function LogTab({ data, exMap, setData }) {
             </div>
             <select value={bar} onChange={e=>{ const nb=parseFloat(e.target.value); setBar(nb); if(plateMode==="build") setWeight(built.length? String(nb + 2*sumSide) : ""); }}
               style={{width:"auto", marginLeft:"auto", padding:"4px 26px 4px 8px", fontSize:12.5, minHeight:0}}>
-              <option value={45}>45 lb bar</option>
-              <option value={35}>35 lb bar</option>
-              <option value={15}>15 lb bar</option>
-              <option value={0}>no bar</option>
+              {barOpts.map(b=><option key={b} value={b}>{b===0 ? "no bar" : `${b} ${uLabel(units)} bar`}</option>)}
             </select>
           </div>
 
           {plateMode==="weight" ? (
             weight>0 ? (() => {
-              const res = platesPerSide(parseFloat(weight), bar);
+              const res = platesPerSide(parseFloat(weight), bar, plateSet);
               return (
                 <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
                   <span style={{color:T.sub, fontSize:12.5}}>Load per side:</span>
@@ -429,7 +502,7 @@ function LogTab({ data, exMap, setData }) {
           ) : (
             <>
               <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:9 }}>
-                {PLATES.map(p=>(
+                {plateSet.map(p=>(
                   <button key={p} onClick={()=>addPlate(p)} style={{ background:T.input, border:`1px solid ${T.line}`, color:T.ink, borderRadius:8, padding:"7px 12px", fontWeight:700, fontSize:13.5 }}>+{p}</button>
                 ))}
               </div>
@@ -446,7 +519,7 @@ function LogTab({ data, exMap, setData }) {
                 </>}
               </div>
               <div style={{ marginTop:9, fontSize:15 }}>
-                Total: <b style={{color:T.green, fontSize:17}}>{bar + 2*sumSide} lb</b>
+                Total: <b style={{color:T.green, fontSize:17}}>{bar + 2*sumSide} {uLabel(units)}</b>
                 <span style={{color:T.sub, fontSize:12, marginLeft:6}}>({bar} bar + {sumSide}×2)</span>
               </div>
             </>
@@ -465,10 +538,27 @@ function LogTab({ data, exMap, setData }) {
         style={{ width:"100%", padding:"12px", background:T.green, color:"#000", fontWeight:700, fontSize:16, opacity:(!exName||!reps||(!isBW&&!weight))?0.45:1 }}>
         Save set {setNum}
       </button>
+
+      <div style={{display:"flex", alignItems:"center", gap:8, marginTop:10, flexWrap:"wrap"}}>
+        <span style={{fontSize:12.5, color:T.sub}}>⏱ Rest:</span>
+        {[60,90,120,180].map(s=>(
+          <button key={s} onClick={()=>setRestDur(s)} style={{
+            background: restDur===s ? T.mint : T.input, color: restDur===s ? T.green : T.sub,
+            border:`1px solid ${restDur===s ? T.green : T.line}`, padding:"5px 11px", fontSize:12.5, fontWeight:700,
+          }}>{s<60?`${s}s`:`${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`}</button>
+        ))}
+        <span style={{fontSize:11.5, color:T.sub}}>auto-starts after each working set</span>
+      </div>
+
       {justSaved && (
-        <div style={{marginTop:10, textAlign:"center", fontSize:14}}>
-          Saved: {justSaved.exercise} — set {justSaved.set}{justSaved.weight!=null?`, ${justSaved.weight}×${justSaved.reps}`:`, ${justSaved.reps} reps`}
+        <div style={{marginTop:12, textAlign:"center", fontSize:14}}>
+          Saved: {justSaved.exercise} — set {justSaved.set}{justSaved.weight!=null?`, ${dispW(justSaved.weight,units)}×${justSaved.reps}`:`, ${justSaved.reps} reps`}
           {justSaved.pr && <span className="chip" style={{background:T.mint, color:T.green, marginLeft:8}}>🎉 New PR!</span>}
+          <div style={{marginTop:8}}>
+            <button onClick={sameAgain} style={{ background:T.input, border:`1px solid ${T.line}`, color:T.ink, padding:"8px 16px", fontSize:13.5, fontWeight:700 }}>
+              ↻ Same again
+            </button>
+          </div>
         </div>
       )}
     </div>
@@ -476,13 +566,13 @@ function LogTab({ data, exMap, setData }) {
     <div className="card">
       <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:8}}>Recent sets</div>
       <div style={{overflowX:"auto"}}>
-        <table><thead><tr><th>Date</th><th>Exercise</th><th>Set</th><th>Weight</th><th>Reps</th><th>Effort</th><th></th></tr></thead>
+        <table><thead><tr><th>Date</th><th>Exercise</th><th>Set</th><th>Weight ({uLabel(units)})</th><th>Reps</th><th>Effort</th><th></th></tr></thead>
           <tbody>{recent.map(e => (<Fragment key={e.id}>
             <tr>
               <td>{fmtDate(e.date)}</td><td>{e.exercise}</td><td>{e.set}</td>
-              <td>{e.weight ?? "BW"}</td><td>{e.reps}</td><td style={{color:T.sub}}>{e.effort||""}</td>
+              <td>{e.weight==null ? "BW" : dispW(e.weight, units)}</td><td>{e.reps}</td><td style={{color:T.sub}}>{e.effort||""}</td>
               <td style={{whiteSpace:"nowrap"}}>
-                <PencilBtn onClick={()=>setEdit({ id:e.id, date:e.date, exercise:e.exercise, set:e.set, weight:e.weight ?? "", reps:e.reps, effort:e.effort||"", notes:e.notes||"" })} />
+                <PencilBtn onClick={()=>setEdit({ id:e.id, date:e.date, exercise:e.exercise, set:e.set, weight:e.weight==null ? "" : dispW(e.weight, units), reps:e.reps, effort:e.effort||"", notes:e.notes||"" })} />
                 <ConfirmX onConfirm={()=>setData(d=>({...d, log:d.log.filter(x=>x.id!==e.id)}))} />
               </td>
             </tr>
@@ -503,7 +593,7 @@ function LogTab({ data, exMap, setData }) {
                     </select>
                   </label>
                   <div style={{display:"grid", gridTemplateColumns: editIsBW ? "1fr" : "1fr 1fr", gap:8, marginBottom:8}}>
-                    {!editIsBW && <label style={lbl}>Weight (lb)<input type="number" inputMode="decimal" value={edit.weight} onChange={ev=>setEdit(s=>({...s, weight:ev.target.value}))} /></label>}
+                    {!editIsBW && <label style={lbl}>Weight ({uLabel(units)})<input type="number" inputMode="decimal" value={edit.weight} onChange={ev=>setEdit(s=>({...s, weight:ev.target.value}))} /></label>}
                     <label style={lbl}>Reps<input type="number" inputMode="numeric" value={edit.reps} onChange={ev=>setEdit(s=>({...s, reps:ev.target.value}))} /></label>
                   </div>
                   <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:10}}>
@@ -668,6 +758,7 @@ function WorkoutHeatmap({ log, cardio }) {
 
 /* Spotify-Wrapped-style yearly recap. */
 function YearRecap({ data }) {
+  const units = useUnit();
   const year = new Date().getFullYear();
   const stats = useMemo(() => {
     const log = (data.log||[]).filter(e => e.date.startsWith(String(year)));
@@ -682,11 +773,11 @@ function YearRecap({ data }) {
     for (const e of log) {
       if (e.weight==null) continue;
       const est = e1rm(e.weight, e.reps);
-      if (!bigPR || est > bigPR.est) bigPR = { est, text:`${e.weight}×${e.reps} ${e.exercise}` };
+      if (!bigPR || est > bigPR.est) bigPR = { est, text:`${dispW(e.weight,units)}×${e.reps} ${e.exercise}` };
     }
     const cardioMin = cardio.reduce((s,c)=>s+(c.duration||0),0);
-    return { sets: log.length, days: days.size, volume: Math.round(volume), topMuscle, bigPR, cardioMin, empty: !log.length && !cardio.length };
-  }, [data, year]);
+    return { sets: log.length, days: days.size, volume: Math.round(dispW(volume,units)), topMuscle, bigPR, cardioMin, empty: !log.length && !cardio.length };
+  }, [data, year, units]);
 
   if (stats.empty) return null;
   const Item = ({ big, label }) => (
@@ -702,10 +793,10 @@ function YearRecap({ data }) {
       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:6 }}>
         <Item big={stats.sets} label="sets logged" />
         <Item big={stats.days} label="workout days" />
-        <Item big={stats.volume.toLocaleString()} label="lb total volume" />
+        <Item big={stats.volume.toLocaleString()} label={`${uLabel(units)} total volume`} />
         <Item big={stats.topMuscle ? stats.topMuscle[0] : "—"} label="most trained" />
         <Item big={stats.cardioMin} label="cardio minutes" />
-        <Item big={stats.bigPR ? Math.round(stats.bigPR.est) : "—"} label="top est. 1RM" />
+        <Item big={stats.bigPR ? dispW(stats.bigPR.est, units) : "—"} label="top est. 1RM" />
       </div>
       {stats.bigPR && <div style={{ marginTop:12, textAlign:"center", fontSize:13 }}>
         🏆 Biggest lift: <b style={{color:T.green}}>{stats.bigPR.text}</b>
@@ -716,16 +807,58 @@ function YearRecap({ data }) {
 
 /* ================= DASHBOARD ================= */
 function Dashboard({ data, exMap, setData }) {
+  const units = useUnit();
   const [range, setRange] = useState("1Y");
-  const [picks, setPicks] = useState(["Bench Press","Lat Pulldown","Back Squat","Overhead Press"]);
+  /* Pinned charts persist; the rest auto-fill with whatever was lifted most recently. */
+  const [pins, setPins] = useState(() => {
+    try { const p = JSON.parse(localStorage.getItem("lt-pins")); return Array.isArray(p) ? p : []; }
+    catch { return []; }
+  });
+  useEffect(() => { localStorage.setItem("lt-pins", JSON.stringify(pins)); }, [pins]);
+
+  /* exercises with at least one working set, newest session first */
+  const logged = useMemo(() => {
+    const last = {};
+    for (const e of data.log) {
+      if (e.effort === "Warm-up" || !exMap[e.exercise]) continue;
+      if (!last[e.exercise] || e.date > last[e.exercise]) last[e.exercise] = e.date;
+    }
+    return Object.keys(last).sort((a, b) => last[b].localeCompare(last[a]));
+  }, [data.log, exMap]);
+
+  const validPins = pins.filter(p => exMap[p]);
+  const picks = useMemo(() => {
+    const out = [...validPins];
+    for (const name of logged) {
+      if (out.length >= 4) break;
+      if (!out.includes(name)) out.push(name);
+    }
+    return out.slice(0, 4);
+  }, [pins, logged, exMap]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const isPinned = (i) => i < validPins.length;
+  /* choosing from the dropdown pins that slot; the 📌 button toggles */
+  const changePick = (i, name) => setPins(() => {
+    const without = validPins.filter(p => p !== name);
+    without.splice(Math.min(i, without.length), 0, name);
+    return without;
+  });
+  const togglePin = (i) => setPins(() => {
+    if (i < validPins.length) return validPins.filter((_, j) => j !== i);
+    const name = picks[i];
+    return name && !validPins.includes(name) ? [...validPins, name] : validPins;
+  });
+
+  const chartOpts = useMemo(() => [...logged].sort((a, b) => a.localeCompare(b)), [logged]);
 
   const seriesFor = (exName) => {
     const ex = exMap[exName]; if (!ex) return [];
     const entries = data.log.filter(e => e.exercise===exName && !(e.effort==="Warm-up"));
     if (!entries.length) return [];
+    const isBWex = ex.type==="Bodyweight";
     const byDate = {};
     for (const e of entries) {
-      const v = ex.type==="Bodyweight" ? e.reps : e1rm(e.weight||0, e.reps);
+      const v = isBWex ? e.reps : dispW(e1rm(e.weight||0, e.reps), units);
       byDate[e.date] = Math.max(byDate[e.date]||0, v);
     }
     let pts = Object.entries(byDate).sort((a,b)=>a[0].localeCompare(b[0]))
@@ -770,7 +903,8 @@ function Dashboard({ data, exMap, setData }) {
 
   return (<>
     <div className="card" style={{display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 16px", gap:8, flexWrap:"wrap"}}>
-      <div style={{fontSize:13, color:T.sub}}>Best est. 1RM per session (reps for bodyweight moves)</div>
+      <div style={{fontSize:13, color:T.sub}}>Best est. 1RM per session (reps for bodyweight moves)<br/>
+        <span style={{fontSize:11.5}}>Charts follow your most recent lifts — 📌 pin one to keep it there.</span></div>
       <div style={{display:"flex", gap:2}}>
         {Object.keys(RANGE_DAYS).map(r=>(
           <button key={r} onClick={()=>setRange(r)} style={{
@@ -781,22 +915,37 @@ function Dashboard({ data, exMap, setData }) {
       </div>
     </div>
 
+    {picks.length === 0 && (
+      <div className="card" style={{textAlign:"center", color:T.sub, fontSize:14, padding:"30px 16px"}}>
+        Log your first set and your charts show up here automatically. 📈
+      </div>
+    )}
+
     {picks.map((p,i)=>{
       const pts = seriesFor(p);
+      const pinned = isPinned(i);
       return (
-      <div className="card" key={i}>
-        <div style={{display:"flex", gap:10, alignItems:"center", marginBottom:6}}>
-          <span className="h" style={{color:T.tealDk, fontSize:16}}>Chart {i+1} ▸</span>
-          <select value={p} onChange={e=>setPicks(ps=>ps.map((x,j)=>j===i?e.target.value:x))}
+      <div className="card" key={p}>
+        <div style={{display:"flex", gap:8, alignItems:"center", marginBottom:6}}>
+          <select value={p} onChange={e=>changePick(i, e.target.value)}
             style={{flex:1, background:T.cream, fontWeight:600}}>
-            {data.exercises.map(x=><option key={x.name}>{x.name}</option>)}
+            {!chartOpts.includes(p) && <option key={p}>{p}</option>}
+            {chartOpts.map(x=><option key={x}>{x}</option>)}
           </select>
+          <button onClick={()=>togglePin(i)} title={pinned ? "Unpin — go back to most recent" : "Pin this chart"} style={{
+            flexShrink:0, minHeight:38, padding:"5px 12px", fontSize:12.5, fontWeight:700, borderRadius:99,
+            background: pinned ? "rgba(0,200,5,.14)" : "none",
+            border: `1px solid ${pinned ? T.green : T.line}`,
+            color: pinned ? T.green : T.sub,
+          }}>
+            {pinned ? "📌 Pinned" : "📌 Pin"}
+          </button>
         </div>
         <div style={{fontSize:11.5, color:T.sub, fontStyle:"italic", marginBottom:4}}>
-          {exMap[p]?.type==="Bodyweight" ? "tracked by reps (no 1RM for bodyweight moves)" : "tracked by est. 1RM"}
+          {exMap[p]?.type==="Bodyweight" ? "tracked by reps (no 1RM for bodyweight moves)" : `tracked by est. 1RM (${uLabel(units)})`}
         </div>
         {pts.length
-          ? <Suspense fallback={<ChartFallback h={210} />}><TrendChart pts={pts} /></Suspense>
+          ? <Suspense fallback={<ChartFallback h={210} />}><TrendChart pts={pts} unit={exMap[p]?.type==="Bodyweight" ? "" : " "+uLabel(units)} /></Suspense>
           : <div style={{color:T.sub, fontSize:14, padding:"28px 0", textAlign:"center"}}>No sessions logged for this lift yet.</div>}
       </div>
       );
@@ -849,6 +998,7 @@ const kpiL = { fontSize:11.5, color:T.sub };
 
 /* ================= RECORDS ================= */
 function RecordsTab({ data, exMap }) {
+  const units = useUnit();
   const rows = useMemo(() => data.exercises.map(ex => {
     const entries = data.log.filter(e => e.exercise===ex.name);
     if (!entries.length) return { ...ex, empty:true };
@@ -866,14 +1016,14 @@ function RecordsTab({ data, exMap }) {
     const repsAtMax = Math.max(...entries.filter(e=>e.weight===maxW).map(e=>e.reps));
     const bestEntry = entries.reduce((a,b)=> e1rm(b.weight||0,b.reps)>e1rm(a.weight||0,a.reps)?b:a);
     const vol = Math.max(...entries.map(e=>(e.weight||0)*e.reps));
-    return { ...ex, heaviest:`${maxW} × ${repsAtMax}`, best:`${bestEntry.weight} × ${bestEntry.reps}`,
-      est: Math.round(e1rm(bestEntry.weight, bestEntry.reps)*10)/10, mostReps, vol, lastDone, spark };
-  }), [data]);
+    return { ...ex, heaviest:`${dispW(maxW,units)} × ${repsAtMax}`, best:`${dispW(bestEntry.weight,units)} × ${bestEntry.reps}`,
+      est: dispW(e1rm(bestEntry.weight, bestEntry.reps), units), mostReps, vol: Math.round(dispW(vol,units)), lastDone, spark };
+  }), [data, units]);
   const logged = rows.filter(r=>!r.empty);
   return (
     <div className="card">
       <div className="h" style={{fontSize:19, color:T.tealDk, marginBottom:2}}>🏆 Personal records</div>
-      <div style={{fontSize:12.5, color:T.sub, marginBottom:10}}>Best-ever numbers per lift. Updates as you log.</div>
+      <div style={{fontSize:12.5, color:T.sub, marginBottom:10}}>Best-ever numbers per lift, in {uLabel(units)}. Updates as you log.</div>
       <div style={{overflowX:"auto"}}>
         <table><thead><tr><th>Exercise</th><th>Trend</th><th>Muscle</th><th>Heaviest</th><th>Best set</th><th>Est. 1RM</th><th>Most reps</th><th>Best volume</th><th>Last done</th></tr></thead>
           <tbody>
@@ -890,6 +1040,7 @@ function RecordsTab({ data, exMap }) {
 
 /* ================= BODY WEIGHT ================= */
 function BodyTab({ data, setData }) {
+  const units = useUnit();
   const [date, setDate] = useState(todayStr());
   const [weight, setWeight] = useState("");
   const [creatine, setCreatine] = useState("No");
@@ -898,6 +1049,7 @@ function BodyTab({ data, setData }) {
   const current = rows.length ? rows[rows.length-1] : null;
   const starting = rows.length ? rows[0] : null;
   const change = current && starting ? (current.weight - starting.weight) : null;
+  const changeDisp = change==null ? null : dispW(change, units);
 
   const months = useMemo(() => {
     if (!rows.length) return [];
@@ -919,11 +1071,11 @@ function BodyTab({ data, setData }) {
     return out;
   }, [rows]);
 
-  const chartData = months.map(m=>({ label:m.label.replace(" 20"," '"), value:m.avg }));
+  const chartData = months.map(m=>({ label:m.label.replace(" 20"," '"), value:dispW(m.avg, units) }));
 
   const add = () => {
     if (!weight) return;
-    setData(d=>({ ...d, bodyweight:[...d.bodyweight.filter(r=>r.date!==date), { date, weight:parseFloat(weight), creatine }] }));
+    setData(d=>({ ...d, bodyweight:[...d.bodyweight.filter(r=>r.date!==date), { date, weight:toLb(parseFloat(weight), units), creatine }] }));
     setWeight("");
   };
 
@@ -932,7 +1084,7 @@ function BodyTab({ data, setData }) {
     if (!edit.weight) return;
     // drop the old row plus any row already on the new date, then add the edited one
     setData(d=>({ ...d, bodyweight:[...d.bodyweight.filter(r=>r.date!==edit.orig && r.date!==edit.date),
-      { date:edit.date, weight:parseFloat(edit.weight), creatine:edit.creatine }] }));
+      { date:edit.date, weight:toLb(parseFloat(edit.weight), units), creatine:edit.creatine }] }));
     setEdit(null);
   };
 
@@ -941,16 +1093,16 @@ function BodyTab({ data, setData }) {
       <div className="h" style={{fontSize:19, color:T.tealDk, marginBottom:10}}>⚖️ Log a weigh-in</div>
       <div style={{display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginBottom:12}}>
         <label style={lbl}>Date<input type="date" value={date} onChange={e=>setDate(e.target.value)} /></label>
-        <label style={lbl}>Weight (lb)<input type="number" inputMode="decimal" value={weight} onChange={e=>setWeight(e.target.value)} /></label>
+        <label style={lbl}>Weight ({uLabel(units)})<input type="number" inputMode="decimal" value={weight} onChange={e=>setWeight(e.target.value)} /></label>
         <label style={lbl}>Creatine today?<select value={creatine} onChange={e=>setCreatine(e.target.value)}><option>No</option><option>Yes</option></select></label>
       </div>
       <button onClick={add} disabled={!weight} style={{width:"100%", padding:"12px", background:T.green, color:"#000", fontWeight:700, fontSize:16, opacity:weight?1:0.45}}>Save weigh-in</button>
     </div>
 
     <div className="card" style={{display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:8, textAlign:"center"}}>
-      <div><div style={kpiN}>{current?current.weight:"—"}</div><div style={kpiL}>Current</div></div>
-      <div><div style={kpiN}>{starting?starting.weight:"—"}</div><div style={kpiL}>Starting</div></div>
-      <div><div style={{...kpiN, color: change==null ? T.ink : change >= 0 ? T.green : T.down}}>{change!=null?(change>0?"+":"")+Math.round(change*10)/10:"—"}</div><div style={kpiL}>Change (lb)</div></div>
+      <div><div style={kpiN}>{current?dispW(current.weight,units):"—"}</div><div style={kpiL}>Current</div></div>
+      <div><div style={kpiN}>{starting?dispW(starting.weight,units):"—"}</div><div style={kpiL}>Starting</div></div>
+      <div><div style={{...kpiN, color: changeDisp==null ? T.ink : changeDisp >= 0 ? T.green : T.down}}>{changeDisp!=null?(changeDisp>0?"+":"")+changeDisp:"—"}</div><div style={kpiL}>Change ({uLabel(units)})</div></div>
       <div><div style={{...kpiN, fontSize:20, paddingTop:8}}>{current?fmtDate(current.date):"—"}</div><div style={kpiL}>Latest</div></div>
     </div>
 
@@ -958,22 +1110,22 @@ function BodyTab({ data, setData }) {
       <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:4}}>Body weight — monthly average</div>
       <div style={{fontSize:12, color:T.sub, marginBottom:6}}>One dot per month. Months you didn't log stay blank.</div>
       {chartData.length ? (
-        <Suspense fallback={<ChartFallback h={220} />}><BodyChart data={chartData} /></Suspense>
+        <Suspense fallback={<ChartFallback h={220} />}><BodyChart data={chartData} unit={" "+uLabel(units)} /></Suspense>
       ) : <div style={{color:T.sub, fontSize:14}}>Log a weigh-in and the trend starts here.</div>}
     </div>
 
     <div className="card">
       <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:8}}>Monthly average</div>
-      <table><thead><tr><th>Month</th><th>Avg wt</th><th>vs prev</th><th>Creatine</th></tr></thead>
+      <table><thead><tr><th>Month</th><th>Avg wt ({uLabel(units)})</th><th>vs prev</th><th>Creatine</th></tr></thead>
         <tbody>{(() => {
           // pair each month with the previous month that actually has an average
           const withPrev = months.map((m, i) => {
             let prev = null;
             for (let j = i - 1; j >= 0; j--) if (months[j].avg != null) { prev = months[j].avg; break; }
-            return { ...m, diff: (m.avg != null && prev != null) ? Math.round((m.avg - prev) * 10) / 10 : null };
+            return { ...m, diff: (m.avg != null && prev != null) ? dispW(m.avg - prev, units) : null };
           });
           return [...withPrev].reverse().map(m=>(
-            <tr key={m.key}><td>{m.label}</td><td style={{fontWeight:600}}>{m.avg ?? "-"}</td>
+            <tr key={m.key}><td>{m.label}</td><td style={{fontWeight:600}}>{m.avg==null ? "-" : dispW(m.avg, units)}</td>
               <td style={{color: m.diff==null ? T.sub : m.diff >= 0 ? T.green : T.down, fontWeight:700}}>
                 {m.diff==null ? "—" : `${m.diff>0?"▲ +":m.diff<0?"▼ ":""}${m.diff===0?"0":Math.abs(m.diff)}`}
               </td>
@@ -986,11 +1138,11 @@ function BodyTab({ data, setData }) {
 
     <div className="card">
       <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:8}}>All weigh-ins</div>
-      <table><thead><tr><th>Date</th><th>Weight</th><th>Creatine</th><th></th></tr></thead>
+      <table><thead><tr><th>Date</th><th>Weight ({uLabel(units)})</th><th>Creatine</th><th></th></tr></thead>
         <tbody>{[...rows].reverse().map(r=>(<Fragment key={r.date}>
-          <tr><td>{fmtDate(r.date)}</td><td>{r.weight}</td><td>{r.creatine}</td>
+          <tr><td>{fmtDate(r.date)}</td><td>{dispW(r.weight,units)}</td><td>{r.creatine}</td>
             <td style={{whiteSpace:"nowrap"}}>
-              <PencilBtn onClick={()=>setEdit({ orig:r.date, date:r.date, weight:r.weight, creatine:r.creatine||"No" })} />
+              <PencilBtn onClick={()=>setEdit({ orig:r.date, date:r.date, weight:dispW(r.weight,units), creatine:r.creatine||"No" })} />
               <ConfirmX onConfirm={()=>setData(d=>({...d, bodyweight:d.bodyweight.filter(x=>x.date!==r.date)}))} />
             </td></tr>
           {edit?.orig === r.date && (
@@ -998,7 +1150,7 @@ function BodyTab({ data, setData }) {
               <div style={editBox}>
                 <div style={{display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, marginBottom:10}}>
                   <label style={lbl}>Date<input type="date" value={edit.date} onChange={ev=>setEdit(s=>({...s, date:ev.target.value}))} /></label>
-                  <label style={lbl}>Weight (lb)<input type="number" inputMode="decimal" value={edit.weight} onChange={ev=>setEdit(s=>({...s, weight:ev.target.value}))} /></label>
+                  <label style={lbl}>Weight ({uLabel(units)})<input type="number" inputMode="decimal" value={edit.weight} onChange={ev=>setEdit(s=>({...s, weight:ev.target.value}))} /></label>
                   <label style={lbl}>Creatine<select value={edit.creatine} onChange={ev=>setEdit(s=>({...s, creatine:ev.target.value}))}><option>No</option><option>Yes</option></select></label>
                 </div>
                 <div style={{display:"flex", gap:8}}>
@@ -1015,6 +1167,7 @@ function BodyTab({ data, setData }) {
 
 /* ================= CARDIO ================= */
 function CardioTab({ data, setData, latestBW }) {
+  const units = useUnit();
   const [date, setDate] = useState(todayStr());
   const [activity, setActivity] = useState("");
   const [duration, setDuration] = useState("");
@@ -1085,7 +1238,7 @@ function CardioTab({ data, setData, latestBW }) {
     <div className="card">
       <div className="h" style={{fontSize:19, color:T.tealDk, marginBottom:4}}>🏃 Log cardio</div>
       <div style={{fontSize:12.5, color:T.sub, marginBottom:10}}>
-        Sports get an automatic calorie estimate from duration × intensity × your tracked bodyweight ({latestBW} lb).
+        Sports get an automatic calorie estimate from duration × intensity × your tracked bodyweight ({showW(latestBW, units)}).
         Machines: type in what the display says.
       </div>
       <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:10}}>
@@ -1308,7 +1461,7 @@ function ExercisesTab({ data, setData }) {
 }
 
 /* ================= SETTINGS / ACCOUNT ================= */
-function SettingsModal({ user, username, data, startTab, setStartTab, tabs, onClose }) {
+function SettingsModal({ user, username, data, startTab, setStartTab, tabs, units, setUnits, onClose }) {
   const memberSince = user.created_at ? new Date(user.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}) : "—";
   const totalSets = (data.log||[]).length;
 
@@ -1339,6 +1492,20 @@ function SettingsModal({ user, username, data, startTab, setStartTab, tabs, onCl
             <div style={{ fontSize:12.5, color:T.sub, marginTop:2 }}>Member since {memberSince} · {totalSets} sets logged</div>
           </div>
           <button onClick={onClose} style={{ background:T.input, color:T.sub, width:34, height:34, borderRadius:99, fontSize:16, flexShrink:0 }}>✕</button>
+        </div>
+
+        {/* units */}
+        <div style={{ ...sCard }}>
+          <div style={{ fontSize:14, fontWeight:700, color:T.ink, marginBottom:2 }}>Weight units</div>
+          <div style={{ fontSize:12, color:T.sub, marginBottom:10 }}>Changes everything shown across the app, and switches the plate calculator to matching plates. Your data is unchanged underneath.</div>
+          <div style={{ display:"flex", background:T.input, borderRadius:10, padding:3, maxWidth:200 }}>
+            {["lb","kg"].map(u=>(
+              <button key={u} onClick={()=>setUnits(u)} style={{
+                flex:1, padding:"9px 0", borderRadius:8, fontWeight:700, fontSize:14,
+                background: units===u ? T.green : "none", color: units===u ? "#000" : T.sub,
+              }}>{u === "lb" ? "Pounds (lb)" : "Kilos (kg)"}</button>
+            ))}
+          </div>
         </div>
 
         {/* view preference */}
@@ -1446,6 +1613,7 @@ const BIG_LIFTS = ["Bench Press","Back Squat","Deadlift","Overhead Press"];
 const LIFT_SHORT = { "Bench Press":"Bench", "Back Squat":"Squat", "Deadlift":"Dead", "Overhead Press":"OHP" };
 
 function FriendsTab({ user }) {
+  const units = useUnit();
   const [groups, setGroups] = useState(null);        // null = loading
   const [active, setActive] = useState(null);        // selected group
   const [members, setMembers] = useState(null);
@@ -1533,7 +1701,7 @@ function FriendsTab({ user }) {
         const isBW = exType[e.exercise] === "Bodyweight";
         const score = isBW ? e.reps : e1rm(e.weight || 0, e.reps);
         if (bestSoFar[e.exercise] != null && score > bestSoFar[e.exercise]) {
-          (prsByDate[e.date] ||= []).push(isBW ? `${e.exercise} ${e.reps} reps` : `${e.exercise} ${e.weight}×${e.reps}`);
+          (prsByDate[e.date] ||= []).push(isBW ? `${e.exercise} ${e.reps} reps` : `${e.exercise} ${dispW(e.weight,units)}×${e.reps}`);
         }
         bestSoFar[e.exercise] = Math.max(bestSoFar[e.exercise] ?? -1, score);
       }
@@ -1549,7 +1717,7 @@ function FriendsTab({ user }) {
       }
     }
     return evs.sort((a,b)=>b.date.localeCompare(a.date)).slice(0, 25);
-  }, [members, states]);
+  }, [members, states, units]);
 
   const consistency = useMemo(() => {
     if (!members) return [];
@@ -1588,13 +1756,13 @@ function FriendsTab({ user }) {
       const st = states[m.user_id]; if (!st) continue;
       for (const e of (st.log || [])) {
         if (e.weight != null && (!heaviest || e.weight > heaviest.v))
-          heaviest = { v:e.weight, text:`${e.weight} lb × ${e.reps} — ${e.exercise}`, who:m.username };
+          heaviest = { v:e.weight, text:`${dispW(e.weight,units)} ${uLabel(units)} × ${e.reps} — ${e.exercise}`, who:m.username };
       }
       const volByDate = {};
       for (const e of (st.log || [])) volByDate[e.date] = (volByDate[e.date] || 0) + (e.weight || 0) * e.reps;
       for (const [d, v] of Object.entries(volByDate)) {
         if (v > 0 && (!volBest || v > volBest.v))
-          volBest = { v, text:`${Math.round(v).toLocaleString()} lb (${fmtDate(d)})`, who:m.username };
+          volBest = { v, text:`${Math.round(dispW(v,units)).toLocaleString()} ${uLabel(units)} (${fmtDate(d)})`, who:m.username };
       }
       const s = computeStreak(st.log, st.cardio);
       if (s.best > 0 && (!streakBest || s.best > streakBest.v))
@@ -1618,7 +1786,7 @@ function FriendsTab({ user }) {
       weekMost   && { icon:"📅", label:"Most workout days in a week", ...weekMost },
       cardioLong && { icon:"🏃", label:"Longest cardio", ...cardioLong },
     ].filter(Boolean);
-  }, [members, states]);
+  }, [members, states, units]);
 
   /* ---- read-only profile view ---- */
   if (profile) {
@@ -1639,8 +1807,8 @@ function FriendsTab({ user }) {
         <Dashboard data={pdata} exMap={pexMap} setData={()=>{}} />
         <RecordsTab data={pdata} exMap={pexMap} />
         <div className="card" style={{display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, textAlign:"center"}}>
-          <div><div style={kpiN}>{bw.length ? bw[bw.length-1].weight : "—"}</div><div style={kpiL}>Body wt (lb)</div></div>
-          <div><div style={kpiN}>{bw.length ? (b=>{const c=bw[bw.length-1].weight-bw[0].weight; return (c>0?"+":"")+Math.round(c*10)/10;})() : "—"}</div><div style={kpiL}>Change (lb)</div></div>
+          <div><div style={kpiN}>{bw.length ? dispW(bw[bw.length-1].weight, units) : "—"}</div><div style={kpiL}>Body wt ({uLabel(units)})</div></div>
+          <div><div style={kpiN}>{bw.length ? (b=>{const c=dispW(bw[bw.length-1].weight-bw[0].weight, units); return (c>0?"+":"")+c;})() : "—"}</div><div style={kpiL}>Change ({uLabel(units)})</div></div>
           <div><div style={kpiN}>{pdata.cardio.length}</div><div style={kpiL}>Cardio sessions</div></div>
         </div>
         {recentCardio.length > 0 && (
@@ -1697,7 +1865,7 @@ function FriendsTab({ user }) {
         </div>
 
         <div className="card">
-          <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:2}}>🏋️ Strength — best est. 1RM (lb)</div>
+          <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:2}}>🏋️ Strength — best est. 1RM ({uLabel(units)})</div>
           <div style={{fontSize:12, color:T.sub, marginBottom:8}}>Green = group best.</div>
           <div style={{overflowX:"auto"}}>
             <table><thead><tr><th>Member</th>{BIG_LIFTS.map(l=><th key={l}>{LIFT_SHORT[l]}</th>)}</tr></thead>
@@ -1706,7 +1874,7 @@ function FriendsTab({ user }) {
                   <td style={{fontWeight: r.uid===user.id?700:400}}>{r.user}</td>
                   {BIG_LIFTS.map(l=>(
                     <td key={l} style={{ color: r.lifts[l] && r.lifts[l]===strength.best[l] ? T.green : T.ink, fontWeight: r.lifts[l] && r.lifts[l]===strength.best[l] ? 700 : 400 }}>
-                      {r.lifts[l] ?? "—"}
+                      {r.lifts[l] == null ? "—" : dispW(r.lifts[l], units)}
                     </td>
                   ))}
                 </tr>

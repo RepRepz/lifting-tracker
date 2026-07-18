@@ -26,7 +26,7 @@ function NiceTip({ active, payload, label, unit }) {
 }
 
 /* ---------- gradient area line (exercise trends) ---------- */
-export function TrendChart({ pts }) {
+export function TrendChart({ pts, unit = "" }) {
   const display = pts.length === 1 ? [pts[0], { ...pts[0], label: pts[0].label + " " }] : pts;
   const first = display[0].value, last = display[display.length - 1].value;
   const up = last >= first;
@@ -43,7 +43,7 @@ export function TrendChart({ pts }) {
         </defs>
         <XAxis dataKey="label" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
         <YAxis tick={{ fontSize: 11 }} domain={["auto", "auto"]} axisLine={false} tickLine={false} />
-        <Tooltip content={<NiceTip />} cursor={{ stroke: "#4A4E50", strokeDasharray: "3 3" }} />
+        <Tooltip content={<NiceTip unit={unit} />} cursor={{ stroke: "#4A4E50", strokeDasharray: "3 3" }} />
         <ReferenceLine y={first} stroke="#4A4E50" strokeDasharray="2 6" />
         <Area type="monotone" dataKey="value" stroke={stroke} strokeWidth={2.5} fill={`url(#${gid})`}
           dot={false} activeDot={{ r: 5, fill: stroke, stroke: "#000", strokeWidth: 2 }}
@@ -54,7 +54,7 @@ export function TrendChart({ pts }) {
 }
 
 /* ---------- body weight (trend-colored, same style as the exercise charts) ---------- */
-export function BodyChart({ data }) {
+export function BodyChart({ data, unit = " lb" }) {
   const vals = data.filter(m => m.value != null);
   const first = vals[0]?.value, last = vals[vals.length - 1]?.value;
   const up = last >= first;
@@ -71,7 +71,7 @@ export function BodyChart({ data }) {
         </defs>
         <XAxis dataKey="label" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
         <YAxis tick={{ fontSize: 11 }} domain={["auto", "auto"]} axisLine={false} tickLine={false} />
-        <Tooltip content={<NiceTip unit=" lb" />} cursor={{ stroke: "#4A4E50", strokeDasharray: "3 3" }} />
+        <Tooltip content={<NiceTip unit={unit} />} cursor={{ stroke: "#4A4E50", strokeDasharray: "3 3" }} />
         <ReferenceLine y={first} stroke="#4A4E50" strokeDasharray="2 6" />
         <Area type="monotone" dataKey="value" stroke={stroke} strokeWidth={2.5} fill={`url(#${gid})`}
           dot={{ r: 3, fill: stroke, strokeWidth: 0 }} activeDot={{ r: 5, fill: stroke, stroke: "#000", strokeWidth: 2 }}
