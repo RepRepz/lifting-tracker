@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef, lazy, Suspense, Fragment, createC
 import { supabase, loadUserState, saveUserState, listMyGroups, listMembers, createGroup, joinGroup, leaveGroup, listReactions, addReaction, removeReaction, setSecurityQuestion, getSecurityQuestion, lastActiveFor, setGroupEmoji, resetInviteCode } from "./lib/storage.js";
 import { SECURITY_QUESTIONS } from "./AuthScreen.jsx";
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
-import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
+import { SortableContext, verticalListSortingStrategy, rectSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
 /* ---------- theme (Robinhood-style: black + neon green) ---------- */
@@ -360,14 +360,19 @@ export default function LiftingTracker({ user }) {
           .nav-top { display:grid; grid-template-columns:repeat(7, 1fr); max-width:640px; }
           .nav-bottom { display:none; }
           .app-root { padding-bottom:36px; }
-          .app-main { max-width:880px; padding:24px 20px; }
+          .app-main { max-width:960px; padding:24px 20px; }
         }
 
         /* drag-to-reorder */
         .drag-handle { cursor:grab; touch-action:none; }
-        .dragging { opacity:.55; }
-        .drag-over-top { box-shadow:0 -3px 0 ${T.green}; }
-        .drag-over-bot { box-shadow:0 3px 0 ${T.green}; }
+        /* dashboard widget grid: single column on phone, opt-in 2-up on desktop */
+        .dash-grid { display:grid; grid-template-columns:1fr; column-gap:16px; align-items:start; }
+        .width-toggle { display:none; }
+        @media (min-width:900px) {
+          .dash-grid { grid-template-columns:1fr 1fr; }
+          .dash-full { grid-column:1 / -1; }
+          .width-toggle { display:inline-flex; }
+        }
       `}</style>
 
       <div style={{ position:"sticky", top:0, zIndex:10, background:T.bg, borderBottom:`1px solid ${T.line}` }}>
@@ -887,37 +892,57 @@ function useReorder(storageKey, defaultIds) {
 }
 
 /* One sortable widget (dnd-kit). Drag starts only from the grip pill, so buttons
-   and charts inside the card keep working normally. */
-function SortableWidget({ id, children }) {
+   and charts inside the card keep working normally. On desktop a "Split/Full"
+   toggle lets you put widgets side by side. */
+function SortableWidget({ id, span, onToggleWidth, children }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
   return (
-    <div ref={setNodeRef} style={{
+    <div ref={setNodeRef} className={span === "full" ? "dash-full" : ""} style={{
       transform: CSS.Transform.toString(transform), transition,
       position:"relative", zIndex: isDragging ? 20 : "auto", opacity: isDragging ? 0.9 : 1,
-      outline:`2px dashed ${isDragging ? T.green : T.line}`, outlineOffset:-3, borderRadius:16, marginBottom:2,
+      outline:`2px dashed ${isDragging ? T.green : T.line}`, outlineOffset:-3, borderRadius:16,
     }}>
-      <div className="drag-handle" {...attributes} {...listeners}
-        style={{ position:"absolute", top:6, left:"50%", transform:"translateX(-50%)", zIndex:6,
-          background:T.green, color:"#000", borderRadius:99, padding:"3px 16px", fontSize:12, fontWeight:800,
-          boxShadow:"0 2px 8px rgba(0,0,0,.4)", cursor:"grab", touchAction:"none", userSelect:"none" }}>
-        ⠿ drag
+      <div style={{ position:"absolute", top:6, left:"50%", transform:"translateX(-50%)", zIndex:6, display:"flex", gap:6, alignItems:"center" }}>
+        <span className="drag-handle" {...attributes} {...listeners}
+          style={{ background:T.green, color:"#000", borderRadius:99, padding:"3px 16px", fontSize:12, fontWeight:800,
+            boxShadow:"0 2px 8px rgba(0,0,0,.4)", cursor:"grab", touchAction:"none", userSelect:"none" }}>
+          ⠿ drag
+        </span>
+        {onToggleWidth && (
+          <button className="width-toggle" onClick={()=>onToggleWidth(id)}
+            style={{ background:T.input, color:T.green, border:`1px solid ${T.green}`, borderRadius:99,
+              padding:"3px 12px", fontSize:12, fontWeight:800, alignItems:"center", boxShadow:"0 2px 8px rgba(0,0,0,.4)" }}>
+            {span === "full" ? "⬌ Split" : "⬍ Full" }
+          </button>
+        )}
       </div>
       {children}
     </div>
   );
 }
 
-/* renderItem(id) -> node. When enabled is false it just renders in order (no dnd). */
-function DragList({ ids, setIds, enabled, renderItem }) {
+/* renderItem(id) -> node. enabled=false renders in order (no dnd). When spanOf is
+   given, widgets lay out in the .dash-grid (2-up on desktop) instead of a list. */
+function DragList({ ids, setIds, enabled, renderItem, spanOf, onToggleWidth }) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+  const grid = !!spanOf;
   const onDragEnd = ({ active, over }) => {
     if (over && active.id !== over.id) setIds(arrayMove(ids, ids.indexOf(active.id), ids.indexOf(over.id)));
   };
-  if (!enabled) return ids.map(id => <div key={id}>{renderItem(id)}</div>);
+  if (!enabled) {
+    const items = ids.map(id => <div key={id} className={grid && spanOf(id)==="full" ? "dash-full" : ""}>{renderItem(id)}</div>);
+    return grid ? <div className="dash-grid">{items}</div> : items;
+  }
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-      <SortableContext items={ids} strategy={verticalListSortingStrategy}>
-        {ids.map(id => <SortableWidget key={id} id={id}>{renderItem(id)}</SortableWidget>)}
+      <SortableContext items={ids} strategy={grid ? rectSortingStrategy : verticalListSortingStrategy}>
+        <div className={grid ? "dash-grid" : undefined}>
+          {ids.map(id => (
+            <SortableWidget key={id} id={id} span={grid ? spanOf(id) : "full"} onToggleWidth={onToggleWidth}>
+              {renderItem(id)}
+            </SortableWidget>
+          ))}
+        </div>
       </SortableContext>
     </DndContext>
   );
@@ -1149,6 +1174,14 @@ function Dashboard({ data, exMap, setData, own = true }) {
   /* draggable dashboard widget order (remembered on this device) */
   const [arrange, setArrange] = useState(false);
   const [wOrder, setWOrder] = useReorder("lt-dash-order", DASH_WIDGETS);
+  /* per-widget width for desktop side-by-side layout ("full" or "half") */
+  const [widths, setWidths] = useState(() => {
+    try { const s = JSON.parse(localStorage.getItem("lt-dash-widths")); if (s && typeof s === "object") return s; } catch {}
+    return {};
+  });
+  useEffect(() => { localStorage.setItem("lt-dash-widths", JSON.stringify(widths)); }, [widths]);
+  const widthOf = (id) => widths[id] === "half" ? "half" : "full";
+  const toggleWidth = (id) => setWidths(w => ({ ...w, [id]: widthOf(id) === "half" ? "full" : "half" }));
   /* Pinned charts live in account data (data.pins) so they sync across devices and
      friends' profiles show THEIR pins. Local state first, then persisted when it's your own. */
   const [pins, setPins] = useState(() => Array.isArray(data.pins) ? data.pins : []);
@@ -1379,7 +1412,8 @@ function Dashboard({ data, exMap, setData, own = true }) {
 
   return (<>
     {own && (
-      <div style={{display:"flex", justifyContent:"flex-end", marginBottom:10}}>
+      <div style={{display:"flex", justifyContent:"flex-end", alignItems:"center", gap:10, marginBottom:10, flexWrap:"wrap"}}>
+        {arrange && <span className="width-toggle" style={{fontSize:11.5, color:T.sub}}>Drag to reorder · "Split" puts two side by side</span>}
         <button onClick={()=>setArrange(a=>!a)} style={{
           background: arrange ? T.green : T.input, color: arrange ? "#000" : T.sub,
           border:`1px solid ${arrange ? T.green : T.line}`, padding:"6px 14px", fontSize:13, fontWeight:700,
@@ -1387,6 +1421,7 @@ function Dashboard({ data, exMap, setData, own = true }) {
       </div>
     )}
     <DragList ids={own ? wOrder : DASH_WIDGETS} setIds={setWOrder} enabled={arrange && own}
+      spanOf={own ? widthOf : undefined} onToggleWidth={own ? toggleWidth : undefined}
       renderItem={(id) => widgets[id]} />
   </>);
 }
