@@ -147,6 +147,7 @@ const defaultData = {
   exercises: SEED_EXERCISES.map(([name, muscles, muscles2 = []]) => ({ name, muscle: muscles[0], muscles, muscles2, type: BW_SET.has(name) ? "Bodyweight" : "Weighted", barbell: BARBELL_SEED.has(name) })),
   log: [], bodyweight: [], cardio: [], cardioActivities: [],
   profile: {}, // heightIn (inches) lives here once set
+  pins: [],    // pinned dashboard charts (exercise names)
   libraryV: 3, // bumped when the seed library changes, so existing users get the update once
 };
 
@@ -154,6 +155,12 @@ const defaultData = {
    the current primary/secondary muscle lists — custom moves pass through untouched.
    Runs only when libraryV is behind, so later deletions stay deleted. */
 function migrateData(d) {
+  // pins used to live in this device's localStorage — carry them into account data once
+  if (!Array.isArray(d.pins)) {
+    let p = [];
+    try { const q = JSON.parse(localStorage.getItem("lt-pins")); if (Array.isArray(q)) p = q; } catch {}
+    d = { ...d, pins: p };
+  }
   if ((d.libraryV || 0) >= defaultData.libraryV) return d;
   const seedMap = Object.fromEntries(defaultData.exercises.map(s => [s.name, s]));
   const have = new Set((d.exercises || []).map(x => x.name));
@@ -395,18 +402,41 @@ function LogTab({ data, exMap, setData }) {
   // switching units resets the bar/plates to that unit's defaults
   useEffect(() => { setBar(units === "kg" ? 20 : 45); setBuilt([]); }, [units]);
 
-  // rest timer
-  const [restDur, setRestDur] = useState(() => Number(localStorage.getItem("lt-rest")) || 90);
-  const [restLeft, setRestLeft] = useState(0);
-  useEffect(() => { localStorage.setItem("lt-rest", restDur); }, [restDur]);
+  // rest timer — the END TIME lives in localStorage, so the countdown survives
+  // switching tabs and even closing the app (0 duration = timer switched off)
+  const [restDur, setRestDur] = useState(() => {
+    const raw = localStorage.getItem("lt-rest");
+    return raw === null ? 90 : Number(raw);
+  });
+  const restEndAt = () => Number(localStorage.getItem("lt-rest-end")) || 0;
+  const secsLeft = (end) => Math.max(0, Math.ceil((end - Date.now()) / 1000));
+  const [restLeft, setRestLeft] = useState(() => secsLeft(restEndAt()));
+  const [restDone, setRestDone] = useState(() => {
+    const end = restEndAt(); // finished while we were away (within the last 10 min)?
+    return end > 0 && end <= Date.now() && Date.now() - end < 10 * 60 * 1000;
+  });
+  useEffect(() => { localStorage.setItem("lt-rest", String(restDur)); }, [restDur]);
+  const startRest = () => {
+    if (restDur <= 0) return;
+    localStorage.setItem("lt-rest-end", String(Date.now() + restDur * 1000));
+    setRestDone(false); setRestLeft(restDur);
+  };
+  const stopRest = () => { localStorage.removeItem("lt-rest-end"); setRestLeft(0); setRestDone(false); };
   useEffect(() => {
     if (restLeft <= 0) return;
-    const t = setInterval(() => setRestLeft(s => {
-      if (s <= 1) { clearInterval(t); navigator.vibrate?.([250,120,250]); return 0; }
-      return s - 1;
-    }), 1000);
+    const t = setInterval(() => {
+      const s = secsLeft(restEndAt()); // clock-based: stays honest even if ticks get throttled
+      setRestLeft(s);
+      if (s <= 0) { clearInterval(t); navigator.vibrate?.([250,120,250]); setRestDone(true); localStorage.removeItem("lt-rest-end"); }
+    }, 1000);
     return () => clearInterval(t);
   }, [restLeft > 0]);
+  // the ✅ done note clears itself after a few seconds
+  useEffect(() => {
+    if (!restDone) return;
+    const t = setTimeout(() => { setRestDone(false); localStorage.removeItem("lt-rest-end"); }, 6000);
+    return () => clearTimeout(t);
+  }, [restDone]);
 
   const isBW = exMap[exName]?.type === "Bodyweight";
 
@@ -456,7 +486,7 @@ function LogTab({ data, exMap, setData }) {
     setData(d => ({ ...d, log: [...d.log, entry] }));
     setJustSaved({ ...entry, pr });
     setSetNum(n => n + 1); setNotes(""); setEffort("");
-    if (effort !== "Warm-up") setRestLeft(restDur); // auto-start rest between working sets
+    if (effort !== "Warm-up") startRest(); // auto-start rest between working sets (no-op when Off)
   };
   const sameAgain = () => {
     if (!justSaved) return;
@@ -483,6 +513,12 @@ function LogTab({ data, exMap, setData }) {
   };
 
   return (<>
+    {restDone && restLeft <= 0 && (
+      <div className="card" style={{ padding:"12px 16px", marginBottom:14, borderColor:T.green, display:"flex", alignItems:"center", gap:10 }}>
+        <span style={{ fontSize:15, fontWeight:800, color:T.green }}>✅ Rest done — next set!</span>
+        <button onClick={()=>setRestDone(false)} style={{ marginLeft:"auto", background:T.input, color:T.sub, padding:"6px 12px", fontSize:13, fontWeight:600 }}>OK</button>
+      </div>
+    )}
     {restLeft > 0 && (
       <div className="card" style={{ padding:"12px 16px", marginBottom:14, borderColor:T.green }}>
         <div style={{ display:"flex", alignItems:"center", gap:12 }}>
@@ -490,11 +526,11 @@ function LogTab({ data, exMap, setData }) {
             {Math.floor(restLeft/60)}:{String(restLeft%60).padStart(2,"0")}
           </span>
           <span style={{ fontSize:13, color:T.sub, flex:1 }}>Rest timer</span>
-          <button onClick={()=>setRestLeft(s=>s+30)} style={{ background:T.input, color:T.ink, border:`1px solid ${T.line}`, padding:"7px 12px", fontSize:13, fontWeight:600 }}>+30s</button>
-          <button onClick={()=>setRestLeft(0)} style={{ background:T.input, color:T.sub, padding:"7px 12px", fontSize:13, fontWeight:600 }}>Skip</button>
+          <button onClick={()=>{ localStorage.setItem("lt-rest-end", String((restEndAt() || Date.now()) + 30000)); setRestLeft(s=>s+30); }} style={{ background:T.input, color:T.ink, border:`1px solid ${T.line}`, padding:"7px 12px", fontSize:13, fontWeight:600 }}>+30s</button>
+          <button onClick={stopRest} style={{ background:T.input, color:T.sub, padding:"7px 12px", fontSize:13, fontWeight:600 }}>Skip</button>
         </div>
         <div style={{ height:5, background:T.input, borderRadius:99, marginTop:10, overflow:"hidden" }}>
-          <div style={{ height:"100%", width:`${restLeft/restDur*100}%`, background:T.green, borderRadius:99, transition:"width 1s linear" }} />
+          <div style={{ height:"100%", width:`${restDur>0 ? Math.min(100, restLeft/restDur*100) : 100}%`, background:T.green, borderRadius:99, transition:"width 1s linear" }} />
         </div>
       </div>
     )}
@@ -607,13 +643,13 @@ function LogTab({ data, exMap, setData }) {
 
       <div style={{display:"flex", alignItems:"center", gap:8, marginTop:10, flexWrap:"wrap"}}>
         <span style={{fontSize:12.5, color:T.sub}}>⏱ Rest:</span>
-        {[60,90,120,180].map(s=>(
-          <button key={s} onClick={()=>setRestDur(s)} style={{
+        {[0,60,90,120,180].map(s=>(
+          <button key={s} onClick={()=>{ setRestDur(s); if (s===0) stopRest(); }} style={{
             background: restDur===s ? T.mint : T.input, color: restDur===s ? T.green : T.sub,
             border:`1px solid ${restDur===s ? T.green : T.line}`, padding:"5px 11px", fontSize:12.5, fontWeight:700,
-          }}>{s<60?`${s}s`:`${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`}</button>
+          }}>{s===0?"Off":s<60?`${s}s`:`${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`}</button>
         ))}
-        <span style={{fontSize:11.5, color:T.sub}}>auto-starts after each working set</span>
+        <span style={{fontSize:11.5, color:T.sub}}>{restDur===0?"timer off — stays off until you pick a time":"auto-starts after each working set"}</span>
       </div>
 
       {justSaved && (
@@ -758,11 +794,16 @@ const download = (name, content, type) => {
 };
 
 /* GitHub-style workout calendar: one cell per day, greener the more sets. */
-function WorkoutHeatmap({ log, cardio }) {
+function WorkoutHeatmap({ log, cardio, exMap = {} }) {
   const { cols, monthMarks } = useMemo(() => {
-    const count = {};
-    for (const e of (log||[])) if (e.effort !== "Warm-up") count[e.date] = (count[e.date]||0) + 1;
-    for (const c of (cardio||[])) count[c.date] = (count[c.date]||0) + 1;
+    const count = {}, hit = {};
+    for (const e of (log||[])) if (e.effort !== "Warm-up") {
+      count[e.date] = (count[e.date]||0) + 1;
+      const h = (hit[e.date] ||= new Set());
+      for (const m of musclesOf(exMap[e.exercise])) h.add(m);
+      for (const m of secondariesOf(exMap[e.exercise])) h.add(m);
+    }
+    for (const c of (cardio||[])) { count[c.date] = (count[c.date]||0) + 1; (hit[c.date] ||= new Set()).add("Cardio"); }
     const WEEKS = 26;
     const end = new Date(todayStr() + "T00:00");
     const start = new Date(weekStart(todayStr()) + "T00:00");
@@ -773,14 +814,15 @@ function WorkoutHeatmap({ log, cardio }) {
       const days = [];
       for (let i=0; i<7; i++) {
         const key = d.toISOString().slice(0,10);
-        days.push({ key, n: count[key]||0, future: d > end });
+        const order = [...MUSCLES, "Cardio"];
+        days.push({ key, n: count[key]||0, m: hit[key] ? [...hit[key]].sort((a,b)=>order.indexOf(a)-order.indexOf(b)) : [], future: d > end });
         if (d.getMonth() !== lastMonth && d.getDate() <= 7) { monthMarks.push({ col:w, label:d.toLocaleString("en-US",{month:"short"}) }); lastMonth = d.getMonth(); }
         d.setDate(d.getDate()+1);
       }
       cols.push(days);
     }
     return { cols, monthMarks };
-  }, [log, cardio]);
+  }, [log, cardio, exMap]);
 
   const shade = (n, future) => {
     if (future) return "transparent";
@@ -803,7 +845,7 @@ function WorkoutHeatmap({ log, cardio }) {
           {cols.map((week,wi)=>(
             <div key={wi} style={{ display:"flex", flexDirection:"column", gap:GAP }}>
               {week.map(day=>(
-                <div key={day.key} title={day.future ? "" : `${fmtDate(day.key)} — ${day.n} set${day.n===1?"":"s"}`}
+                <div key={day.key} title={day.future ? "" : `${fmtDate(day.key)} — ${day.n} set${day.n===1?"":"s"}${day.m.length ? ` — ${day.m.join(", ")}` : ""}`}
                   style={{ width:CELL, height:CELL, borderRadius:3, background:shade(day.n, day.future),
                     border: day.key===todayStr() ? `1.5px solid ${T.ink}` : "none" }} />
               ))}
@@ -872,15 +914,19 @@ function YearRecap({ data }) {
 }
 
 /* ================= DASHBOARD ================= */
-function Dashboard({ data, exMap, setData }) {
+function Dashboard({ data, exMap, setData, own = true }) {
   const units = useUnit();
   const [range, setRange] = useState("1Y");
-  /* Pinned charts persist; the rest auto-fill with whatever was lifted most recently. */
-  const [pins, setPins] = useState(() => {
-    try { const p = JSON.parse(localStorage.getItem("lt-pins")); return Array.isArray(p) ? p : []; }
-    catch { return []; }
-  });
-  useEffect(() => { localStorage.setItem("lt-pins", JSON.stringify(pins)); }, [pins]);
+  /* Pinned charts live in account data (data.pins) so they sync across devices and
+     friends' profiles show THEIR pins. Local state first, then persisted when it's your own. */
+  const [pins, setPins] = useState(() => Array.isArray(data.pins) ? data.pins : []);
+  useEffect(() => {
+    if (!own) return;
+    setData(d => {
+      const cur = Array.isArray(d.pins) ? d.pins : [];
+      return cur.length === pins.length && cur.every((p, i) => p === pins[i]) ? d : { ...d, pins };
+    });
+  }, [pins, own, setData]);
 
   /* exercises with at least one working set, newest session first */
   const logged = useMemo(() => {
@@ -924,8 +970,9 @@ function Dashboard({ data, exMap, setData }) {
     const isBWex = ex.type==="Bodyweight";
     const byDate = {};
     for (const e of entries) {
-      const v = isBWex ? e.reps : dispW(e1rm(e.weight||0, e.reps), units);
-      byDate[e.date] = Math.max(byDate[e.date]||0, v);
+      // bodyweight moves: TOTAL reps that day (climbs as you do more sets); weighted: best est. 1RM
+      if (isBWex) byDate[e.date] = (byDate[e.date]||0) + e.reps;
+      else byDate[e.date] = Math.max(byDate[e.date]||0, dispW(e1rm(e.weight||0, e.reps), units));
     }
     let pts = Object.entries(byDate).sort((a,b)=>a[0].localeCompare(b[0]))
       .map(([d,v])=>({ date:d, label:fmtDate(d), value:Math.round(v*10)/10 }));
@@ -969,7 +1016,7 @@ function Dashboard({ data, exMap, setData }) {
 
   return (<>
     <div className="card" style={{display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 16px", gap:8, flexWrap:"wrap"}}>
-      <div style={{fontSize:13, color:T.sub}}>Best est. 1RM per session (reps for bodyweight moves)<br/>
+      <div style={{fontSize:13, color:T.sub}}>Best est. 1RM per session (total reps for bodyweight moves)<br/>
         <span style={{fontSize:11.5}}>Charts follow your most recent lifts — 📌 pin one to keep it there.</span></div>
       <div style={{display:"flex", gap:2}}>
         {Object.keys(RANGE_DAYS).map(r=>(
@@ -990,6 +1037,11 @@ function Dashboard({ data, exMap, setData }) {
     {picks.map((p,i)=>{
       const pts = seriesFor(p);
       const pinned = isPinned(i);
+      /* latest session totals for this exercise (working sets only) */
+      const sess = data.log.filter(e => e.exercise===p && e.effort!=="Warm-up");
+      const lastDate = sess.length ? sess.reduce((a,b)=>a.date>b.date?a:b).date : null;
+      const daySets = lastDate ? sess.filter(e=>e.date===lastDate) : [];
+      const dayReps = daySets.reduce((s,e)=>s+e.reps, 0);
       return (
       <div className="card" key={p}>
         <div style={{display:"flex", gap:8, alignItems:"center", marginBottom:6}}>
@@ -998,6 +1050,7 @@ function Dashboard({ data, exMap, setData }) {
             {!chartOpts.includes(p) && <option key={p}>{p}</option>}
             {chartOpts.map(x=><option key={x}>{x}</option>)}
           </select>
+          {own && (
           <button onClick={()=>togglePin(i)} title={pinned ? "Unpin — go back to most recent" : "Pin this chart"} style={{
             flexShrink:0, minHeight:38, padding:"5px 12px", fontSize:12.5, fontWeight:700, borderRadius:99,
             background: pinned ? "rgba(0,200,5,.14)" : "none",
@@ -1006,9 +1059,15 @@ function Dashboard({ data, exMap, setData }) {
           }}>
             {pinned ? "📌 Pinned" : "📌 Pin"}
           </button>
+          )}
         </div>
+        {lastDate && (
+          <div style={{fontSize:12.5, color:T.ink, marginBottom:2}}>
+            Last workout {fmtDate(lastDate)}: <b style={{color:T.green}}>{daySets.length} set{daySets.length===1?"":"s"}</b> · <b style={{color:T.green}}>{dayReps} reps</b>
+          </div>
+        )}
         <div style={{fontSize:11.5, color:T.sub, fontStyle:"italic", marginBottom:4}}>
-          {exMap[p]?.type==="Bodyweight" ? "tracked by reps (no 1RM for bodyweight moves)" : `tracked by est. 1RM (${uLabel(units)})`}
+          {exMap[p]?.type==="Bodyweight" ? "Tracked by total reps per workout" : `Tracked by est. 1RM (${uLabel(units)})`}
         </div>
         {pts.length
           ? <Suspense fallback={<ChartFallback h={210} />}><TrendChart pts={pts} unit={exMap[p]?.type==="Bodyweight" ? "" : " "+uLabel(units)} /></Suspense>
@@ -1044,8 +1103,8 @@ function Dashboard({ data, exMap, setData }) {
 
     <div className="card">
       <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:2}}>Workout calendar</div>
-      <div style={{fontSize:12, color:T.sub, marginBottom:10}}>Last 26 weeks — each square is a day, greener the more sets. Today is outlined.</div>
-      <WorkoutHeatmap log={data.log} cardio={data.cardio} />
+      <div style={{fontSize:12, color:T.sub, marginBottom:10}}>Last 26 weeks — each square is a day, greener the more sets. Today is outlined. Hover (or tap-hold) a square to see the muscles hit that day.</div>
+      <WorkoutHeatmap log={data.log} cardio={data.cardio} exMap={exMap} />
     </div>
 
     <div className="card">
@@ -1993,7 +2052,7 @@ function FriendsTab({ user }) {
       {!pdata ? (
         <div className="card" style={{color:T.sub}}>They haven't logged anything yet.</div>
       ) : (<>
-        <Dashboard data={pdata} exMap={pexMap} setData={()=>{}} />
+        <Dashboard data={pdata} exMap={pexMap} setData={()=>{}} own={false} />
         <RecordsTab data={pdata} exMap={pexMap} />
         <div className="card" style={{display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, textAlign:"center"}}>
           <div><div style={kpiN}>{bw.length ? dispW(bw[bw.length-1].weight, units) : "—"}</div><div style={kpiL}>Body wt ({uLabel(units)})</div></div>
