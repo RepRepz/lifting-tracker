@@ -2362,10 +2362,12 @@ function DownloadAppCard() {
           Put this on your home screen and it opens like a real app — full screen, no browser bar:
           <ol style={{ margin:"6px 0", paddingLeft:20 }}>
             <li>Open this site in <b>Safari</b> (Apple's built-in browser).</li>
-            <li>Tap the <b>Share</b> button (the square with the ↑ arrow).</li>
-            <li>Scroll down and tap <b>Add to Home Screen</b>.</li>
-            <li>Tap <b>Add</b>. Done — look for the barbell icon.</li>
+            <li><b>Tap once near the bottom of the screen</b> to bring up Safari's toolbar if it's hidden. <span style={{color:T.sub}}>(On iPad the toolbar is at the top instead.)</span></li>
+            <li>Tap the <b>Share</b> button — the <b>square with an ↑ arrow</b>, in the middle of the bottom toolbar. <span style={{color:T.sub}}>If you only see three dots <b>•••</b>, tap those first, then Share.</span></li>
+            <li>In the menu that slides up, <b>scroll down</b> and tap <b>Add to Home Screen</b>.</li>
+            <li>Tap <b>Add</b> (top-right). Done — look for the barbell icon on your home screen.</li>
           </ol>
+          <div style={{ fontSize:12, color:T.sub, marginBottom:4 }}>Note: the Share button is <b>not</b> the three-lines/aA button next to the web address — that one only changes text size.</div>
           <b style={{color:T.down}}>Things to avoid:</b>
           <ul style={{ margin:"4px 0", paddingLeft:20, color:T.sub }}>
             <li>In-app browsers (Instagram, Snapchat, TikTok, Messenger) <b>hide</b> Add to Home Screen — copy the link into Safari first.</li>
