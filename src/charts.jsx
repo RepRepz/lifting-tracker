@@ -2,7 +2,7 @@
    when a chart is actually on screen (Dashboard / Body / profiles). */
 import { useState } from "react";
 import { AreaChart, Area, XAxis, YAxis, ReferenceLine, Tooltip, ResponsiveContainer, PieChart, Pie, Sector } from "recharts";
-import { T } from "./LiftingTracker.jsx";
+import { T } from "./theme.js";
 
 /* Respect the phone's "reduce motion" setting: charts appear instantly there. */
 const ANIM = !(typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches);

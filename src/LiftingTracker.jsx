@@ -6,21 +6,8 @@ import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } 
 import { CSS } from "@dnd-kit/utilities";
 import { MacroTab, GroupMacrosCard } from "./Nutrition.jsx";
 
-/* ---------- theme (Robinhood-style: black + neon green) ---------- */
-export const T = {
-  green: "#00C805",       // the accent: buttons, gains, active controls
-  down: "#FF5000",        // declines / destructive
-  teal: "#00C805",        // (legacy alias)
-  tealBright: "#00C805",
-  tealDk: "#FFFFFF",      // headings: bold white
-  deep: "#000000",
-  mint: "rgba(0,200,5,.12)",
-  cream: "#111312", creamLine: "#26302B",
-  gold: "#00C805", bg: "#000000", card: "#0C0D0D", cardAlt: "#111213",
-  input: "#111213", ink: "#FFFFFF", sub: "#8C8F90", line: "#222527",
-  danger: "#FF5000", dangerBg: "#2A1105",
-};
-export const tipStyle = { background: T.card, border: `1px solid ${T.line}`, borderRadius: 8, color: T.ink };
+import { T, tipStyle } from "./theme.js";
+export { T, tipStyle }; // re-export so older imports keep working
 
 /* Charts load on demand so the gym-critical tabs (Log etc.) start fast. */
 const TrendChart = lazy(() => import("./charts.jsx").then(m => ({ default: m.TrendChart })));
