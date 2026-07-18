@@ -381,6 +381,8 @@ function GoalsModal({ data, setData, goals, onSave, onClose, firstTime }) {
     const carb = Math.round((cal - protein * 4 - fat * 9) / 4);
     setG({ kcal: cal, protein, carb, fat, calc });
   };
+  // no Calculate button needed — targets refresh the moment anything changes
+  useEffect(() => { if (mode === "calc" && canCalc) compute(); }, [calc, mode, heightIn, latestBW]);
 
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.7)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -428,8 +430,9 @@ function GoalsModal({ data, setData, goals, onSave, onClose, firstTime }) {
               <button key={id} onClick={() => setCalc(c => ({ ...c, plan: id }))} style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: `1px solid ${calc.plan === id ? T.green : T.line}`, fontWeight: 700, fontSize: 13, background: calc.plan === id ? T.mint : T.input, color: calc.plan === id ? T.green : T.sub }}>{l}</button>
             ))}
           </div>
-          <button onClick={compute} disabled={!canCalc} style={{ ...btnGreen, width: "100%", padding: "11px 0", marginBottom: 10, opacity: canCalc ? 1 : .5 }}>Calculate</button>
-          {!canCalc && <div style={{ fontSize: 12, color: T.down, marginBottom: 8 }}>Need height + a weigh-in (Body tab) + your age first.</div>}
+          {!canCalc && <div style={{ fontSize: 12, color: T.down, marginBottom: 8 }}>
+            To calculate automatically we need {!heightIn && "your height (Body tab)"}{!heightIn && (!latestBW || !num(calc.age)) && ", "}{!latestBW && "a weigh-in (Body tab)"}{!latestBW && !num(calc.age) && ", "}{!num(calc.age) && "your age (above)"}. Or switch to “Enter manually.”
+          </div>}
         </>)}
 
         {mode === "manual" && (
@@ -441,13 +444,18 @@ function GoalsModal({ data, setData, goals, onSave, onClose, firstTime }) {
         )}
 
         {/* plain-English daily targets */}
-        <div style={{ fontSize: 11.5, color: T.sub, marginBottom: 6, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".6px" }}>Your daily targets</div>
+        <div style={{ fontSize: 11.5, color: T.sub, marginBottom: 2, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".6px" }}>Your daily targets</div>
+        <div style={{ fontSize: 11.5, color: mode === "calc" && canCalc ? T.green : T.sub, marginBottom: 6 }}>
+          {mode === "calc"
+            ? (canCalc ? "✓ calculated live — changing anything above updates these instantly" : "showing your current numbers — fill in the missing info above to auto-calculate")
+            : "using the numbers you typed above"}
+        </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
           {[
-            ["Calories", `${(g.kcal || 0).toLocaleString()}`, "energy for the day", T.ink],
-            ["Protein", `${g.protein}g`, "builds muscle", T.green],
-            ["Carbs", `${g.carb}g`, "fuels workouts", CARB_BLUE],
-            ["Fat", `${g.fat}g`, "hormones & health", FAT_ORANGE],
+            ["Calories", g.kcal ? g.kcal.toLocaleString() : "—", "energy for the day", T.ink],
+            ["Protein", g.protein ? `${g.protein}g` : "—", "builds muscle", T.green],
+            ["Carbs", g.carb ? `${g.carb}g` : "—", "fuels workouts", CARB_BLUE],
+            ["Fat", g.fat ? `${g.fat}g` : "—", "hormones & health", FAT_ORANGE],
           ].map(([label, v, hint, color]) => (
             <div key={label} style={{ background: T.input, border: `1px solid ${T.line}`, borderRadius: 12, padding: "10px 12px" }}>
               <div style={{ fontSize: 11.5, color: T.sub, display: "flex", alignItems: "center", gap: 5 }}>
@@ -594,8 +602,11 @@ function FastingCard({ data, setData }) {
 }
 
 /* ---------- water ---------- */
+const WATER_UNITS = { oz: { label: "oz", dec: 0 }, L: { label: "L", dec: 2 }, gal: { label: "gal", dec: 2 } };
 function WaterCard({ data, setData, date }) {
-  const prefs = { cupOz: 8, goal: 8, ...(data.waterPrefs || {}) };
+  const prefs = { cupOz: 8, goal: 8, unit: "oz", ...(data.waterPrefs || {}) };
+  const u = WATER_UNITS[prefs.unit] || WATER_UNITS.oz;
+  const fmtAmt = (cups) => `${(cups * prefs.cupOz).toFixed(u.dec).replace(/\.00$/, "")} ${u.label}`;
   const entry = (data.water || []).find(w => w.date === date);
   const count = entry?.count || 0;
   const [editing, setEditing] = useState(false);
@@ -608,7 +619,7 @@ function WaterCard({ data, setData, date }) {
     <div className="card" style={{ marginBottom: 10 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 7 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <span style={{ fontSize: 14, fontWeight: 700, color: T.ink }}>💧 <span style={{ color: "#4FC3F7" }}>{count}</span><span style={{ fontSize: 12, color: T.sub, fontWeight: 500 }}> / {prefs.goal} cups · {count * prefs.cupOz} oz</span></span>
+          <span style={{ fontSize: 14, fontWeight: 700, color: T.ink }}>💧 <span style={{ color: "#4FC3F7" }}>{count}</span><span style={{ fontSize: 12, color: T.sub, fontWeight: 500 }}> / {prefs.goal} cups · {fmtAmt(count)}</span></span>
         </div>
         <button className="nt-press" onClick={() => setCount(Math.max(0, count - 1))} style={{ ...btnGhost, width: 34, height: 34, fontSize: 17, fontWeight: 700 }}>−</button>
         <button className="nt-press" onClick={() => setCount(count + 1)} style={{ background: "#4FC3F7", color: "#000", width: 34, height: 34, fontSize: 17, fontWeight: 700, border: "none", borderRadius: 10 }}>+</button>
@@ -618,11 +629,23 @@ function WaterCard({ data, setData, date }) {
         <div style={{ height: "100%", width: `${pct * 100}%`, background: "#4FC3F7", borderRadius: 4, transition: "width .3s ease" }} />
       </div>
       {editing && (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 10 }}>
-          <div><label style={{ fontSize: 12, color: T.sub }}>Cup size (oz)</label>
-            <input type="number" inputMode="numeric" value={prefs.cupOz} onChange={e => setData(d => ({ ...d, waterPrefs: { ...prefs, cupOz: num(e.target.value, 8) } }))} /></div>
-          <div><label style={{ fontSize: 12, color: T.sub }}>Daily goal (cups)</label>
-            <input type="number" inputMode="numeric" value={prefs.goal} onChange={e => setData(d => ({ ...d, waterPrefs: { ...prefs, goal: num(e.target.value, 8) } }))} /></div>
+        <div style={{ marginTop: 10 }}>
+          <label style={{ fontSize: 12, color: T.sub }}>Measure water in</label>
+          <div style={{ display: "flex", gap: 6, margin: "4px 0 8px" }}>
+            {[["oz", "Ounces"], ["L", "Liters"], ["gal", "Gallons"]].map(([id, l]) => (
+              <button key={id} className="nt-press" onClick={() => setData(d => ({ ...d, waterPrefs: { ...prefs, unit: id, cupOz: id === "oz" ? 8 : id === "L" ? 0.25 : 0.0625 } }))} style={{
+                flex: 1, padding: "8px 0", borderRadius: 8, fontWeight: 700, fontSize: 12.5,
+                border: `1px solid ${prefs.unit === id ? T.green : T.line}`,
+                background: prefs.unit === id ? T.mint : T.input, color: prefs.unit === id ? T.green : T.sub,
+              }}>{l}</button>
+            ))}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            <div><label style={{ fontSize: 12, color: T.sub }}>Cup size ({u.label})</label>
+              <input type="number" inputMode="decimal" value={prefs.cupOz} onChange={e => setData(d => ({ ...d, waterPrefs: { ...prefs, cupOz: num(e.target.value, 8) } }))} /></div>
+            <div><label style={{ fontSize: 12, color: T.sub }}>Daily goal (cups)</label>
+              <input type="number" inputMode="numeric" value={prefs.goal} onChange={e => setData(d => ({ ...d, waterPrefs: { ...prefs, goal: num(e.target.value, 8) } }))} /></div>
+          </div>
         </div>
       )}
     </div>

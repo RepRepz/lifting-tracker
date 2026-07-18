@@ -203,7 +203,11 @@ function computeStreak(log, cardio) {
 export default function LiftingTracker({ user }) {
   const [data, setData] = useState(defaultData);
   const [startTab, setStartTab] = useState(() => localStorage.getItem("lt-start-tab") || "dash");
-  const [tab, setTab] = useState(() => localStorage.getItem("lt-start-tab") || "dash");
+  const [tab, setTab] = useState(() => {
+    const pref = localStorage.getItem("lt-start-tab") || "dash";
+    return pref === "last" ? (localStorage.getItem("lt-last-tab") || "dash") : pref;
+  });
+  useEffect(() => { localStorage.setItem("lt-last-tab", tab); }, [tab]);
   const [showSettings, setShowSettings] = useState(false);
   const [units, setUnits] = useState(() => localStorage.getItem("lt-units") || "lb");
   const [hunit, setHunit] = useState(() => localStorage.getItem("lt-hunit") || "ftin"); // height: "ftin" | "cm"
@@ -609,9 +613,16 @@ function RoutinesPanel({ data, setData, onPick }) {
 function LogTab({ data, exMap, setData, routinesOn }) {
   const sorted = useMemo(()=>[...data.log].sort((a,b)=>a.date.localeCompare(b.date)||a.id-b.id),[data.log]);
   const last = sorted[sorted.length-1];
-  const [date, setDate] = useState(last?.date || todayStr());
-  const [exName, setExName] = useState(last?.exercise || "");
-  const [setNum, setSetNum] = useState(last ? (last.exercise===exName? last.set+1 : 1) : 1);
+  // date always defaults to today; exercise only carries over if the last set was logged today
+  const [date, setDate] = useState(todayStr());
+  const [exName, setExName] = useState(last?.date === todayStr() ? last.exercise : "");
+  const [setNum, setSetNum] = useState(1);
+  // set # follows what's actually in the log for this exercise+date, so it resets on a new
+  // day/exercise and heals itself when a set is deleted (no more phantom "set 4 of 3")
+  useEffect(() => {
+    const n = data.log.filter(e => e.date === date && e.exercise === exName).length;
+    setSetNum(n + 1);
+  }, [data.log, date, exName]);
   const [weight, setWeight] = useState("");
   const [reps, setReps] = useState("");
   const [effort, setEffort] = useState("");
@@ -2501,6 +2512,7 @@ function SettingsModal({ user, username, data, startTab, setStartTab, tabs, unit
           <div style={{ fontSize:12, color:T.sub, marginBottom:10 }}>Pick the tab you land on each time — set it to Log for the fastest gym start.</div>
           <select value={startTab} onChange={e=>setStartTab(e.target.value)}>
             {tabs.map(([id,label,icon])=><option key={id} value={id}>{icon} {label}</option>)}
+            <option value="last">📍 Wherever I left off</option>
           </select>
         </div>
 
