@@ -611,7 +611,7 @@ const NT_CSS = `
 .nt-press { transition: transform .12s ease, opacity .12s ease; }
 .nt-press:active { transform: scale(.94); }
 `;
-export function MacroTab({ data, setData }) {
+export function MacroTab({ data, setData, streaksOn = true }) {
   const [sel, setSel] = useState(todayStr());
   const [addMeal, setAddMeal] = useState(null);
   const [showGoals, setShowGoals] = useState(false);
@@ -667,7 +667,7 @@ export function MacroTab({ data, setData }) {
       <style>{NT_CSS}</style>
       {/* slim header: streak left, small date picker + finish-check top right */}
       <div className="nt-card" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8, padding: "2px 2px 6px" }}>
-        <div style={{ fontSize: 13, color: T.sub, fontWeight: 600 }}>{streak > 0 ? `🔥 ${streak}-day streak` : "🥗 Diary"}</div>
+        <div style={{ fontSize: 13, color: T.sub, fontWeight: 600 }}>{streaksOn && streak > 0 ? `🔥 ${streak}-day streak` : "🥗 Diary"}</div>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <button className="nt-press" onClick={() => shiftDay(-1)} style={{ ...btnGhost, color: T.ink, padding: "4px 11px", fontSize: 14 }}>‹</button>
           <button className="nt-press" onClick={() => setSel(todayStr())} style={{ background: "none", border: "none", fontSize: 13.5, fontWeight: 800, color: sel === todayStr() ? T.ink : T.green, minWidth: 52 }}>
@@ -767,7 +767,7 @@ export function MacroTab({ data, setData }) {
 }
 
 /* ---------- group card: everyone's day, expandable per person ---------- */
-export function GroupMacrosCard({ members, states, myId }) {
+export function GroupMacrosCard({ members, states, myId, streaksOn = true }) {
   const today = todayStr();
   const [open, setOpen] = useState({}); // user_id -> bool
   const rows = (members || []).map(m => {
@@ -788,7 +788,7 @@ export function GroupMacrosCard({ members, states, myId }) {
         <div key={r.id} style={{ borderTop: i ? `1px solid ${T.line}` : "none", padding: "8px 0" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div style={{ fontSize: 13.5, color: r.mine ? T.green : T.ink, fontWeight: r.mine ? 700 : 600 }}>
-              {r.name}{r.mine ? " (you)" : ""} {r.done && "✓"}{r.streak > 1 ? ` 🔥${r.streak}` : ""}
+              {r.name}{r.mine ? " (you)" : ""} {r.done && "✓"}{streaksOn && r.streak > 1 ? ` 🔥${r.streak}` : ""}
             </div>
             <div style={{ fontSize: 12.5, color: T.sub }}>
               <b style={{ color: r.t.kcal > r.goal.kcal ? T.down : T.ink }}>{Math.round(r.t.kcal)}</b>/{r.goal.kcal} cal · P{Math.round(r.t.protein)} {r.water > 0 && `· 💧${r.water}`}

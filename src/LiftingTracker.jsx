@@ -210,6 +210,8 @@ export default function LiftingTracker({ user }) {
   const [routinesOn, setRoutinesOn] = useState(() => localStorage.getItem("lt-routines-on") === "1"); // optional templates feature
   const [liftingOn, setLiftingOn] = useState(() => localStorage.getItem("lt-lifting-on") !== "0"); // default on
   const [nutritionOn, setNutritionOn] = useState(() => localStorage.getItem("lt-nutrition-on") !== "0"); // default on
+  const [streaksOn, setStreaksOn] = useState(() => localStorage.getItem("lt-streaks-on") !== "0"); // default on
+  useEffect(() => { localStorage.setItem("lt-streaks-on", streaksOn ? "1" : "0"); }, [streaksOn]);
   useEffect(() => { localStorage.setItem("lt-start-tab", startTab); }, [startTab]);
   useEffect(() => { localStorage.setItem("lt-units", units); }, [units]);
   useEffect(() => { localStorage.setItem("lt-hunit", hunit); }, [hunit]);
@@ -405,6 +407,7 @@ export default function LiftingTracker({ user }) {
           routinesOn={routinesOn} setRoutinesOn={setRoutinesOn}
           liftingOn={liftingOn} setLiftingOn={setLiftingOn}
           nutritionOn={nutritionOn} setNutritionOn={setNutritionOn}
+          streaksOn={streaksOn} setStreaksOn={setStreaksOn}
           onClose={()=>setShowSettings(false)} />
       )}
 
@@ -419,8 +422,8 @@ export default function LiftingTracker({ user }) {
           {tab==="dash" && liftingOn && <Dashboard data={data} exMap={exMap} setData={setData} />}
           {tab==="log" && liftingOn && <LogTab data={data} exMap={exMap} setData={setData} routinesOn={routinesOn} />}
           {tab==="records" && liftingOn && <RecordsTab data={data} exMap={exMap} />}
-          {tab==="friends" && <FriendsTab user={user} nutritionOn={nutritionOn} />}
-          {tab==="macros" && nutritionOn && <MacroTab data={data} setData={setData} />}
+          {tab==="friends" && <FriendsTab user={user} nutritionOn={nutritionOn} streaksOn={streaksOn} />}
+          {tab==="macros" && nutritionOn && <MacroTab data={data} setData={setData} streaksOn={streaksOn} />}
           {tab==="body" && liftingOn && <BodyTab data={data} setData={setData} hunit={hunit} />}
           {tab==="cardio" && liftingOn && <CardioTab data={data} setData={setData} latestBW={latestBW} />}
           {tab==="ex" && liftingOn && <ExercisesTab data={data} setData={setData} />}
@@ -2418,7 +2421,16 @@ function FeatureToggle({ label, desc, on, setOn }) {
   );
 }
 
-function SettingsModal({ user, username, data, startTab, setStartTab, tabs, units, setUnits, hunit, setHunit, routinesOn, setRoutinesOn, liftingOn, setLiftingOn, nutritionOn, setNutritionOn, onClose }) {
+function SectionHead({ icon, label }) {
+  return (
+    <div style={{ display:"flex", alignItems:"center", gap:8, margin:"20px 2px 10px" }}>
+      <span style={{ fontSize:12, fontWeight:800, color:T.green, textTransform:"uppercase", letterSpacing:"1.2px" }}>{icon} {label}</span>
+      <div style={{ flex:1, height:1, background:T.line }} />
+    </div>
+  );
+}
+
+function SettingsModal({ user, username, data, startTab, setStartTab, tabs, units, setUnits, hunit, setHunit, routinesOn, setRoutinesOn, liftingOn, setLiftingOn, nutritionOn, setNutritionOn, streaksOn, setStreaksOn, onClose }) {
   const memberSince = user.created_at ? new Date(user.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}) : "—";
   const totalSets = (data.log||[]).length;
 
@@ -2451,8 +2463,10 @@ function SettingsModal({ user, username, data, startTab, setStartTab, tabs, unit
           <button onClick={onClose} style={{ background:T.input, color:T.sub, width:34, height:34, borderRadius:99, fontSize:16, flexShrink:0 }}>✕</button>
         </div>
 
+        <SectionHead icon="📲" label="Take it with you" />
         <DownloadAppCard />
 
+        <SectionHead icon="🎛" label="Make it yours" />
         {/* units */}
         <div style={{ ...sCard }}>
           <div style={{ fontSize:14, fontWeight:700, color:T.ink, marginBottom:2 }}>Weight units</div>
@@ -2490,6 +2504,7 @@ function SettingsModal({ user, username, data, startTab, setStartTab, tabs, unit
           </select>
         </div>
 
+        <SectionHead icon="🧩" label="Pick your features" />
         {/* lifting features on/off */}
         <FeatureToggle label="Lifting tracker" on={liftingOn} setOn={setLiftingOn}
           desc="Shows Dash, Log, Records, Body, Cardio and Library. Off by default only for people who just want macro tracking. Turning it off just hides these tabs — your data stays." />
@@ -2502,6 +2517,11 @@ function SettingsModal({ user, username, data, startTab, setStartTab, tabs, unit
         <FeatureToggle label="Workout routines" on={routinesOn} setOn={setRoutinesOn}
           desc="Adds a Routines section to the Log tab: build templates like “Push Day,” then tap Start to log them exercise-by-exercise. Off by default. Turning it off just hides it — your saved routines stay." />
 
+        {/* streaks on/off */}
+        <FeatureToggle label="Streaks & fire" on={streaksOn} setOn={setStreaksOn}
+          desc="Shows 🔥 streak counters on the Macros tab and in your group. Turn off if streaks stress you out — nothing is lost, they keep counting quietly." />
+
+        <SectionHead icon="🔐" label="Keys to the castle" />
         <ChangePasswordCard />
         <SecurityCard username={username} />
 
@@ -2613,7 +2633,7 @@ function SecurityCard({ username }) {
 const BIG_LIFTS = ["Bench Press","Back Squat","Deadlift","Overhead Press"];
 const LIFT_SHORT = { "Bench Press":"Bench", "Back Squat":"Squat", "Deadlift":"Dead", "Overhead Press":"OHP" };
 
-function FriendsTab({ user, nutritionOn }) {
+function FriendsTab({ user, nutritionOn, streaksOn }) {
   const units = useUnit();
   const [groups, setGroups] = useState(null);        // null = loading
   const [active, setActive] = useState(null);        // selected group
@@ -2628,7 +2648,7 @@ function FriendsTab({ user, nutritionOn }) {
   const [reactions, setReactions] = useState({}); // event_key -> [{reactor_id, reactor_name}]
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [customEmoji, setCustomEmoji] = useState("");
-  const [feedN, setFeedN] = useState(5); // feed items shown before "View more"
+  const [feedN, setFeedN] = useState(null); // null = auto (3, or the whole latest day if bigger)
   const myName = user.user_metadata?.username || "you";
   const isOwner = active?.created_by === user.id;
 
@@ -2673,7 +2693,7 @@ function FriendsTab({ user, nutritionOn }) {
   useEffect(() => {
     if (!active) return;
     (async () => {
-      setMembers(null); setStates({}); setReactions({}); setEmojiOpen(false); setFeedN(5);
+      setMembers(null); setStates({}); setReactions({}); setEmojiOpen(false); setFeedN(null);
       try {
         const ms = await listMembers(active.id);
         setMembers(ms);
@@ -2755,6 +2775,14 @@ function FriendsTab({ user, nutritionOn }) {
     }
     return evs.sort((a,b)=>b.date.localeCompare(a.date)).slice(0, 25);
   }, [members, states, units]);
+
+  /* default feed length: 3 lines, unless the newest day alone has more — then show that whole day */
+  const feedAuto = useMemo(() => {
+    if (!feed.length) return 3;
+    const latestDayCount = feed.filter(e => e.date === feed[0].date).length;
+    return Math.max(3, latestDayCount);
+  }, [feed]);
+  const feedShown = feedN ?? feedAuto;
 
   const consistency = useMemo(() => {
     if (!members) return [];
@@ -2902,11 +2930,11 @@ function FriendsTab({ user, nutritionOn }) {
       {!members && <div className="card" style={{color:T.sub}}>Loading group…</div>}
 
       {members && (<>
-        {nutritionOn && <GroupMacrosCard members={members} states={states} myId={user.id} />}
+        {nutritionOn && <GroupMacrosCard members={members} states={states} myId={user.id} streaksOn={streaksOn} />}
         <div className="card">
           <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:8}}>📣 Recent activity</div>
           {!feed.length && <div style={{color:T.sub, fontSize:14}}>Nothing yet — someone go lift something.</div>}
-          {feed.slice(0, feedN).map(ev=>{
+          {feed.slice(0, feedShown).map(ev=>{
             const rs = reactions[ev.key] || [];
             const mine = rs.some(r=>r.reactor_id===user.id);
             return (
@@ -2933,12 +2961,20 @@ function FriendsTab({ user, nutritionOn }) {
               </div>
             );
           })}
-          {feed.length > feedN && (
-            <button onClick={()=>setFeedN(n=>n+15)} style={{
-              width:"100%", marginTop:10, padding:"9px 0", background:T.input, color:T.green,
-              fontWeight:700, fontSize:13.5, border:`1px solid ${T.line}`,
-            }}>View more ({feed.length - feedN} older)</button>
-          )}
+          <div style={{ display:"flex", gap:8 }}>
+            {feed.length > feedShown && (
+              <button onClick={()=>setFeedN(feedShown+15)} style={{
+                flex:1, marginTop:10, padding:"9px 0", background:T.input, color:T.green,
+                fontWeight:700, fontSize:13.5, border:`1px solid ${T.line}`,
+              }}>View more ({feed.length - feedShown} older)</button>
+            )}
+            {feedN !== null && feedShown > feedAuto && (
+              <button onClick={()=>setFeedN(null)} style={{
+                flex:1, marginTop:10, padding:"9px 0", background:T.input, color:T.sub,
+                fontWeight:700, fontSize:13.5, border:`1px solid ${T.line}`,
+              }}>View less</button>
+            )}
+          </div>
         </div>
 
         <div className="card">
