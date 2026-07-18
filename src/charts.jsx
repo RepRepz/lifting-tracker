@@ -21,12 +21,13 @@ function NiceTip({ active, payload, label, unit }) {
         <span style={{ width: 8, height: 8, borderRadius: 99, background: p.stroke || p.color, display: "inline-block" }} />
         {p.value}{unit ? <span style={{ fontSize: 11.5, color: T.sub, fontWeight: 500 }}>{unit}</span> : null}
       </div>
+      {p.payload?.sub && <div style={{ fontSize: 11.5, color: T.sub, marginTop: 3 }}>{p.payload.sub}</div>}
     </div>
   );
 }
 
 /* ---------- gradient area line (exercise trends) ---------- */
-export function TrendChart({ pts, unit = "" }) {
+export function TrendChart({ pts, unit = "", dots = false }) {
   const display = pts.length === 1 ? [pts[0], { ...pts[0], label: pts[0].label + " " }] : pts;
   const first = display[0].value, last = display[display.length - 1].value;
   const up = last >= first;
@@ -46,7 +47,8 @@ export function TrendChart({ pts, unit = "" }) {
         <Tooltip content={<NiceTip unit={unit} />} cursor={{ stroke: "#4A4E50", strokeDasharray: "3 3" }} />
         <ReferenceLine y={first} stroke="#4A4E50" strokeDasharray="2 6" />
         <Area type="monotone" dataKey="value" stroke={stroke} strokeWidth={2.5} fill={`url(#${gid})`}
-          dot={false} activeDot={{ r: 5, fill: stroke, stroke: "#000", strokeWidth: 2 }}
+          dot={dots ? { r: 4.5, fill: stroke, stroke: "#000", strokeWidth: 1.5 } : false}
+          activeDot={{ r: 5.5, fill: stroke, stroke: "#000", strokeWidth: 2 }}
           isAnimationActive={ANIM} animationDuration={700} animationEasing="ease-out" />
       </AreaChart>
     </ResponsiveContainer>

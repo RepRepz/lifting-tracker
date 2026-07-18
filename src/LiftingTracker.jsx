@@ -115,7 +115,7 @@ const fmtDate = (s) => { const d = new Date(s + "T00:00"); return `${d.getMonth(
 const monthKey = (s) => s.slice(0, 7);
 const monthLabel = (k) => { const [y,m]=k.split("-"); return new Date(+y, +m-1, 1).toLocaleString("en-US",{month:"short",year:"numeric"}); };
 const weekStart = (s) => { const d = new Date(s + "T00:00"); const day=(d.getDay()+6)%7; d.setDate(d.getDate()-day); return d.toISOString().slice(0,10); };
-const RANGE_DAYS = { "1M": 30, "1Y": 365, "5Y": 1826, All: Infinity };
+const RANGE_DAYS = { "1D": 1, "1M": 30, "1Y": 365, "5Y": 1826, All: Infinity };
 
 /* ---------- units (data is always stored in lb; we convert only for display/input) ---------- */
 const LB_PER_KG = 2.2046226218;
@@ -982,19 +982,27 @@ function Dashboard({ data, exMap, setData, own = true }) {
     const entries = data.log.filter(e => e.exercise===exName && !(e.effort==="Warm-up"));
     if (!entries.length) return [];
     const isBWex = ex.type==="Bodyweight";
-    let pts;
-    if (isBWex) {
-      // bodyweight moves: one point PER SET, running total of all reps ever done —
-      // the line only ever climbs (25 -> 50 -> 80 ...)
-      const bySet = entries.slice().sort((a,b)=>a.date.localeCompare(b.date) || (a.id||0)-(b.id||0));
+
+    /* 1D: the latest session set-by-set — one dot per set, running rep total
+       for bodyweight moves, per-set est. 1RM for weighted ones */
+    if (range === "1D") {
+      const lastDate = entries.reduce((a,b)=>a.date>b.date?a:b).date;
+      const day = entries.filter(e=>e.date===lastDate).sort((a,b)=>(a.id||0)-(b.id||0));
       let run = 0;
-      pts = bySet.map(e => { run += e.reps; return { date:e.date, label:fmtDate(e.date), value:run }; });
-    } else {
-      const byDate = {};
-      for (const e of entries) byDate[e.date] = Math.max(byDate[e.date]||0, dispW(e1rm(e.weight||0, e.reps), units));
-      pts = Object.entries(byDate).sort((a,b)=>a[0].localeCompare(b[0]))
-        .map(([d,v])=>({ date:d, label:fmtDate(d), value:Math.round(v*10)/10 }));
+      return day.map((e,i) => isBWex
+        ? (run += e.reps, { date:lastDate, label:`Set ${e.set ?? i+1}`, value:run, sub:`+${e.reps} reps (total ${run})` })
+        : { date:lastDate, label:`Set ${e.set ?? i+1}`, value:dispW(e1rm(e.weight||0, e.reps), units), sub:`${dispW(e.weight,units)} ${uLabel(units)} × ${e.reps}` });
     }
+
+    /* longer ranges: one point per day — TOTAL reps that day for bodyweight
+       moves, best est. 1RM that day for weighted ones */
+    const byDate = {};
+    for (const e of entries) {
+      if (isBWex) byDate[e.date] = (byDate[e.date]||0) + e.reps;
+      else byDate[e.date] = Math.max(byDate[e.date]||0, dispW(e1rm(e.weight||0, e.reps), units));
+    }
+    let pts = Object.entries(byDate).sort((a,b)=>a[0].localeCompare(b[0]))
+      .map(([d,v])=>({ date:d, label:fmtDate(d), value:Math.round(v*10)/10 }));
     const days = RANGE_DAYS[range];
     if (days!==Infinity && pts.length) {
       const latest = new Date(pts[pts.length-1].date+"T00:00");
@@ -1035,7 +1043,7 @@ function Dashboard({ data, exMap, setData, own = true }) {
 
   return (<>
     <div className="card" style={{display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 16px", gap:8, flexWrap:"wrap"}}>
-      <div style={{fontSize:13, color:T.sub}}>Best est. 1RM per session (all-time total reps for bodyweight moves)<br/>
+      <div style={{fontSize:13, color:T.sub}}>Best est. 1RM per session (daily total reps for bodyweight moves) · 1D = latest session set-by-set<br/>
         <span style={{fontSize:11.5}}>Charts follow your most recent lifts — 📌 pin one to keep it there.</span></div>
       <div style={{display:"flex", gap:2}}>
         {Object.keys(RANGE_DAYS).map(r=>(
@@ -1086,10 +1094,11 @@ function Dashboard({ data, exMap, setData, own = true }) {
           </div>
         )}
         <div style={{fontSize:11.5, color:T.sub, fontStyle:"italic", marginBottom:4}}>
-          {exMap[p]?.type==="Bodyweight" ? "Tracked by all-time total reps — every set pushes the line up" : `Tracked by est. 1RM (${uLabel(units)})`}
+          {range==="1D" ? "Latest session, set by set — tap a dot for the details"
+            : exMap[p]?.type==="Bodyweight" ? "Tracked by total reps per day" : `Tracked by est. 1RM (${uLabel(units)})`}
         </div>
         {pts.length
-          ? <Suspense fallback={<ChartFallback h={210} />}><TrendChart pts={pts} unit={exMap[p]?.type==="Bodyweight" ? " reps" : " "+uLabel(units)} /></Suspense>
+          ? <Suspense fallback={<ChartFallback h={210} />}><TrendChart pts={pts} dots={range==="1D"} unit={exMap[p]?.type==="Bodyweight" ? " reps" : " "+uLabel(units)} /></Suspense>
           : <div style={{color:T.sub, fontSize:14, padding:"28px 0", textAlign:"center"}}>No sessions logged for this lift yet.</div>}
       </div>
       );
