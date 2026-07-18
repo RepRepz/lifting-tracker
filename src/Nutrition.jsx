@@ -137,8 +137,17 @@ function AddFoodModal({ meal, date, onSave, onClose }) {
       streamRef.current = stream;
       setScanning(true);
       // wait a tick so the <video> is on screen before attaching the stream (iOS shows black otherwise)
-      await new Promise(r => setTimeout(r, 0));
-      if (videoRef.current) { videoRef.current.srcObject = stream; await videoRef.current.play().catch(() => {}); }
+      await new Promise(r => setTimeout(r, 50));
+      const v = videoRef.current;
+      if (v) {
+        // React doesn't write the muted attribute (react#10389); iOS needs all three set for real or it renders black
+        v.muted = true;
+        v.setAttribute("muted", "");
+        v.setAttribute("playsinline", "");
+        v.setAttribute("autoplay", "");
+        v.srcObject = stream;
+        await v.play().catch(() => {});
+      }
       const detector = new Detector({ formats: ["ean_13", "ean_8", "upc_a", "upc_e"] });
       const tick = async () => {
         if (!streamRef.current) return;
