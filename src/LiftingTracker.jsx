@@ -352,23 +352,19 @@ export default function LiftingTracker({ user }) {
         .app-root { padding-bottom:calc(68px + env(safe-area-inset-bottom)); }
 
         @media (min-width:900px) {
-          /* desktop: tabs move to the TOP bar, bottom bar disappears */
+          /* desktop: tabs move to the TOP bar, bottom bar disappears.
+             Content stays a clean CENTERED single column (no stretching). */
           .nav-top { display:grid; grid-template-columns:repeat(7, 1fr); max-width:640px; }
           .nav-bottom { display:none; }
-          .app-root { padding-bottom:32px; }
-          .app-main { max-width:1180px; padding:24px 28px; }
-          /* cards flow into a 2-column masonry so the width gets used */
-          .tabview {
-            column-count:2; column-gap:20px;
-          }
-          .tabview > .card, .tabview > * > .card {
-            break-inside:avoid; -webkit-column-break-inside:avoid;
-          }
-          .tabview > .card:first-child { margin-top:0; }
+          .app-root { padding-bottom:36px; }
+          .app-main { max-width:880px; padding:24px 20px; }
         }
-        @media (min-width:1400px) {
-          .tabview { column-count:3; }
-        }
+
+        /* drag-to-reorder */
+        .drag-handle { cursor:grab; touch-action:none; }
+        .dragging { opacity:.55; }
+        .drag-over-top { box-shadow:0 -3px 0 ${T.green}; }
+        .drag-over-bot { box-shadow:0 3px 0 ${T.green}; }
       `}</style>
 
       <div style={{ position:"sticky", top:0, zIndex:10, background:T.bg, borderBottom:`1px solid ${T.line}` }}>
@@ -874,6 +870,58 @@ function ConfirmX({ onConfirm, label }) {
   );
 }
 
+/* ---------- drag-to-reorder (pointer events: works on mouse AND touch) ---------- */
+function useReorder(storageKey, defaultIds) {
+  const [saved, setSaved] = useState(() => {
+    try { const s = JSON.parse(localStorage.getItem(storageKey)); if (Array.isArray(s)) return s; } catch {}
+    return null;
+  });
+  useEffect(() => { if (saved) localStorage.setItem(storageKey, JSON.stringify(saved)); }, [storageKey, saved]);
+  // reconcile: honor saved order, append any new widgets, drop any that vanished
+  const base = saved || defaultIds;
+  const ids = [...base.filter(id => defaultIds.includes(id)), ...defaultIds.filter(id => !base.includes(id))];
+  return [ids, setSaved];
+}
+
+/* renderItem(id, beginDrag) — attach beginDrag to a grip's onPointerDown. When
+   enabled is false it renders in order with no handles (read-only / not arranging). */
+function DragList({ ids, setIds, enabled, renderItem }) {
+  const els = useRef({});
+  const dragId = useRef(null);
+  const [active, setActive] = useState(null);
+
+  const reorderTo = (clientY) => {
+    const id = dragId.current; if (id == null) return;
+    const cur = ids.indexOf(id);
+    let target = cur;
+    for (let i = 0; i < ids.length; i++) {
+      const el = els.current[ids[i]]; if (!el) continue;
+      const r = el.getBoundingClientRect();
+      if (clientY < r.top + r.height / 2) { target = i; break; }
+      target = i;
+    }
+    if (target !== cur && target >= 0) {
+      const next = ids.slice();
+      next.splice(target, 0, next.splice(cur, 1)[0]);
+      setIds(next);
+    }
+  };
+  const begin = (e, id) => {
+    dragId.current = id; setActive(id);
+    try { els.current[id].setPointerCapture(e.pointerId); } catch {}
+  };
+  const move = (e) => { if (dragId.current != null) { e.preventDefault(); reorderTo(e.clientY); } };
+  const end = () => { dragId.current = null; setActive(null); };
+
+  return ids.map(id => (
+    <div key={id} ref={el => { if (el) els.current[id] = el; }}
+      onPointerMove={enabled ? move : undefined} onPointerUp={end} onPointerCancel={end}
+      className={active === id ? "dragging" : ""}>
+      {renderItem(id, enabled ? (e) => begin(e, id) : null)}
+    </div>
+  ));
+}
+
 /* ---------- export helpers ---------- */
 const csvEsc = (v) => { const s = v==null ? "" : String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
 const download = (name, content, type) => {
@@ -1088,6 +1136,7 @@ function YearRecap({ data }) {
 }
 
 /* ================= DASHBOARD ================= */
+const DASH_WIDGETS = ["charts","target","streak","calendar","muscle","recap"];
 function Dashboard({ data, exMap, setData, own = true }) {
   const units = useUnit();
   // range sticks forever (remembered on this device)
@@ -1096,6 +1145,9 @@ function Dashboard({ data, exMap, setData, own = true }) {
     return r && RANGE_DAYS[r] !== undefined ? r : "1M";
   });
   useEffect(() => { localStorage.setItem("lt-range", range); }, [range]);
+  /* draggable dashboard widget order (remembered on this device) */
+  const [arrange, setArrange] = useState(false);
+  const [wOrder, setWOrder] = useReorder("lt-dash-order", DASH_WIDGETS);
   /* Pinned charts live in account data (data.pins) so they sync across devices and
      friends' profiles show THEIR pins. Local state first, then persisted when it's your own. */
   const [pins, setPins] = useState(() => Array.isArray(data.pins) ? data.pins : []);
@@ -1210,7 +1262,9 @@ function Dashboard({ data, exMap, setData, own = true }) {
 
   const cardioMin = data.cardio.filter(e=>weekStart(e.date)===wkStart).reduce((s,e)=>s+(e.duration||0),0);
 
-  return (<>
+  /* each dashboard block is a widget you can drag to reorder */
+  const widgets = {};
+  widgets.charts = (<>
     <div className="card" style={{display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 16px", gap:8, flexWrap:"wrap"}}>
       <div className="h" style={{fontSize:16, color:T.tealDk}}>📈 Progress</div>
       <div style={{display:"flex", gap:2}}>
@@ -1271,7 +1325,9 @@ function Dashboard({ data, exMap, setData, own = true }) {
       </div>
       );
     })}
+  </>);
 
+  widgets.target = (
     <div className="card">
       <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:2}}>Weekly set target</div>
       <div style={{fontSize:12, color:T.sub, marginBottom:12}}>Aim for 12–16 hard sets per muscle — the brighter zone on each bar. Main muscles count a full set; secondary ones (like triceps on bench) count half.</div>
@@ -1290,19 +1346,25 @@ function Dashboard({ data, exMap, setData, own = true }) {
         );
       })}
     </div>
+  );
 
+  widgets.streak = (
     <div className="card" style={{display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, textAlign:"center"}}>
       <div><div style={kpiN}>{streak.cur}</div><div style={kpiL}>Current streak (weeks)</div></div>
       <div><div style={kpiN}>{streak.best}</div><div style={kpiL}>Best streak (weeks)</div></div>
       <div><div style={kpiN}>{cardioMin}</div><div style={kpiL}>Cardio this week (min)</div></div>
     </div>
+  );
 
+  widgets.calendar = (
     <div className="card">
       <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:2}}>Workout calendar</div>
       <div style={{fontSize:12, color:T.sub, marginBottom:10}}>Greener means more sets. Tap a day (hover works on a computer) to see what you did.</div>
       <WorkoutHeatmap log={data.log} cardio={data.cardio} exMap={exMap} />
     </div>
+  );
 
+  widgets.muscle = (
     <div className="card">
       <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:4}}>Last 30 days — work by muscle</div>
       <div style={{fontSize:12, color:T.sub, marginBottom:4}}>Main muscles get full credit, secondaries half — a bench set counts 1 for chest, ½ for triceps.</div>
@@ -1310,8 +1372,32 @@ function Dashboard({ data, exMap, setData, own = true }) {
         <Suspense fallback={<ChartFallback h={230} />}><MusclePie data={pieData} /></Suspense>
       ) : <div style={{color:T.sub, fontSize:14}}>Log some sets and your split shows up here.</div>}
     </div>
+  );
 
-    <YearRecap data={data} />
+  widgets.recap = <YearRecap data={data} />;
+
+  return (<>
+    {own && (
+      <div style={{display:"flex", justifyContent:"flex-end", marginBottom:10}}>
+        <button onClick={()=>setArrange(a=>!a)} style={{
+          background: arrange ? T.green : T.input, color: arrange ? "#000" : T.sub,
+          border:`1px solid ${arrange ? T.green : T.line}`, padding:"6px 14px", fontSize:13, fontWeight:700,
+        }}>{arrange ? "✓ Done arranging" : "⇅ Arrange"}</button>
+      </div>
+    )}
+    <DragList ids={own ? wOrder : DASH_WIDGETS} setIds={setWOrder} enabled={arrange && own}
+      renderItem={(id, beginDrag) => (
+        <div style={{ position:"relative", outline: arrange ? `2px dashed ${T.line}` : "none", outlineOffset:-3, borderRadius:16 }}>
+          {beginDrag && (
+            <div className="drag-handle" onPointerDown={beginDrag}
+              style={{ position:"absolute", top:6, left:"50%", transform:"translateX(-50%)", zIndex:6,
+                background:T.green, color:"#000", borderRadius:99, padding:"3px 16px", fontSize:12, fontWeight:800, boxShadow:"0 2px 8px rgba(0,0,0,.4)" }}>
+              ⠿ drag
+            </div>
+          )}
+          {widgets[id]}
+        </div>
+      )} />
   </>);
 }
 const kpiN = { fontWeight:800, fontSize:28, color:T.ink };
