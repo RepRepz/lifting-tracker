@@ -49,9 +49,15 @@ export async function resetPasswordWithAnswer(uname, answer, new_password) {
 
 /** Groups the signed-in user belongs to. */
 export async function listMyGroups() {
-  const { data, error } = await supabase.from("groups").select("id, name, invite_code").order("created_at");
+  const { data, error } = await supabase.from("groups").select("id, name, invite_code, emoji").order("created_at");
   if (error) throw error;
   return data ?? [];
+}
+
+/** Any member can change the group's emoji (only the emoji column is writable). */
+export async function setGroupEmoji(groupId, emoji) {
+  const { error } = await supabase.from("groups").update({ emoji }).eq("id", groupId);
+  if (error) throw error;
 }
 
 /** Members of one group (only visible if you're in it). */

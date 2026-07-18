@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, lazy, Suspense, Fragment, createContext, useContext } from "react";
-import { supabase, loadUserState, saveUserState, listMyGroups, listMembers, createGroup, joinGroup, leaveGroup, listReactions, addReaction, removeReaction, setSecurityQuestion, getSecurityQuestion, lastActiveFor } from "./lib/storage.js";
+import { supabase, loadUserState, saveUserState, listMyGroups, listMembers, createGroup, joinGroup, leaveGroup, listReactions, addReaction, removeReaction, setSecurityQuestion, getSecurityQuestion, lastActiveFor, setGroupEmoji } from "./lib/storage.js";
 import { SECURITY_QUESTIONS } from "./AuthScreen.jsx";
 
 /* ---------- theme (Robinhood-style: black + neon green) ---------- */
@@ -2131,7 +2131,17 @@ function FriendsTab({ user }) {
   const [code, setCode] = useState("");
   const [copied, setCopied] = useState(false);
   const [reactions, setReactions] = useState({}); // event_key -> [{reactor_id, reactor_name}]
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const [customEmoji, setCustomEmoji] = useState("");
   const myName = user.user_metadata?.username || "you";
+
+  const saveEmoji = async (e) => {
+    if (!e || !active) return;
+    setActive(a => ({ ...a, emoji: e })); // instant locally; cloud follows
+    setEmojiOpen(false);
+    try { await setGroupEmoji(active.id, e); refreshGroups(); }
+    catch (err2) { setErr(String(err2?.message || err2)); }
+  };
 
   const refreshGroups = async () => {
     try { setGroups(await listMyGroups()); setErr(""); }
@@ -2166,7 +2176,7 @@ function FriendsTab({ user }) {
   useEffect(() => {
     if (!active) return;
     (async () => {
-      setMembers(null); setStates({}); setReactions({});
+      setMembers(null); setStates({}); setReactions({}); setEmojiOpen(false);
       try {
         const ms = await listMembers(active.id);
         setMembers(ms);
@@ -2360,9 +2370,35 @@ function FriendsTab({ user }) {
       <button onClick={()=>{setActive(null); setMembers(null);}} style={{ background:"none", color:T.green, fontWeight:700, fontSize:14, marginBottom:10 }}>← All groups</button>
       <div className="card">
         <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", gap:8, flexWrap:"wrap"}}>
-          <div className="h" style={{fontSize:19, color:T.tealDk}}>👥 {active.name}</div>
+          <div className="h" style={{fontSize:19, color:T.tealDk, display:"flex", alignItems:"center", gap:6}}>
+            <button onClick={()=>setEmojiOpen(o=>!o)} title="Change group emoji" style={{
+              background:T.input, border:`1px solid ${emojiOpen ? T.green : T.line}`, borderRadius:10,
+              fontSize:20, padding:"4px 9px", lineHeight:1.2,
+            }}>{active.emoji || "👥"}</button>
+            {active.name}
+          </div>
           <ConfirmX label="Leave group" onConfirm={async ()=>{ try { await leaveGroup(active.id, user.id); setActive(null); refreshGroups(); } catch(e){ setErr(String(e?.message||e)); } }} />
         </div>
+        {emojiOpen && (
+          <div style={{marginTop:10, background:T.input, border:`1px solid ${T.line}`, borderRadius:10, padding:"10px 12px"}}>
+            <div style={{fontSize:12, color:T.sub, marginBottom:8}}>Pick the group's emoji — everyone in the group sees it, and anyone can change it.</div>
+            <div style={{display:"flex", flexWrap:"wrap", gap:6}}>
+              {["👥","💪","🏋️","🔥","⚡","🏆","🐐","😤","🦾","❄️","🥩","🚀","🎯","🃏"].map(e=>(
+                <button key={e} onClick={()=>saveEmoji(e)} style={{
+                  fontSize:20, padding:"5px 9px", borderRadius:10, lineHeight:1.2,
+                  background: (active.emoji||"👥")===e ? "rgba(0,200,5,.16)" : T.card,
+                  border:`1px solid ${(active.emoji||"👥")===e ? T.green : T.line}`,
+                }}>{e}</button>
+              ))}
+              <input value={customEmoji} onChange={e=>setCustomEmoji(e.target.value)} placeholder="or type any…"
+                maxLength={4} style={{width:110, fontSize:15}} />
+              {customEmoji.trim() && (
+                <button onClick={()=>{ saveEmoji(customEmoji.trim()); setCustomEmoji(""); }}
+                  style={{background:T.green, color:"#000", padding:"6px 14px", fontWeight:700, fontSize:13.5}}>Set</button>
+              )}
+            </div>
+          </div>
+        )}
         <div style={{marginTop:8, fontSize:13.5, color:T.sub}}>
           Invite code: <b style={{color:T.green, letterSpacing:"1px"}}>{active.invite_code}</b>
           <button onClick={copyCode} style={{background:"none", color:T.green, fontSize:12.5, marginLeft:8, textDecoration:"underline"}}>{copied ? "Copied!" : "Copy"}</button>
@@ -2479,7 +2515,7 @@ function FriendsTab({ user }) {
           color:T.ink, fontSize:15, fontWeight:600, marginBottom:8, textAlign:"left",
         }}>
           <span style={{flex:1, minWidth:0}}>
-            <span style={{display:"block"}}>👥 {g.name}{mem && <span style={{color:T.sub, fontWeight:500, fontSize:12.5}}> · {mem.length} member{mem.length===1?"":"s"}</span>}</span>
+            <span style={{display:"block"}}>{g.emoji || "👥"} {g.name}{mem && <span style={{color:T.sub, fontWeight:500, fontSize:12.5}}> · {mem.length} member{mem.length===1?"":"s"}</span>}</span>
             {mem && mem.length > 0 && (
               <span style={{display:"block", fontSize:12, color:T.sub, fontWeight:500, marginTop:3,
                 whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis"}}>
