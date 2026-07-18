@@ -109,7 +109,8 @@ const INTENSITY_FEEL = {
 };
 
 /* ---------- helpers ---------- */
-const todayStr = () => new Date().toISOString().slice(0, 10);
+/* LOCAL date, not UTC — toISOString() would roll to tomorrow in the evening (US time) */
+const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
 const e1rm = (w, r) => w * (1 + r / 30);
 const fmtDate = (s) => { const d = new Date(s + "T00:00"); return `${d.getMonth()+1}/${d.getDate()}/${String(d.getFullYear()).slice(2)}`; };
 const monthKey = (s) => s.slice(0, 7);
@@ -516,7 +517,12 @@ function LogTab({ data, exMap, setData }) {
     return data.exercises.filter(x => x.name.toLowerCase().includes(q)).slice(0, 8);
   }, [exQ, data.exercises]);
 
-  const recent = [...sorted].reverse().slice(0, 30);
+  const [histQ, setHistQ] = useState("");
+  const recent = useMemo(() => {
+    const q = histQ.trim().toLowerCase();
+    const src = q ? sorted.filter(e => e.exercise.toLowerCase().includes(q)) : sorted;
+    return [...src].reverse().slice(0, 30);
+  }, [sorted, histQ]);
 
   const [edit, setEdit] = useState(null); // copy of the set being edited
   const editIsBW = edit ? exMap[edit.exercise]?.type === "Bodyweight" : false;
@@ -702,6 +708,8 @@ function LogTab({ data, exMap, setData }) {
 
     <div className="card">
       <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:8}}>Recent sets</div>
+      <input value={histQ} onChange={e=>setHistQ(e.target.value)} placeholder="🔍 Filter by exercise…"
+        autoCapitalize="none" autoCorrect="off" spellCheck={false} style={{marginBottom:10}} />
       <div style={{overflowX:"auto"}}>
         <table><thead><tr><th>Date</th><th>Exercise</th><th>Set</th><th>Weight ({uLabel(units)})</th><th>Reps</th><th>Effort</th><th></th></tr></thead>
           <tbody>{recent.map(e => (<Fragment key={e.id}>
@@ -1289,10 +1297,13 @@ function RecordsTab({ data, exMap }) {
   const logged = rows.filter(r=>!r.empty);
 
   const [filter, setFilter] = useState("All");
+  const [recQ, setRecQ] = useState("");
   const [openEx, setOpenEx] = useState(null);
   const hits = (r, m) => musclesOf(r).includes(m) || secondariesOf(r).includes(m);
   const present = MUSCLES.filter(m => logged.some(r => hits(r, m)));
+  const q = recQ.trim().toLowerCase();
   const shown = (filter==="All" ? logged : logged.filter(r => hits(r, filter)))
+    .filter(r => !q || r.name.toLowerCase().includes(q))
     .slice().sort((a,b)=>b.lastDone.localeCompare(a.lastDone) || a.name.localeCompare(b.name));
 
   const statBox = { background:T.input, border:`1px solid ${T.line}`, borderRadius:10, padding:"8px 10px" };
@@ -1303,6 +1314,8 @@ function RecordsTab({ data, exMap }) {
     <div className="card">
       <div className="h" style={{fontSize:19, color:T.tealDk, marginBottom:2}}>🏆 Personal records</div>
       <div style={{fontSize:12.5, color:T.sub, marginBottom:12}}>Best-ever numbers per lift, in {uLabel(units)} — freshest first. Tap a lift for the full breakdown.</div>
+      <input value={recQ} onChange={e=>setRecQ(e.target.value)} placeholder="🔍 Search lifts…"
+        autoCapitalize="none" autoCorrect="off" spellCheck={false} style={{marginBottom:8}} />
       {/* muscle filter chips (scroll sideways if they overflow) */}
       <div style={{display:"flex", gap:6, overflowX:"auto", paddingBottom:2, WebkitOverflowScrolling:"touch"}}>
         {["All", ...present].map(m=>(
@@ -1354,7 +1367,7 @@ function RecordsTab({ data, exMap }) {
       );
     })}
     {logged.length > 0 && !shown.length && (
-      <div className="card" style={{color:T.sub, fontSize:14, textAlign:"center"}}>Nothing logged for {filter} yet.</div>
+      <div className="card" style={{color:T.sub, fontSize:14, textAlign:"center"}}>{recQ ? `Nothing matches "${recQ.trim()}".` : `Nothing logged for ${filter} yet.`}</div>
     )}
   </>);
 }
@@ -1593,7 +1606,12 @@ function CardioTab({ data, setData, latestBW }) {
     setDuration(""); setMachineCal("");
   };
 
-  const rows = [...data.cardio].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,40);
+  const [cardQ, setCardQ] = useState("");
+  const rows = useMemo(() => {
+    const q = cardQ.trim().toLowerCase();
+    return [...data.cardio].filter(e => !q || e.activity.toLowerCase().includes(q))
+      .sort((a,b)=>b.date.localeCompare(a.date)).slice(0,40);
+  }, [data.cardio, cardQ]);
 
   /* minutes per week, last 8 weeks (current week last) */
   const weeks = useMemo(() => {
@@ -1727,6 +1745,8 @@ function CardioTab({ data, setData, latestBW }) {
 
     <div className="card">
       <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:8}}>Recent cardio</div>
+      <input value={cardQ} onChange={e=>setCardQ(e.target.value)} placeholder="🔍 Filter by activity…"
+        autoCapitalize="none" autoCorrect="off" spellCheck={false} style={{marginBottom:10}} />
       <table><thead><tr><th>Date</th><th>Activity</th><th>Min</th><th>Intensity</th><th>Cal</th><th></th></tr></thead>
         <tbody>{rows.map(e=>(<Fragment key={e.id}>
           <tr><td>{fmtDate(e.date)}</td><td>{e.activity}</td><td>{e.duration}</td><td>{e.intensity||"machine"}</td><td>{e.calories??"—"}</td>
@@ -1803,6 +1823,13 @@ function MuscleChips({ prim, sec, onChange }) {
 function ExercisesTab({ data, setData }) {
   const [name, setName] = useState(""); const [muscles, setMuscles] = useState(["Chest"]);
   const [muscles2, setMuscles2] = useState([]); const [equip, setEquip] = useState("Barbell (plates)");
+  const [libQ, setLibQ] = useState(""); const [libM, setLibM] = useState("All");
+  const shownEx = useMemo(() => {
+    const q = libQ.trim().toLowerCase();
+    return data.exercises.filter(x =>
+      (!q || x.name.toLowerCase().includes(q)) &&
+      (libM === "All" || musclesOf(x).includes(libM) || secondariesOf(x).includes(libM)));
+  }, [data.exercises, libQ, libM]);
 
   const [edit, setEdit] = useState(null); // { orig, name, muscles, muscles2, equip }
   const editValid = edit && edit.name.trim() && edit.muscles.length > 0 &&
@@ -1850,9 +1877,20 @@ function ExercisesTab({ data, setData }) {
       <button onClick={()=>{ if(!name.trim()||!muscles.length)return; setData(d=>({...d, exercises:[...d.exercises.filter(x=>x.name!==name.trim()), {name:name.trim(), muscle:muscles[0], muscles, muscles2, ...fromEquip(equip)}]})); setName(""); setMuscles(["Chest"]); setMuscles2([]); }}
         disabled={!name.trim()||!muscles.length}
         style={{background:T.green, color:"#000", padding:"10px 20px", fontWeight:700, marginTop:10, marginBottom:14, opacity:(!name.trim()||!muscles.length)?0.45:1}}>Add exercise</button>
+      <input value={libQ} onChange={e=>setLibQ(e.target.value)} placeholder="🔍 Search your library…"
+        autoCapitalize="none" autoCorrect="off" spellCheck={false} style={{marginBottom:8}} />
+      <div style={{display:"flex", gap:6, overflowX:"auto", paddingBottom:6, WebkitOverflowScrolling:"touch"}}>
+        {["All", ...MUSCLES].map(m=>(
+          <button key={m} onClick={()=>setLibM(m)} style={{
+            flexShrink:0, padding:"5px 12px", borderRadius:99, fontSize:12.5, fontWeight:700,
+            background: libM===m ? T.green : T.input, color: libM===m ? "#000" : T.sub,
+            border:`1px solid ${libM===m ? T.green : T.line}`,
+          }}>{m}</button>
+        ))}
+      </div>
       <div style={{overflowX:"auto"}}>
         <table><thead><tr><th>Exercise</th><th>Muscle</th><th>Equipment</th><th></th></tr></thead>
-          <tbody>{data.exercises.map(x=>(<Fragment key={x.name}>
+          <tbody>{shownEx.map(x=>(<Fragment key={x.name}>
             <tr><td>{x.name}</td><td>{muscleLabel(x)}</td><td>{equipOf(x)}</td>
               <td style={{whiteSpace:"nowrap"}}>
                 <PencilBtn onClick={()=>setEdit({ orig:x.name, name:x.name, muscles:musclesOf(x), muscles2:secondariesOf(x), equip:equipOf(x) })} />
