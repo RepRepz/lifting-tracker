@@ -1438,33 +1438,51 @@ function GoalCard({ data, setData, current, rows }) {
     }
   }
 
+  const showPct = reached ? 100 : pct;
   return (
     <div className="card" style={reached ? {borderColor:T.green} : undefined}>
-      <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6}}>
+      <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14}}>
         <div className="h" style={{fontSize:17, color:T.tealDk}}>🎯 Goal weight</div>
-        <div style={{display:"flex", gap:6}}>
-          <button onClick={()=>{setEditing(true); setInp(String(dispW(goal, units)));}} style={{background:T.input, color:T.sub, padding:"5px 12px", fontSize:12.5, fontWeight:600}}>Edit</button>
-          <ConfirmX label="Clear" onConfirm={clear} />
+        <div style={{display:"flex", gap:4, alignItems:"center"}}>
+          <PencilBtn onClick={()=>{setEditing(true); setInp(String(dispW(goal, units)));}} />
+          <ConfirmX onConfirm={clear} />
         </div>
       </div>
-      {reached ? (
-        <div style={{fontSize:15, fontWeight:800, color:T.green, marginBottom:8}}>🎉 Goal reached — {showW(goal, units)}! Set a new one whenever you're ready.</div>
-      ) : (
-        <div style={{fontSize:13.5, marginBottom:8}}>
-          <b style={{color:T.green, fontSize:16}}>{Math.abs(dispW(remain, units))} {uLabel(units)}</b>
-          <span style={{color:T.sub}}> {remain > 0 ? "to gain" : "to lose"} · {Math.round(pct)}% there</span>
-          {eta && <span style={{color:T.sub}}> · on pace for <b style={{color:T.ink}}>{eta}</b></span>}
-          {wrongWay && <span style={{color:T.down, fontWeight:600}}> · trending the wrong way — you've got this 💪</span>}
+
+      {/* hero */}
+      <div style={{textAlign:"center", marginBottom:14}}>
+        {reached ? (<>
+          <div style={{fontSize:26, fontWeight:800, color:T.green, lineHeight:1.15}}>🎉 Goal reached</div>
+          <div style={{fontSize:12.5, color:T.sub, marginTop:3}}>You hit {showW(goal, units)} — set the next one when you're ready.</div>
+        </>) : (<>
+          <div style={{fontSize:32, fontWeight:800, color:T.green, lineHeight:1.1}}>
+            {Math.abs(dispW(remain, units))}<span style={{fontSize:15, color:T.sub, fontWeight:600}}> {uLabel(units)} {remain > 0 ? "to gain" : "to lose"}</span>
+          </div>
+          <div style={{fontSize:12.5, color:T.sub, marginTop:3}}>{Math.round(pct)}% of the way there</div>
+        </>)}
+      </div>
+
+      {/* progress bar with position marker */}
+      <div style={{position:"relative", height:12, background:T.input, borderRadius:99, marginBottom:8}}>
+        <div style={{position:"absolute", inset:0, width:`${showPct}%`, background:`linear-gradient(90deg, rgba(0,200,5,.55), ${T.green})`, borderRadius:99, transition:"width .6s ease"}} />
+        <div style={{position:"absolute", top:"50%", left:`${showPct}%`, transform:"translate(-50%,-50%)",
+          width:18, height:18, borderRadius:99, background:"#FFF", border:`3px solid ${T.green}`,
+          boxShadow:"0 1px 6px rgba(0,0,0,.5)", transition:"left .6s ease"}} />
+      </div>
+
+      {/* start / now / goal */}
+      <div style={{display:"grid", gridTemplateColumns:"1fr 1fr 1fr", textAlign:"center", marginTop:12}}>
+        <div><div style={{fontSize:16, fontWeight:700, color:T.sub}}>{dispW(start, units)}</div><div style={kpiL}>Start</div></div>
+        <div><div style={{fontSize:20, fontWeight:800, color:T.ink}}>{dispW(current.weight, units)}</div><div style={kpiL}>Now</div></div>
+        <div><div style={{fontSize:16, fontWeight:700, color:T.green}}>{dispW(goal, units)}</div><div style={kpiL}>Goal</div></div>
+      </div>
+
+      {(eta || wrongWay) && !reached && (
+        <div style={{textAlign:"center", marginTop:10}}>
+          {eta && <span className="chip" style={{background:T.mint, color:T.green}}>📅 On pace for {eta}</span>}
+          {wrongWay && <span className="chip" style={{background:"#2A1105", color:T.down}}>Trending the wrong way — you've got this 💪</span>}
         </div>
       )}
-      <div style={{height:10, background:T.input, borderRadius:99, overflow:"hidden"}}>
-        <div style={{height:"100%", width:`${reached?100:pct}%`, background:T.green, borderRadius:99, transition:"width .6s ease"}} />
-      </div>
-      <div style={{display:"flex", justifyContent:"space-between", fontSize:11.5, color:T.sub, marginTop:5}}>
-        <span>started {dispW(start, units)}</span>
-        <span>now <b style={{color:T.ink}}>{dispW(current.weight, units)}</b></span>
-        <span>goal <b style={{color:T.green}}>{dispW(goal, units)}</b></span>
-      </div>
     </div>
   );
 }
