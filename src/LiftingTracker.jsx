@@ -803,18 +803,23 @@ const download = (name, content, type) => {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
 
-/* GitHub-style workout calendar: one cell per day, greener the more sets. */
+/* Workout calendar: last 90 days, built for thumbs — the 13-week grid fits the
+   screen with no sideways scrolling, and TAPPING a day shows its details below. */
 function WorkoutHeatmap({ log, cardio, exMap = {} }) {
-  const { cols, monthMarks } = useMemo(() => {
-    const count = {}, hit = {};
+  const [sel, setSel] = useState(todayStr());
+  const { cols, monthMarks, info } = useMemo(() => {
+    const info = {}; // date -> { n (sets), ms (muscles), ex {name:sets}, cd [cardio lines] }
     for (const e of (log||[])) if (e.effort !== "Warm-up") {
-      count[e.date] = (count[e.date]||0) + 1;
-      const h = (hit[e.date] ||= new Set());
-      for (const m of musclesOf(exMap[e.exercise])) h.add(m);
-      for (const m of secondariesOf(exMap[e.exercise])) h.add(m);
+      const d = (info[e.date] ||= { n:0, ms:new Set(), ex:{}, cd:[] });
+      d.n++; d.ex[e.exercise] = (d.ex[e.exercise]||0) + 1;
+      for (const m of musclesOf(exMap[e.exercise])) d.ms.add(m);
+      for (const m of secondariesOf(exMap[e.exercise])) d.ms.add(m);
     }
-    for (const c of (cardio||[])) { count[c.date] = (count[c.date]||0) + 1; (hit[c.date] ||= new Set()).add("Cardio"); }
-    const WEEKS = 26;
+    for (const c of (cardio||[])) {
+      const d = (info[c.date] ||= { n:0, ms:new Set(), ex:{}, cd:[] });
+      d.cd.push(`${c.activity} · ${c.duration} min`);
+    }
+    const WEEKS = 13; // ~90 days
     const end = new Date(todayStr() + "T00:00");
     const start = new Date(weekStart(todayStr()) + "T00:00");
     start.setDate(start.getDate() - 7*(WEEKS-1));
@@ -824,14 +829,14 @@ function WorkoutHeatmap({ log, cardio, exMap = {} }) {
       const days = [];
       for (let i=0; i<7; i++) {
         const key = d.toISOString().slice(0,10);
-        const order = [...MUSCLES, "Cardio"];
-        days.push({ key, n: count[key]||0, m: hit[key] ? [...hit[key]].sort((a,b)=>order.indexOf(a)-order.indexOf(b)) : [], future: d > end });
+        const di = info[key];
+        days.push({ key, n: (di?.n || 0) + (di?.cd.length || 0), future: d > end });
         if (d.getMonth() !== lastMonth && d.getDate() <= 7) { monthMarks.push({ col:w, label:d.toLocaleString("en-US",{month:"short"}) }); lastMonth = d.getMonth(); }
         d.setDate(d.getDate()+1);
       }
       cols.push(days);
     }
-    return { cols, monthMarks };
+    return { cols, monthMarks, info };
   }, [log, cardio, exMap]);
 
   const shade = (n, future) => {
@@ -842,33 +847,58 @@ function WorkoutHeatmap({ log, cardio, exMap = {} }) {
     if (n <= 6) return "rgba(0,200,5,.80)";
     return T.green;
   };
-  const CELL = 13, GAP = 3;
+
+  const order = [...MUSCLES, "Cardio"];
+  const day = info[sel];
+  const muscles = day ? [...day.ms].sort((a,b)=>order.indexOf(a)-order.indexOf(b)) : [];
+
   return (
-    <div style={{ overflowX:"auto", paddingBottom:4 }}>
-      <div style={{ display:"inline-block", minWidth:"min-content" }}>
-        <div style={{ position:"relative", height:14, marginLeft:0 }}>
-          {monthMarks.map((m,i)=>(
-            <span key={i} style={{ position:"absolute", left:m.col*(CELL+GAP), fontSize:10, color:T.sub }}>{m.label}</span>
-          ))}
+    <div>
+      {/* grid stretches to the card width — cells grow into easy tap targets */}
+      <div style={{ position:"relative", height:14 }}>
+        {monthMarks.map((m,i)=>(
+          <span key={i} style={{ position:"absolute", left:`${m.col/13*100}%`, fontSize:10, color:T.sub }}>{m.label}</span>
+        ))}
+      </div>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(13, 1fr)", gap:4 }}>
+        {cols.map((week,wi)=>(
+          <div key={wi} style={{ display:"flex", flexDirection:"column", gap:4 }}>
+            {week.map(d=>(
+              <div key={d.key}
+                onClick={()=>{ if (!d.future) setSel(d.key); }}
+                style={{ aspectRatio:"1", borderRadius:4, background:shade(d.n, d.future),
+                  cursor: d.future ? "default" : "pointer",
+                  outline: sel===d.key ? `2px solid ${T.ink}` : d.key===todayStr() ? `1.5px solid ${T.sub}` : "none",
+                  outlineOffset:-1 }} />
+            ))}
+          </div>
+        ))}
+      </div>
+
+      {/* tapped-day details */}
+      <div style={{ marginTop:12, background:T.input, border:`1px solid ${T.line}`, borderRadius:10, padding:"10px 13px" }} key={sel}>
+        <div style={{ fontSize:13.5, fontWeight:700, marginBottom: day ? 4 : 0 }}>
+          {fmtDate(sel)}{sel===todayStr() ? " (today)" : ""}
+          {!day && <span style={{ color:T.sub, fontWeight:500 }}> — rest day 😴</span>}
         </div>
-        <div style={{ display:"flex", gap:GAP }}>
-          {cols.map((week,wi)=>(
-            <div key={wi} style={{ display:"flex", flexDirection:"column", gap:GAP }}>
-              {week.map(day=>(
-                <div key={day.key} title={day.future ? "" : `${fmtDate(day.key)} — ${day.n} set${day.n===1?"":"s"}${day.m.length ? ` — ${day.m.join(", ")}` : ""}`}
-                  style={{ width:CELL, height:CELL, borderRadius:3, background:shade(day.n, day.future),
-                    border: day.key===todayStr() ? `1.5px solid ${T.ink}` : "none" }} />
-              ))}
-            </div>
-          ))}
-        </div>
-        <div style={{ display:"flex", alignItems:"center", gap:5, marginTop:8, fontSize:10.5, color:T.sub }}>
-          <span>Less</span>
-          {[T.input,"rgba(0,200,5,.30)","rgba(0,200,5,.55)","rgba(0,200,5,.80)",T.green].map((c,i)=>(
-            <span key={i} style={{ width:11, height:11, borderRadius:2, background:c, display:"inline-block" }} />
-          ))}
-          <span>More</span>
-        </div>
+        {day && (
+          <>
+            {day.n > 0 && (
+              <div style={{ fontSize:12.5, marginBottom:4 }}>
+                <b style={{ color:T.green }}>{day.n} set{day.n===1?"":"s"}</b>
+                {muscles.length > 0 && <span style={{ color:T.sub }}> · {muscles.join(", ")}</span>}
+              </div>
+            )}
+            {Object.keys(day.ex).length > 0 && (
+              <div style={{ fontSize:12, color:T.sub, lineHeight:1.6 }}>
+                {Object.entries(day.ex).map(([n,c]) => `${n} ×${c}`).join(" · ")}
+              </div>
+            )}
+            {day.cd.map((c,i)=>(
+              <div key={i} style={{ fontSize:12, color:T.sub }}>🏃 {c}</div>
+            ))}
+          </>
+        )}
       </div>
     </div>
   );
@@ -1131,7 +1161,7 @@ function Dashboard({ data, exMap, setData, own = true }) {
 
     <div className="card">
       <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:2}}>Workout calendar</div>
-      <div style={{fontSize:12, color:T.sub, marginBottom:10}}>Last 26 weeks — each square is a day, greener the more sets. Today is outlined. Hover (or tap-hold) a square to see the muscles hit that day.</div>
+      <div style={{fontSize:12, color:T.sub, marginBottom:10}}>Last 90 days — greener means more sets. Tap any day to see what you did.</div>
       <WorkoutHeatmap log={data.log} cardio={data.cardio} exMap={exMap} />
     </div>
 
