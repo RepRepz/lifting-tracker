@@ -24,26 +24,65 @@ const BodyChart = lazy(() => import("./charts.jsx").then(m => ({ default: m.Body
 const MusclePie = lazy(() => import("./charts.jsx").then(m => ({ default: m.MusclePie })));
 const ChartFallback = ({ h }) => <div style={{ height: h, display:"flex", alignItems:"center", justifyContent:"center", color:T.sub, fontSize:13 }}>loading chart…</div>;
 
-/* ---------- seed exercise library (same as the sheet) ---------- */
+/* ---------- seed exercise library ----------
+   Each entry: [name, [muscle groups it significantly hits — primary first]] */
 const SEED_EXERCISES = [
-  ["Bench Press","Chest"],["Incline Bench Press","Chest"],["Incline Dumbbell Press","Chest"],["Dumbbell Bench Press","Chest"],
-  ["Chest Fly","Chest"],["Cable Crossover","Chest"],["Dips","Chest"],["Push-Up","Chest"],
-  ["Triceps Pushdown","Triceps"],["Overhead Triceps Extension","Triceps"],["Skullcrusher","Triceps"],["Close-Grip Bench Press","Triceps"],["Triceps Dip","Triceps"],
-  ["Overhead Press","Shoulders"],["Dumbbell Shoulder Press","Shoulders"],["Lateral Raise","Shoulders"],["Rear Delt Fly","Shoulders"],["Arnold Press","Shoulders"],["Face Pull","Shoulders"],
-  ["Deadlift","Back"],["Barbell Row","Back"],["Pull-Up","Back"],["Chin-Up","Back"],["Lat Pulldown","Back"],["Seated Cable Row","Back"],["Dumbbell Row","Back"],["T-Bar Row","Back"],
-  ["Barbell Curl","Biceps"],["Dumbbell Curl","Biceps"],["Hammer Curl","Biceps"],["Preacher Curl","Biceps"],["Cable Curl","Biceps"],
-  ["Back Squat","Legs"],["Front Squat","Legs"],["Machine Squat","Legs"],["Hack Squat","Legs"],["Leg Press","Legs"],["Leg Extension","Legs"],
-  ["Lying Leg Curl","Legs"],["Seated Leg Curl","Legs"],["Romanian Deadlift","Legs"],["Bulgarian Split Squat","Legs"],["Walking Lunge","Legs"],["Hip Thrust","Legs"],
-  ["Standing Calf Raise","Legs"],["Seated Calf Raise","Legs"],
-  ["Plank","Abs"],["Hanging Leg Raise","Abs"],["Cable Crunch","Abs"],["Ab Wheel","Abs"],
+  // chest pressing (compound: chest + triceps + front delts)
+  ["Bench Press",["Chest","Triceps","Shoulders"]],["Incline Bench Press",["Chest","Shoulders","Triceps"]],
+  ["Incline Dumbbell Press",["Chest","Shoulders","Triceps"]],["Dumbbell Bench Press",["Chest","Triceps","Shoulders"]],
+  ["Machine Chest Press",["Chest","Triceps","Shoulders"]],
+  ["Chest Fly",["Chest"]],["Cable Crossover",["Chest"]],
+  ["Dips",["Chest","Triceps","Shoulders"]],
+  // push-up family
+  ["Push-Up",["Chest","Triceps","Shoulders"]],["Wide Push-Up",["Chest","Shoulders","Triceps"]],
+  ["Diamond Push-Up",["Triceps","Chest","Shoulders"]],["Incline Push-Up",["Chest","Triceps","Shoulders"]],
+  ["Decline Push-Up",["Chest","Shoulders","Triceps"]],["Pike Push-Up",["Shoulders","Triceps"]],
+  ["Archer Push-Up",["Chest","Triceps","Shoulders"]],["Clap Push-Up",["Chest","Triceps","Shoulders"]],
+  ["One-Arm Push-Up",["Chest","Triceps","Abs"]],
+  // triceps
+  ["Triceps Pushdown",["Triceps"]],["Overhead Triceps Extension",["Triceps"]],["Skullcrusher",["Triceps"]],
+  ["Close-Grip Bench Press",["Triceps","Chest","Shoulders"]],["Triceps Dip",["Triceps","Chest","Shoulders"]],
+  // shoulders
+  ["Overhead Press",["Shoulders","Triceps"]],["Dumbbell Shoulder Press",["Shoulders","Triceps"]],
+  ["Arnold Press",["Shoulders","Triceps"]],["Lateral Raise",["Shoulders"]],["Rear Delt Fly",["Shoulders"]],
+  ["Face Pull",["Shoulders","Back"]],["Upright Row",["Shoulders","Back"]],
+  // back
+  ["Deadlift",["Back","Legs"]],["Sumo Deadlift",["Legs","Back"]],
+  ["Barbell Row",["Back","Biceps"]],["Pull-Up",["Back","Biceps"]],["Chin-Up",["Back","Biceps"]],
+  ["Lat Pulldown",["Back","Biceps"]],["Seated Cable Row",["Back","Biceps"]],["Dumbbell Row",["Back","Biceps"]],
+  ["T-Bar Row",["Back","Biceps"]],["Inverted Row",["Back","Biceps"]],
+  ["Barbell Shrug",["Back"]],["Dumbbell Shrug",["Back"]],["Back Extension",["Back","Legs"]],
+  // biceps
+  ["Barbell Curl",["Biceps"]],["Dumbbell Curl",["Biceps"]],["Hammer Curl",["Biceps"]],
+  ["Preacher Curl",["Biceps"]],["Cable Curl",["Biceps"]],["Concentration Curl",["Biceps"]],
+  // legs
+  ["Back Squat",["Legs"]],["Front Squat",["Legs","Abs"]],["Machine Squat",["Legs"]],["Hack Squat",["Legs"]],
+  ["Goblet Squat",["Legs"]],["Bodyweight Squat",["Legs"]],["Leg Press",["Legs"]],["Leg Extension",["Legs"]],
+  ["Lying Leg Curl",["Legs"]],["Seated Leg Curl",["Legs"]],["Romanian Deadlift",["Legs","Back"]],
+  ["Good Morning",["Legs","Back"]],["Bulgarian Split Squat",["Legs"]],["Walking Lunge",["Legs"]],
+  ["Step-Up",["Legs"]],["Hip Thrust",["Legs"]],["Glute Bridge",["Legs"]],["Hip Abduction Machine",["Legs"]],
+  ["Kettlebell Swing",["Legs","Back","Abs"]],["Standing Calf Raise",["Legs"]],["Seated Calf Raise",["Legs"]],
+  // abs / full body
+  ["Plank",["Abs"]],["Hanging Leg Raise",["Abs"]],["Cable Crunch",["Abs"]],["Ab Wheel",["Abs"]],
+  ["Sit-Up",["Abs"]],["Crunch",["Abs"]],["Russian Twist",["Abs"]],["Mountain Climber",["Abs"]],
+  ["Farmer's Carry",["Back","Abs","Legs"]],
 ];
-const BW_SET = new Set(["Pull-Up","Chin-Up","Push-Up","Dips","Triceps Dip","Plank","Hanging Leg Raise","Ab Wheel"]);
+const BW_SET = new Set([
+  "Pull-Up","Chin-Up","Dips","Triceps Dip","Inverted Row","Back Extension","Bodyweight Squat","Glute Bridge",
+  "Push-Up","Wide Push-Up","Diamond Push-Up","Incline Push-Up","Decline Push-Up","Pike Push-Up","Archer Push-Up","Clap Push-Up","One-Arm Push-Up",
+  "Plank","Hanging Leg Raise","Ab Wheel","Sit-Up","Crunch","Russian Twist","Mountain Climber",
+]);
 /* Which seed moves load plates on a straight bar — drives the plate calculator. */
 const BARBELL_SEED = new Set([
   "Bench Press","Incline Bench Press","Close-Grip Bench Press","Overhead Press",
-  "Deadlift","Barbell Row","T-Bar Row","Barbell Curl","Back Squat","Front Squat",
-  "Romanian Deadlift","Hip Thrust",
+  "Deadlift","Sumo Deadlift","Barbell Row","T-Bar Row","Barbell Curl","Back Squat","Front Squat",
+  "Romanian Deadlift","Hip Thrust","Barbell Shrug","Upright Row","Good Morning",
 ]);
+/* Every muscle group an exercise hits (old saved data may only have a single `muscle`). */
+const musclesOf = (ex) => !ex ? []
+  : Array.isArray(ex.muscles) && ex.muscles.length ? ex.muscles
+  : ex.muscle ? [ex.muscle] : [];
+const muscleOf = (ex) => musclesOf(ex)[0];
 /* An exercise uses plates if it's flagged barbell (or, for older data with no flag, matches a known barbell move). */
 const usesPlates = (ex) => !!ex && ex.type !== "Bodyweight" && (ex.barbell ?? BARBELL_SEED.has(ex.name));
 const EQUIP_OPTS = ["Barbell (plates)", "Weighted (other)", "Bodyweight"];
@@ -97,9 +136,26 @@ function platesPerSide(total, bar, plates) {
 }
 
 const defaultData = {
-  exercises: SEED_EXERCISES.map(([name, muscle]) => ({ name, muscle, type: BW_SET.has(name) ? "Bodyweight" : "Weighted", barbell: BARBELL_SEED.has(name) })),
+  // `muscle` (primary) is kept alongside `muscles` so older cached app versions still work
+  exercises: SEED_EXERCISES.map(([name, muscles]) => ({ name, muscle: muscles[0], muscles, type: BW_SET.has(name) ? "Bodyweight" : "Weighted", barbell: BARBELL_SEED.has(name) })),
   log: [], bodyweight: [], cardio: [], cardioActivities: [],
+  libraryV: 2, // bumped when the seed library gains exercises, so existing users get them once
 };
+
+/* One-time upgrade of previously saved data: pull in newly added seed exercises and
+   the multi-muscle lists — without touching anything the user added or renamed.
+   Runs only when libraryV is behind, so later deletions stay deleted. */
+function migrateData(d) {
+  if ((d.libraryV || 0) >= defaultData.libraryV) return d;
+  const seedMap = Object.fromEntries(defaultData.exercises.map(s => [s.name, s]));
+  const have = new Set((d.exercises || []).map(x => x.name));
+  const exercises = [
+    // known seeds get the new muscles list (unless already upgraded); custom moves pass through
+    ...(d.exercises || []).map(x => seedMap[x.name] && !x.muscles ? { ...x, muscle: seedMap[x.name].muscle, muscles: seedMap[x.name].muscles } : x),
+    ...defaultData.exercises.filter(s => !have.has(s.name)),
+  ];
+  return { ...d, exercises, libraryV: defaultData.libraryV };
+}
 
 /* weekly streak (lifting OR cardio) with mid-week protection */
 function computeStreak(log, cardio) {
@@ -147,12 +203,12 @@ export default function LiftingTracker({ user }) {
     const cachedRaw = localStorage.getItem(cacheKey);
     // Unsynced offline edits from a previous session win (accepted trade-off)
     if (localStorage.getItem(pendKey) === "1" && cachedRaw) {
-      try { setData({ ...defaultData, ...JSON.parse(cachedRaw) }); setLoaded(true); return; } catch {}
+      try { setData({ ...defaultData, ...migrateData(JSON.parse(cachedRaw)) }); setLoaded(true); return; } catch {}
     }
     try {
       const v = await loadUserState(user.id);
       if (v) {
-        setData({ ...defaultData, ...v });
+        setData({ ...defaultData, ...migrateData(v) });
         localStorage.setItem(cacheKey, JSON.stringify(v));
         setLoaded(true); return;
       }
@@ -161,7 +217,7 @@ export default function LiftingTracker({ user }) {
       console.error("load failed", e);
       if (cachedRaw) {
         // no signal, but we have this device's last copy — keep going offline
-        try { setData({ ...defaultData, ...JSON.parse(cachedRaw) }); setSyncState("offline"); setLoaded(true); return; } catch {}
+        try { setData({ ...defaultData, ...migrateData(JSON.parse(cachedRaw)) }); setSyncState("offline"); setLoaded(true); return; } catch {}
       }
       setLoadFailed(true);
     }
@@ -443,7 +499,7 @@ function LogTab({ data, exMap, setData }) {
           <option value="">— pick an exercise —</option>
           {MUSCLES.map(m => (
             <optgroup key={m} label={m}>
-              {data.exercises.filter(x=>x.muscle===m).map(x=><option key={x.name}>{x.name}</option>)}
+              {data.exercises.filter(x=>muscleOf(x)===m).map(x=><option key={x.name}>{x.name}</option>)}
             </optgroup>
           ))}
         </select>
@@ -587,7 +643,7 @@ function LogTab({ data, exMap, setData }) {
                     <select value={edit.exercise} onChange={ev=>setEdit(s=>({...s, exercise:ev.target.value}))}>
                       {MUSCLES.map(m => (
                         <optgroup key={m} label={m}>
-                          {data.exercises.filter(x=>x.muscle===m).map(x=><option key={x.name}>{x.name}</option>)}
+                          {data.exercises.filter(x=>muscleOf(x)===m).map(x=><option key={x.name}>{x.name}</option>)}
                         </optgroup>
                       ))}
                     </select>
@@ -766,8 +822,8 @@ function YearRecap({ data }) {
     const days = new Set([...log.map(e=>e.date), ...cardio.map(c=>c.date)]);
     const volume = log.reduce((s,e)=>s + (e.weight||0)*e.reps, 0);
     const byMuscle = {};
-    const exMuscle = Object.fromEntries((data.exercises||[]).map(x=>[x.name,x.muscle]));
-    for (const e of log) { if (e.effort==="Warm-up") continue; const m=exMuscle[e.exercise]; if (m) byMuscle[m]=(byMuscle[m]||0)+1; }
+    const exMuscles = Object.fromEntries((data.exercises||[]).map(x=>[x.name,musclesOf(x)]));
+    for (const e of log) { if (e.effort==="Warm-up") continue; for (const m of exMuscles[e.exercise]||[]) byMuscle[m]=(byMuscle[m]||0)+1; }
     const topMuscle = Object.entries(byMuscle).sort((a,b)=>b[1]-a[1])[0];
     let bigPR = null;
     for (const e of log) {
@@ -879,7 +935,7 @@ function Dashboard({ data, exMap, setData }) {
     for (const e of data.log) {
       if (e.effort==="Warm-up") continue;
       if (weekStart(e.date)!==wkStart) continue;
-      const m = exMap[e.exercise]?.muscle; if (m) c[m]++;
+      for (const m of musclesOf(exMap[e.exercise])) if (m in c) c[m]++;
     }
     return c;
   }, [data.log, exMap, wkStart]);
@@ -891,7 +947,7 @@ function Dashboard({ data, exMap, setData }) {
     for (const e of data.log) {
       if (e.effort==="Warm-up") continue;
       if (new Date(e.date+"T00:00") < cutoff) continue;
-      const m = exMap[e.exercise]?.muscle; if (m) c[m]++;
+      for (const m of musclesOf(exMap[e.exercise])) if (m in c) c[m]++;
     }
     return MUSCLES.map((m,i)=>({name:m, value:c[m], fill:MUSCLE_COLORS[i]})).filter(x=>x.value>0);
   }, [data.log, exMap]);
@@ -953,7 +1009,7 @@ function Dashboard({ data, exMap, setData }) {
 
     <div className="card">
       <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:2}}>Weekly set target</div>
-      <div style={{fontSize:12, color:T.sub, marginBottom:12}}>Aim for 12–16 hard sets per muscle — the brighter zone on each bar.</div>
+      <div style={{fontSize:12, color:T.sub, marginBottom:12}}>Aim for 12–16 hard sets per muscle — the brighter zone on each bar. Compound lifts count for every muscle they hit.</div>
       {MUSCLES.map((m,i)=>{
         const n = weekSets[m];
         const status = n<12 ? "under" : n<=16 ? "✓ on target" : "over";
@@ -983,7 +1039,8 @@ function Dashboard({ data, exMap, setData }) {
     </div>
 
     <div className="card">
-      <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:4}}>Last 30 days — sets by muscle</div>
+      <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:4}}>Last 30 days — work by muscle</div>
+      <div style={{fontSize:12, color:T.sub, marginBottom:4}}>Every muscle a lift hits gets credit — bench press counts for chest, triceps, and shoulders.</div>
       {pieData.length ? (
         <Suspense fallback={<ChartFallback h={230} />}><MusclePie data={pieData} /></Suspense>
       ) : <div style={{color:T.sub, fontSize:14}}>Log some sets and your split shows up here.</div>}
@@ -1028,7 +1085,7 @@ function RecordsTab({ data, exMap }) {
         <table><thead><tr><th>Exercise</th><th>Trend</th><th>Muscle</th><th>Heaviest</th><th>Best set</th><th>Est. 1RM</th><th>Most reps</th><th>Best volume</th><th>Last done</th></tr></thead>
           <tbody>
             {logged.map(r=>(
-              <tr key={r.name}><td>{r.name}</td><td><Spark pts={r.spark} /></td><td>{r.muscle}</td><td>{r.heaviest}</td><td>{r.best}</td>
+              <tr key={r.name}><td>{r.name}</td><td><Spark pts={r.spark} /></td><td style={{whiteSpace:"nowrap"}}>{musclesOf(r).join(" · ")}</td><td>{r.heaviest}</td><td>{r.best}</td>
                 <td>{r.est}</td><td>{r.mostReps}</td><td>{r.vol}</td><td>{fmtDate(r.lastDone)}</td></tr>
             ))}
             {!logged.length && <tr><td colSpan={9} style={{color:T.sub}}>No lifts logged yet — records build themselves as you train.</td></tr>}
@@ -1368,23 +1425,45 @@ function CardioTab({ data, setData, latestBW }) {
 }
 
 /* ================= EXERCISES ================= */
-function ExercisesTab({ data, setData }) {
-  const [name, setName] = useState(""); const [muscle, setMuscle] = useState("Chest"); const [equip, setEquip] = useState("Barbell (plates)");
+/* tap-to-toggle muscle group picker — first selected = primary (decides where it sorts) */
+function MuscleChips({ value, onChange }) {
+  const toggle = (m) => onChange(value.includes(m) ? value.filter(x => x !== m) : [...value, m]);
+  return (
+    <div style={{display:"flex", flexWrap:"wrap", gap:6}}>
+      {MUSCLES.map((m,i)=>{
+        const on = value.includes(m);
+        return (
+          <button key={m} type="button" onClick={()=>toggle(m)} style={{
+            padding:"6px 12px", borderRadius:99, fontSize:13, fontWeight:600, minHeight:36,
+            background: on ? "rgba(0,200,5,.14)" : "none",
+            border: `1px solid ${on ? T.green : T.line}`,
+            color: on ? T.green : T.sub,
+          }}>
+            {on ? "✓ " : ""}{m}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
-  const [edit, setEdit] = useState(null); // { orig, name, muscle, equip }
-  const editValid = edit && edit.name.trim() &&
+function ExercisesTab({ data, setData }) {
+  const [name, setName] = useState(""); const [muscles, setMuscles] = useState(["Chest"]); const [equip, setEquip] = useState("Barbell (plates)");
+
+  const [edit, setEdit] = useState(null); // { orig, name, muscles, equip }
+  const editValid = edit && edit.name.trim() && edit.muscles.length > 0 &&
     !data.exercises.some(x => x.name === edit.name.trim() && x.name !== edit.orig);
   const saveEdit = () => {
     if (!editValid) return;
     const nn = edit.name.trim();
     setData(d=>({ ...d,
-      exercises: d.exercises.map(x => x.name===edit.orig ? { name:nn, muscle:edit.muscle, ...fromEquip(edit.equip) } : x),
+      exercises: d.exercises.map(x => x.name===edit.orig ? { name:nn, muscle:edit.muscles[0], muscles:edit.muscles, ...fromEquip(edit.equip) } : x),
       log: nn !== edit.orig ? d.log.map(e => e.exercise===edit.orig ? { ...e, exercise:nn } : e) : d.log,
     }));
     setEdit(null);
   };
 
-  const exMuscle = Object.fromEntries(data.exercises.map(x => [x.name, x.muscle]));
+  const exMuscle = Object.fromEntries(data.exercises.map(x => [x.name, musclesOf(x).join(" + ")]));
   const stamp = todayStr();
   const exportLog = () => download(`workout-log-${stamp}.csv`, "﻿" + [
     "date,exercise,muscle,set,weight_lb,reps,effort,notes",
@@ -1408,19 +1487,21 @@ function ExercisesTab({ data, setData }) {
     <div className="card">
       <div className="h" style={{fontSize:19, color:T.tealDk, marginBottom:4}}>📚 Exercise library</div>
       <div style={{fontSize:12.5, color:T.sub, marginBottom:10}}>Add your own moves (e.g. Decline Push-Up). Pick <b>Barbell</b> to get the plate helper when logging; <b>Bodyweight</b> moves auto-track by reps.</div>
-      <div style={{display:"flex", gap:8, marginBottom:14, flexWrap:"wrap"}}>
+      <div style={{display:"flex", gap:8, marginBottom:10, flexWrap:"wrap"}}>
         <input value={name} onChange={e=>setName(e.target.value)} placeholder="Exercise name" style={{flex:2, minWidth:150}} />
-        <select value={muscle} onChange={e=>setMuscle(e.target.value)} style={{flex:1, minWidth:100}}>{MUSCLES.map(m=><option key={m}>{m}</option>)}</select>
         <select value={equip} onChange={e=>setEquip(e.target.value)} style={{flex:1, minWidth:150}}>{EQUIP_OPTS.map(o=><option key={o}>{o}</option>)}</select>
-        <button onClick={()=>{ if(!name.trim())return; setData(d=>({...d, exercises:[...d.exercises.filter(x=>x.name!==name.trim()), {name:name.trim(), muscle, ...fromEquip(equip)}]})); setName(""); }}
-          style={{background:T.green, color:"#000", padding:"0 16px", fontWeight:700}}>Add</button>
       </div>
+      <div style={{fontSize:12, color:T.sub, marginBottom:6}}>Muscle groups it hits — tap all that apply (first pick = where it sorts in lists):</div>
+      <MuscleChips value={muscles} onChange={setMuscles} />
+      <button onClick={()=>{ if(!name.trim()||!muscles.length)return; setData(d=>({...d, exercises:[...d.exercises.filter(x=>x.name!==name.trim()), {name:name.trim(), muscle:muscles[0], muscles, ...fromEquip(equip)}]})); setName(""); setMuscles(["Chest"]); }}
+        disabled={!name.trim()||!muscles.length}
+        style={{background:T.green, color:"#000", padding:"10px 20px", fontWeight:700, marginTop:10, marginBottom:14, opacity:(!name.trim()||!muscles.length)?0.45:1}}>Add exercise</button>
       <div style={{overflowX:"auto"}}>
         <table><thead><tr><th>Exercise</th><th>Muscle</th><th>Equipment</th><th></th></tr></thead>
           <tbody>{data.exercises.map(x=>(<Fragment key={x.name}>
-            <tr><td>{x.name}</td><td>{x.muscle}</td><td>{equipOf(x)}</td>
+            <tr><td>{x.name}</td><td>{musclesOf(x).join(" · ")}</td><td>{equipOf(x)}</td>
               <td style={{whiteSpace:"nowrap"}}>
-                <PencilBtn onClick={()=>setEdit({ orig:x.name, name:x.name, muscle:x.muscle, equip:equipOf(x) })} />
+                <PencilBtn onClick={()=>setEdit({ orig:x.name, name:x.name, muscles:musclesOf(x), equip:equipOf(x) })} />
                 <ConfirmX onConfirm={()=>setData(d=>({...d, exercises:d.exercises.filter(e=>e.name!==x.name)}))} />
               </td></tr>
             {edit?.orig === x.name && (
@@ -1429,8 +1510,11 @@ function ExercisesTab({ data, setData }) {
                   <div style={{fontSize:12.5, color:T.sub, marginBottom:8}}>Renaming updates every set you've logged for it — history stays intact.</div>
                   <div style={{display:"flex", gap:8, marginBottom:10, flexWrap:"wrap"}}>
                     <input value={edit.name} onChange={ev=>setEdit(s=>({...s, name:ev.target.value}))} style={{flex:2, minWidth:150}} />
-                    <select value={edit.muscle} onChange={ev=>setEdit(s=>({...s, muscle:ev.target.value}))} style={{flex:1, minWidth:100}}>{MUSCLES.map(m=><option key={m}>{m}</option>)}</select>
                     <select value={edit.equip} onChange={ev=>setEdit(s=>({...s, equip:ev.target.value}))} style={{flex:1, minWidth:150}}>{EQUIP_OPTS.map(o=><option key={o}>{o}</option>)}</select>
+                  </div>
+                  <div style={{fontSize:12, color:T.sub, marginBottom:6}}>Muscle groups it hits (first pick = where it sorts):</div>
+                  <div style={{marginBottom:10}}>
+                    <MuscleChips value={edit.muscles} onChange={(ms)=>setEdit(s=>({...s, muscles:ms}))} />
                   </div>
                   <div style={{display:"flex", gap:8}}>
                     <button onClick={saveEdit} disabled={!editValid} style={{...saveSm, opacity:editValid?1:0.45}}>Save changes</button>

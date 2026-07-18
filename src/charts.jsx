@@ -142,10 +142,10 @@ export function MusclePie({ data }) {
           {cur ? (<>
             <div style={{ fontSize: 26, fontWeight: 800, color: cur.fill, lineHeight: 1.1 }}>{cur.value}</div>
             <div style={{ fontSize: 12.5, fontWeight: 700, color: "#FFF" }}>{cur.name}</div>
-            <div style={{ fontSize: 11, color: T.sub }}>{Math.round(cur.value / total * 100)}% of sets</div>
+            <div style={{ fontSize: 11, color: T.sub }}>{Math.round(cur.value / total * 100)}% of work</div>
           </>) : (<>
             <div style={{ fontSize: 26, fontWeight: 800, color: "#FFF", lineHeight: 1.1 }}>{total}</div>
-            <div style={{ fontSize: 11.5, color: T.sub }}>sets · 30 days</div>
+            <div style={{ fontSize: 11.5, color: T.sub }}>muscle hits · 30 days</div>
           </>)}
         </div>
       </div>
