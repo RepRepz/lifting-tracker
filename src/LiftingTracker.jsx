@@ -292,7 +292,7 @@ export default function LiftingTracker({ user }) {
 
   const tabs = [
     ["dash","Dash","📊"],["log","Log","📝"],["records","Records","🏆"],
-    ["friends","Friends","👥"],["body","Body","⚖️"],["cardio","Cardio","🏃"],["ex","Library","📚"],
+    ["friends","Groups","👥"],["body","Body","⚖️"],["cardio","Cardio","🏃"],["ex","Library","📚"],
   ];
 
   return (
@@ -1383,6 +1383,92 @@ const BMI_CATS = [
   { max: 30,   label: "Overweight",  color: "#E3BE55" },
   { max: Infinity, label: "Obese",   color: T.down },
 ];
+/* ---------- goal weight (MyFitnessPal-style: bar from start -> goal, pace ETA) ---------- */
+function GoalCard({ data, setData, current, rows }) {
+  const units = useUnit();
+  const goal = data.profile?.goalWeight || null;         // lb
+  const start = data.profile?.goalStartWeight || null;   // lb, weight when the goal was set
+  const [inp, setInp] = useState("");
+  const [editing, setEditing] = useState(false);
+
+  const save = () => {
+    const v = parseFloat(inp);
+    if (!v || v <= 0 || !current) return;
+    setData(d => ({ ...d, profile: { ...(d.profile||{}), goalWeight: toLb(v, units), goalStartWeight: current.weight, goalSetDate: todayStr() } }));
+    setInp(""); setEditing(false);
+  };
+  const clear = () => setData(d => ({ ...d, profile: { ...(d.profile||{}), goalWeight: null, goalStartWeight: null, goalSetDate: null } }));
+
+  if (!current) return null; // needs at least one weigh-in
+
+  if (!goal || editing) return (
+    <div className="card">
+      <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:4}}>🎯 Goal weight</div>
+      <div style={{fontSize:12.5, color:T.sub, marginBottom:10}}>Set a target and every weigh-in moves the progress bar — cutting or bulking both work.</div>
+      <div style={{display:"flex", gap:8}}>
+        <input type="number" inputMode="decimal" value={inp} onChange={e=>setInp(e.target.value)}
+          placeholder={`e.g. ${dispW(current.weight, units) + (units==="kg" ? -5 : -10)}`} style={{flex:1}} />
+        <button onClick={save} disabled={!parseFloat(inp)}
+          style={{background:T.green, color:"#000", padding:"0 18px", fontWeight:700, opacity:parseFloat(inp)?1:0.45}}>Set goal</button>
+        {editing && <button onClick={()=>setEditing(false)} style={{background:T.input, color:T.sub, padding:"0 14px", fontWeight:600}}>Cancel</button>}
+      </div>
+      <div style={{fontSize:11.5, color:T.sub, marginTop:6}}>In {uLabel(units)} — you're at {showW(current.weight, units)} now.</div>
+    </div>
+  );
+
+  const span = goal - start;                       // + bulking, - cutting
+  const done = current.weight - start;
+  const pct = span === 0 ? 100 : Math.max(0, Math.min(100, done / span * 100));
+  const remain = goal - current.weight;            // + still to gain, - still to lose
+  const reached = span >= 0 ? current.weight >= goal : current.weight <= goal;
+
+  /* pace from the last 30 days of weigh-ins -> ETA */
+  let eta = null, wrongWay = false;
+  const cutoff = new Date(todayStr()+"T00:00"); cutoff.setDate(cutoff.getDate()-30);
+  const recent = rows.filter(r => new Date(r.date+"T00:00") >= cutoff);
+  if (!reached && recent.length >= 2) {
+    const daysSpan = (new Date(recent[recent.length-1].date+"T00:00") - new Date(recent[0].date+"T00:00")) / 864e5;
+    if (daysSpan >= 7) {
+      const rate = (recent[recent.length-1].weight - recent[0].weight) / daysSpan; // lb/day
+      if (Math.abs(rate) > 0.01) {
+        const daysLeft = remain / rate;
+        if (daysLeft > 0) { const d = new Date(); d.setDate(d.getDate() + Math.round(daysLeft)); eta = d.toLocaleDateString("en-US", { month:"short", day:"numeric" }); }
+        else wrongWay = true;
+      }
+    }
+  }
+
+  return (
+    <div className="card" style={reached ? {borderColor:T.green} : undefined}>
+      <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6}}>
+        <div className="h" style={{fontSize:17, color:T.tealDk}}>🎯 Goal weight</div>
+        <div style={{display:"flex", gap:6}}>
+          <button onClick={()=>{setEditing(true); setInp(String(dispW(goal, units)));}} style={{background:T.input, color:T.sub, padding:"5px 12px", fontSize:12.5, fontWeight:600}}>Edit</button>
+          <ConfirmX label="Clear" onConfirm={clear} />
+        </div>
+      </div>
+      {reached ? (
+        <div style={{fontSize:15, fontWeight:800, color:T.green, marginBottom:8}}>🎉 Goal reached — {showW(goal, units)}! Set a new one whenever you're ready.</div>
+      ) : (
+        <div style={{fontSize:13.5, marginBottom:8}}>
+          <b style={{color:T.green, fontSize:16}}>{Math.abs(dispW(remain, units))} {uLabel(units)}</b>
+          <span style={{color:T.sub}}> {remain > 0 ? "to gain" : "to lose"} · {Math.round(pct)}% there</span>
+          {eta && <span style={{color:T.sub}}> · on pace for <b style={{color:T.ink}}>{eta}</b></span>}
+          {wrongWay && <span style={{color:T.down, fontWeight:600}}> · trending the wrong way — you've got this 💪</span>}
+        </div>
+      )}
+      <div style={{height:10, background:T.input, borderRadius:99, overflow:"hidden"}}>
+        <div style={{height:"100%", width:`${reached?100:pct}%`, background:T.green, borderRadius:99, transition:"width .6s ease"}} />
+      </div>
+      <div style={{display:"flex", justifyContent:"space-between", fontSize:11.5, color:T.sub, marginTop:5}}>
+        <span>started {dispW(start, units)}</span>
+        <span>now <b style={{color:T.ink}}>{dispW(current.weight, units)}</b></span>
+        <span>goal <b style={{color:T.green}}>{dispW(goal, units)}</b></span>
+      </div>
+    </div>
+  );
+}
+
 function BMICard({ data, setData, hunit, current }) {
   const units = useUnit();
   const saved = data.profile?.heightIn || null; // inches, canonical
@@ -1524,6 +1610,8 @@ function BodyTab({ data, setData, hunit }) {
       <div><div style={{...kpiN, color: changeDisp==null ? T.ink : changeDisp >= 0 ? T.green : T.down}}>{changeDisp!=null?(changeDisp>0?"+":"")+changeDisp:"—"}</div><div style={kpiL}>Change ({uLabel(units)})</div></div>
       <div><div style={{...kpiN, fontSize:20, paddingTop:8}}>{current?fmtDate(current.date):"—"}</div><div style={kpiL}>Latest</div></div>
     </div>
+
+    <GoalCard data={data} setData={setData} current={current} rows={rows} />
 
     <BMICard data={data} setData={setData} hunit={hunit} current={current} />
 
@@ -2553,7 +2641,7 @@ function FriendsTab({ user }) {
           <div style={{fontSize:13.5, color:T.sub, marginBottom:10}}>
             Invite code: <b style={{color:T.green, letterSpacing:"1px"}}>{active.invite_code}</b>
             <button onClick={copyCode} style={{background:"none", color:T.green, fontSize:12.5, marginLeft:8, textDecoration:"underline"}}>{copied ? "Copied!" : "Copy"}</button>
-            <span style={{marginLeft:6}}>— friends enter it under Friends → Join.</span>
+            <span style={{marginLeft:6}}>— friends enter it under Groups → Join.</span>
           </div>
           {members.map(m=>(
             <div key={m.user_id} style={{display:"flex", alignItems:"center", gap:8, padding:"7px 0", borderBottom:`1px solid ${T.line}`, fontSize:14}}>
@@ -2585,7 +2673,7 @@ function FriendsTab({ user }) {
   /* ---- groups list / create / join ---- */
   return (<>
     <div className="card">
-      <div className="h" style={{fontSize:19, color:T.tealDk, marginBottom:4}}>👥 Friends</div>
+      <div className="h" style={{fontSize:19, color:T.tealDk, marginBottom:4}}>👥 Groups</div>
       <div style={{fontSize:12.5, color:T.sub, marginBottom:10}}>
         Make a group, send friends the invite code, and see each other's workouts, PRs, and a friendly weekly race.
       </div>
