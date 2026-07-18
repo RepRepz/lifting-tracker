@@ -158,6 +158,7 @@ const defaultData = {
   // `muscle` (primary) is kept alongside `muscles`/`muscles2` so older cached app versions still work
   exercises: SEED_EXERCISES.map(([name, muscles, muscles2 = []]) => ({ name, muscle: muscles[0], muscles, muscles2, type: BW_SET.has(name) ? "Bodyweight" : "Weighted", barbell: BARBELL_SEED.has(name) })),
   log: [], bodyweight: [], cardio: [], cardioActivities: SEED_CARDIO,
+  routines: [], // optional workout templates (feature toggled in Settings)
   profile: {}, // heightIn (inches) lives here once set
   pins: [],    // pinned dashboard charts (exercise names)
   libraryV: 4, // bumped when the seed library changes, so existing users get the update once
@@ -216,9 +217,11 @@ export default function LiftingTracker({ user }) {
   const [showSettings, setShowSettings] = useState(false);
   const [units, setUnits] = useState(() => localStorage.getItem("lt-units") || "lb");
   const [hunit, setHunit] = useState(() => localStorage.getItem("lt-hunit") || "ftin"); // height: "ftin" | "cm"
+  const [routinesOn, setRoutinesOn] = useState(() => localStorage.getItem("lt-routines-on") === "1"); // optional templates feature
   useEffect(() => { localStorage.setItem("lt-start-tab", startTab); }, [startTab]);
   useEffect(() => { localStorage.setItem("lt-units", units); }, [units]);
   useEffect(() => { localStorage.setItem("lt-hunit", hunit); }, [hunit]);
+  useEffect(() => { localStorage.setItem("lt-routines-on", routinesOn ? "1" : "0"); }, [routinesOn]);
   const [loaded, setLoaded] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
   const [syncState, setSyncState] = useState("synced"); // "synced" | "offline"
@@ -397,6 +400,7 @@ export default function LiftingTracker({ user }) {
         <SettingsModal user={user} username={username} data={data}
           startTab={startTab} setStartTab={setStartTab} tabs={tabs}
           units={units} setUnits={setUnits} hunit={hunit} setHunit={setHunit}
+          routinesOn={routinesOn} setRoutinesOn={setRoutinesOn}
           onClose={()=>setShowSettings(false)} />
       )}
 
@@ -409,7 +413,7 @@ export default function LiftingTracker({ user }) {
       <main className="app-main">
         <div className="tabview" key={tab}>
           {tab==="dash" && <Dashboard data={data} exMap={exMap} setData={setData} />}
-          {tab==="log" && <LogTab data={data} exMap={exMap} setData={setData} />}
+          {tab==="log" && <LogTab data={data} exMap={exMap} setData={setData} routinesOn={routinesOn} />}
           {tab==="records" && <RecordsTab data={data} exMap={exMap} />}
           {tab==="friends" && <FriendsTab user={user} />}
           {tab==="body" && <BodyTab data={data} setData={setData} hunit={hunit} />}
@@ -436,8 +440,165 @@ export default function LiftingTracker({ user }) {
   );
 }
 
+/* ================= ROUTINES (optional feature, toggled in Settings) =================
+   A routine is a saved template: { id, name, items:[{exercise, sets, reps}] }.
+   "Start" walks you exercise-by-exercise; tapping one loads it into the log form.
+   Kept fully self-contained so the whole feature can be removed by deleting this
+   block + the `routinesOn` wiring, with no other code depending on it. */
+function RoutinesPanel({ data, setData, onPick }) {
+  const routines = Array.isArray(data.routines) ? data.routines : [];
+  const [view, setView] = useState(routines.length ? "list" : "list");
+  const [draft, setDraft] = useState(null);   // routine being built/edited
+  const [runId, setRunId] = useState(null);   // routine being followed
+  const [collapsed, setCollapsed] = useState(routines.length === 0);
+  const today = todayStr();
+
+  const running = routines.find(r => r.id === runId);
+
+  const saveRoutines = (next) => setData(d => ({ ...d, routines: next }));
+
+  const startNew = () => { setDraft({ id: Date.now(), name: "", items: [] }); setView("build"); };
+  const editRoutine = (r) => { setDraft(JSON.parse(JSON.stringify(r))); setView("build"); };
+  const removeRoutine = (id) => saveRoutines(routines.filter(r => r.id !== id));
+
+  const addItem = () => setDraft(d => ({ ...d, items: [...d.items, { exercise: "", sets: 3, reps: "8-12" }] }));
+  const setItem = (i, patch) => setDraft(d => ({ ...d, items: d.items.map((it, j) => j === i ? { ...it, ...patch } : it) }));
+  const delItem = (i) => setDraft(d => ({ ...d, items: d.items.filter((_, j) => j !== i) }));
+  const moveItem = (i, dir) => setDraft(d => {
+    const j = i + dir; if (j < 0 || j >= d.items.length) return d;
+    const items = [...d.items]; [items[i], items[j]] = [items[j], items[i]]; return { ...d, items };
+  });
+
+  const draftValid = draft && draft.name.trim() && draft.items.length && draft.items.every(it => it.exercise);
+  const saveDraft = () => {
+    if (!draftValid) return;
+    const clean = { ...draft, name: draft.name.trim(), items: draft.items.map(it => ({ exercise: it.exercise, sets: Math.max(1, parseInt(it.sets) || 1), reps: String(it.reps || "").trim() })) };
+    const exists = routines.some(r => r.id === clean.id);
+    saveRoutines(exists ? routines.map(r => r.id === clean.id ? clean : r) : [...routines, clean]);
+    setDraft(null); setView("list");
+  };
+
+  const doneToday = (ex) => data.log.filter(e => e.exercise === ex && e.date === today && e.effort !== "Warm-up").length;
+
+  const box = { background: T.card, border: `1px solid ${T.line}`, borderRadius: 12, padding: 14, marginBottom: 14 };
+  const smallBtn = { background: T.input, color: T.ink, border: `1px solid ${T.line}`, padding: "6px 11px", fontSize: 13, fontWeight: 600 };
+
+  /* ---- BUILDER ---- */
+  if (view === "build" && draft) {
+    return (
+      <div style={box}>
+        <div style={{ display: "flex", alignItems: "center", marginBottom: 12 }}>
+          <div className="h" style={{ fontSize: 18, color: T.tealDk }}>{routines.some(r => r.id === draft.id) ? "Edit routine" : "New routine"}</div>
+          <button onClick={() => { setDraft(null); setView("list"); }} style={{ ...smallBtn, marginLeft: "auto", color: T.sub }}>Cancel</button>
+        </div>
+        <label style={lbl}>Routine name
+          <input value={draft.name} onChange={e => setDraft(d => ({ ...d, name: e.target.value }))} placeholder="e.g. Push Day" autoCapitalize="words" />
+        </label>
+        <div style={{ margin: "14px 0 6px", fontSize: 13, fontWeight: 700, color: T.sub }}>EXERCISES</div>
+        {draft.items.map((it, i) => (
+          <div key={i} style={{ border: `1px solid ${T.line}`, borderRadius: 10, padding: 10, marginBottom: 8 }}>
+            <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 8 }}>
+              <span style={{ fontSize: 12.5, color: T.sub, fontWeight: 700, minWidth: 18 }}>{i + 1}.</span>
+              <select value={it.exercise} onChange={e => setItem(i, { exercise: e.target.value })} style={{ flex: 1, minHeight: 0 }}>
+                <option value="">— pick exercise —</option>
+                {MUSCLES.map(m => (
+                  <optgroup key={m} label={m}>
+                    {data.exercises.filter(x => muscleOf(x) === m).map(x => <option key={x.name}>{x.name}</option>)}
+                  </optgroup>
+                ))}
+              </select>
+              <button onClick={() => moveItem(i, -1)} style={{ ...smallBtn, padding: "6px 8px" }} title="Move up">↑</button>
+              <button onClick={() => moveItem(i, 1)} style={{ ...smallBtn, padding: "6px 8px" }} title="Move down">↓</button>
+              <button onClick={() => delItem(i)} style={{ ...smallBtn, padding: "6px 8px", color: T.danger }} title="Remove">✕</button>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1.4fr", gap: 8 }}>
+              <label style={{ ...lbl, fontSize: 12 }}>Sets<input type="number" min="1" value={it.sets} onChange={e => setItem(i, { sets: e.target.value })} /></label>
+              <label style={{ ...lbl, fontSize: 12 }}>Target reps<input value={it.reps} onChange={e => setItem(i, { reps: e.target.value })} placeholder="e.g. 8-12" /></label>
+            </div>
+          </div>
+        ))}
+        <button onClick={addItem} style={{ ...smallBtn, width: "100%", padding: "10px", marginTop: 2 }}>+ Add exercise</button>
+        <button onClick={saveDraft} disabled={!draftValid}
+          style={{ width: "100%", marginTop: 12, background: draftValid ? T.green : T.input, color: draftValid ? "#000" : T.sub, fontWeight: 800, padding: "12px" }}>
+          Save routine
+        </button>
+      </div>
+    );
+  }
+
+  /* ---- RUNNING a routine ---- */
+  if (view === "run" && running) {
+    const totalSets = running.items.reduce((s, it) => s + (parseInt(it.sets) || 0), 0);
+    const doneSets = running.items.reduce((s, it) => s + Math.min(doneToday(it.exercise), parseInt(it.sets) || 0), 0);
+    return (
+      <div style={{ ...box, borderColor: T.green }}>
+        <div style={{ display: "flex", alignItems: "center", marginBottom: 4 }}>
+          <div className="h" style={{ fontSize: 18, color: T.tealDk }}>▶ {running.name}</div>
+          <button onClick={() => { setRunId(null); setView("list"); }} style={{ ...smallBtn, marginLeft: "auto", color: T.sub }}>Done</button>
+        </div>
+        <div style={{ fontSize: 12.5, color: T.sub, marginBottom: 4 }}>{doneSets} / {totalSets} sets logged today</div>
+        <div style={{ height: 5, background: T.input, borderRadius: 99, marginBottom: 12, overflow: "hidden" }}>
+          <div style={{ height: "100%", width: `${totalSets ? doneSets / totalSets * 100 : 0}%`, background: T.green, borderRadius: 99, transition: "width .3s" }} />
+        </div>
+        {running.items.map((it, i) => {
+          const done = doneToday(it.exercise);
+          const target = parseInt(it.sets) || 0;
+          const complete = done >= target;
+          return (
+            <button key={i} onClick={() => onPick(it.exercise, it.reps)}
+              style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", textAlign: "left",
+                background: complete ? T.mint : T.input, border: `1px solid ${complete ? T.green : T.line}`,
+                borderRadius: 10, padding: "11px 12px", marginBottom: 8 }}>
+              <span style={{ fontSize: 18 }}>{complete ? "✅" : "⬜"}</span>
+              <span style={{ flex: 1 }}>
+                <span style={{ display: "block", fontSize: 14.5, fontWeight: 700, color: T.ink }}>{it.exercise}</span>
+                <span style={{ fontSize: 12, color: T.sub }}>{done}/{target} sets{it.reps ? ` · ${it.reps} reps` : ""}</span>
+              </span>
+              <span style={{ fontSize: 12.5, fontWeight: 700, color: complete ? T.green : T.ink }}>{complete ? "Done" : "Log ›"}</span>
+            </button>
+          );
+        })}
+        <div style={{ fontSize: 11.5, color: T.sub, marginTop: 4 }}>Tap an exercise to load it into the form below, then log your sets as normal.</div>
+      </div>
+    );
+  }
+
+  /* ---- LIST (default) ---- */
+  return (
+    <div style={box}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div className="h" style={{ fontSize: 18, color: T.tealDk }}>📋 Routines</div>
+        <button onClick={() => setCollapsed(c => !c)} style={{ background: "none", color: T.sub, fontSize: 13, padding: "4px 8px", marginLeft: "auto" }}>
+          {collapsed ? "Show" : "Hide"}
+        </button>
+      </div>
+      {!collapsed && (<>
+        {routines.length === 0 && (
+          <div style={{ fontSize: 13, color: T.sub, margin: "8px 0 12px" }}>
+            Build a template like “Push Day,” then tap Start to log it exercise-by-exercise.
+          </div>
+        )}
+        {routines.map(r => (
+          <div key={r.id} style={{ border: `1px solid ${T.line}`, borderRadius: 10, padding: "10px 12px", marginTop: 10, display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 15, fontWeight: 700, color: T.ink }}>{r.name}</div>
+              <div style={{ fontSize: 12, color: T.sub, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {r.items.length} exercise{r.items.length !== 1 ? "s" : ""} · {r.items.map(it => it.exercise).join(", ")}
+              </div>
+            </div>
+            <button onClick={() => { setRunId(r.id); setView("run"); }} style={{ background: T.green, color: "#000", fontWeight: 800, padding: "8px 14px", fontSize: 13 }}>Start</button>
+            <button onClick={() => editRoutine(r)} style={smallBtn}>Edit</button>
+            <ConfirmX onConfirm={() => removeRoutine(r.id)} />
+          </div>
+        ))}
+        <button onClick={startNew} style={{ ...smallBtn, width: "100%", padding: "10px", marginTop: 12 }}>+ New routine</button>
+      </>)}
+    </div>
+  );
+}
+
 /* ================= LOG ================= */
-function LogTab({ data, exMap, setData }) {
+function LogTab({ data, exMap, setData, routinesOn }) {
   const sorted = useMemo(()=>[...data.log].sort((a,b)=>a.date.localeCompare(b.date)||a.id-b.id),[data.log]);
   const last = sorted[sorted.length-1];
   const [date, setDate] = useState(last?.date || todayStr());
@@ -557,6 +718,17 @@ function LogTab({ data, exMap, setData }) {
 
   const startNewExercise = (name) => { setExName(name); setSetNum(1); setWeight(""); setReps(""); setJustSaved(null); };
 
+  // routine tapped: load the exercise into the form, prefill target reps, jump to today
+  const pickFromRoutine = (exercise, reps) => {
+    startNewExercise(exercise);
+    const already = data.log.filter(e => e.exercise === exercise && e.date === todayStr() && e.effort !== "Warm-up").length;
+    setSetNum(already + 1);
+    const n = String(reps || "").match(/\d+/);
+    if (n) setReps(n[0]);
+    setDate(todayStr());
+    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   // exercise search (matches anywhere in the name)
   const [exQ, setExQ] = useState("");
   const exMatches = useMemo(() => {
@@ -607,6 +779,7 @@ function LogTab({ data, exMap, setData }) {
         </div>
       </div>
     )}
+    {routinesOn && <RoutinesPanel data={data} setData={setData} onPick={pickFromRoutine} />}
     <div className="card">
       <div className="h" style={{fontSize:19, color:T.tealDk, marginBottom:10}}>Log a set</div>
       <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:10}}>
@@ -2216,7 +2389,7 @@ function DownloadAppCard() {
   );
 }
 
-function SettingsModal({ user, username, data, startTab, setStartTab, tabs, units, setUnits, hunit, setHunit, onClose }) {
+function SettingsModal({ user, username, data, startTab, setStartTab, tabs, units, setUnits, hunit, setHunit, routinesOn, setRoutinesOn, onClose }) {
   const memberSince = user.created_at ? new Date(user.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}) : "—";
   const totalSets = (data.log||[]).length;
 
@@ -2286,6 +2459,23 @@ function SettingsModal({ user, username, data, startTab, setStartTab, tabs, unit
           <select value={startTab} onChange={e=>setStartTab(e.target.value)}>
             {tabs.map(([id,label,icon])=><option key={id} value={id}>{icon} {label}</option>)}
           </select>
+        </div>
+
+        {/* workout routines / templates (optional) */}
+        <div style={{ ...sCard }}>
+          <div style={{ fontSize:14, fontWeight:700, color:T.ink, marginBottom:2 }}>Workout routines</div>
+          <div style={{ fontSize:12, color:T.sub, marginBottom:10 }}>Adds a Routines section to the Log tab: build templates like “Push Day,” then tap Start to log them exercise-by-exercise. Off by default. Turning it off just hides it — your saved routines stay.</div>
+          <div style={{ display:"flex", background:T.input, borderRadius:10, padding:3, maxWidth:200 }}>
+            {[["off","Off"],["on","On"]].map(([v,label])=>{
+              const on = v === "on";
+              return (
+                <button key={v} onClick={()=>setRoutinesOn(on)} style={{
+                  flex:1, padding:"9px 0", borderRadius:8, fontWeight:700, fontSize:14,
+                  background: routinesOn===on ? T.green : "none", color: routinesOn===on ? "#000" : T.sub,
+                }}>{label}</button>
+              );
+            })}
+          </div>
         </div>
 
         <ChangePasswordCard />
