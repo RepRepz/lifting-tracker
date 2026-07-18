@@ -126,13 +126,18 @@ function AddFoodModal({ meal, date, onSave, onClose }) {
 
   const startScan = async () => {
     setScanErr("");
-    if (!("BarcodeDetector" in window)) { setScanErr("Your browser can't scan barcodes — enter the number below, or use Search/Manual."); return; }
+    let Detector = window.BarcodeDetector;
+    if (!Detector) {
+      // iOS Safari (and some others) have no built-in scanner — load the polyfill on demand
+      try { Detector = (await import("barcode-detector/ponyfill")).BarcodeDetector; }
+      catch { setScanErr("Couldn't load the scanner — check your connection, or enter the number below."); return; }
+    }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
       streamRef.current = stream;
       if (videoRef.current) { videoRef.current.srcObject = stream; await videoRef.current.play(); }
       setScanning(true);
-      const detector = new window.BarcodeDetector({ formats: ["ean_13", "ean_8", "upc_a", "upc_e"] });
+      const detector = new Detector({ formats: ["ean_13", "ean_8", "upc_a", "upc_e"] });
       const tick = async () => {
         if (!streamRef.current) return;
         try {
