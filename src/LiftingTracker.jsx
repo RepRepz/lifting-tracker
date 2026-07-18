@@ -297,7 +297,7 @@ export default function LiftingTracker({ user }) {
 
   return (
     <UnitCtx.Provider value={units}>
-    <div style={{ fontFamily:"system-ui,-apple-system,'Segoe UI',Roboto,sans-serif", background:T.bg, minHeight:"100dvh", color:T.ink, paddingBottom:"calc(24px + env(safe-area-inset-bottom))" }}>
+    <div style={{ fontFamily:"system-ui,-apple-system,'Segoe UI',Roboto,sans-serif", background:T.bg, minHeight:"100dvh", color:T.ink }} className="app-root">
       <style>{`
         html { color-scheme:dark; scroll-behavior:smooth; }
         * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
@@ -338,6 +338,37 @@ export default function LiftingTracker({ user }) {
         .navicon { transition:transform .18s ease; }
         .navicon.on { transform:translateY(-2px) scale(1.14); }
         @media(prefers-reduced-motion:reduce){ *{transition:none!important;animation:none!important} }
+
+        /* ---- responsive: phone (<900px) vs desktop (>=900px) ---- */
+        /* mobile-first: tabs live in a fixed BOTTOM bar for thumb reach */
+        .nav-top { display:none; }
+        .nav-bottom {
+          position:fixed; bottom:0; left:0; right:0; z-index:20;
+          display:grid; grid-template-columns:repeat(7, 1fr);
+          background:${T.bg}; border-top:1px solid ${T.line};
+          padding-bottom:env(safe-area-inset-bottom);
+        }
+        .app-main { max-width:860px; margin:0 auto; padding:16px 14px; }
+        .app-root { padding-bottom:calc(68px + env(safe-area-inset-bottom)); }
+
+        @media (min-width:900px) {
+          /* desktop: tabs move to the TOP bar, bottom bar disappears */
+          .nav-top { display:grid; grid-template-columns:repeat(7, 1fr); max-width:640px; }
+          .nav-bottom { display:none; }
+          .app-root { padding-bottom:32px; }
+          .app-main { max-width:1180px; padding:24px 28px; }
+          /* cards flow into a 2-column masonry so the width gets used */
+          .tabview {
+            column-count:2; column-gap:20px;
+          }
+          .tabview > .card, .tabview > * > .card {
+            break-inside:avoid; -webkit-column-break-inside:avoid;
+          }
+          .tabview > .card:first-child { margin-top:0; }
+        }
+        @media (min-width:1400px) {
+          .tabview { column-count:3; }
+        }
       `}</style>
 
       <div style={{ position:"sticky", top:0, zIndex:10, background:T.bg, borderBottom:`1px solid ${T.line}` }}>
@@ -347,15 +378,15 @@ export default function LiftingTracker({ user }) {
             💪 {username} <span style={{ fontSize:15, opacity:.8 }}>⚙️</span>
           </button>
         </header>
-        {/* top tab bar: 7 equal columns — always fits the screen, nothing scrolls */}
-        <nav style={{ display:"grid", gridTemplateColumns:`repeat(${tabs.length}, 1fr)`, maxWidth:860, margin:"0 auto" }}>
+        {/* desktop tab bar (top). On phone this is hidden — see .nav-top */}
+        <nav className="nav-top" style={{ margin:"0 auto" }}>
           {tabs.map(([id,label,icon]) => (
             <button key={id} onClick={()=>setTab(id)} style={{
-              padding:"5px 0 7px", background:"none", display:"flex", flexDirection:"column", alignItems:"center", gap:1,
-              color: tab===id?T.green:T.sub, fontWeight: tab===id?700:500, fontSize:10.5, borderRadius:0, minWidth:0,
+              padding:"7px 0 9px", background:"none", display:"flex", flexDirection:"column", alignItems:"center", gap:2,
+              color: tab===id?T.green:T.sub, fontWeight: tab===id?700:500, fontSize:12, borderRadius:0, minWidth:0,
               borderBottom: tab===id?`3px solid ${T.green}`:"3px solid transparent",
             }}>
-              <span className={"navicon" + (tab===id?" on":"")} style={{fontSize:17}}>{icon}</span>
+              <span className={"navicon" + (tab===id?" on":"")} style={{fontSize:18}}>{icon}</span>
               <span style={{maxWidth:"100%", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{label}</span>
             </button>
           ))}
@@ -375,7 +406,7 @@ export default function LiftingTracker({ user }) {
         </div>
       )}
 
-      <main style={{ maxWidth:860, margin:"0 auto", padding:"16px 14px" }}>
+      <main className="app-main">
         <div className="tabview" key={tab}>
           {tab==="dash" && <Dashboard data={data} exMap={exMap} setData={setData} />}
           {tab==="log" && <LogTab data={data} exMap={exMap} setData={setData} />}
@@ -386,6 +417,20 @@ export default function LiftingTracker({ user }) {
           {tab==="ex" && <ExercisesTab data={data} setData={setData} />}
         </div>
       </main>
+
+      {/* phone tab bar (bottom, thumb-reachable). Hidden on desktop — see .nav-bottom */}
+      <nav className="nav-bottom">
+        {tabs.map(([id,label,icon]) => (
+          <button key={id} onClick={()=>setTab(id)} style={{
+            padding:"7px 0 8px", background:"none", display:"flex", flexDirection:"column", alignItems:"center", gap:1,
+            color: tab===id?T.green:T.sub, fontWeight: tab===id?700:500, fontSize:10.5, borderRadius:0, minWidth:0,
+            borderTop: tab===id?`3px solid ${T.green}`:"3px solid transparent",
+          }}>
+            <span className={"navicon" + (tab===id?" on":"")} style={{fontSize:18}}>{icon}</span>
+            <span style={{maxWidth:"100%", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{label}</span>
+          </button>
+        ))}
+      </nav>
     </div>
     </UnitCtx.Provider>
   );
