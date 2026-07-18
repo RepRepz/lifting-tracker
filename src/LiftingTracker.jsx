@@ -1238,7 +1238,9 @@ function WorkoutHeatmap({ log, cardio, exMap = {} }) {
       <div style={{ marginTop:12, background:T.input, border:`1px solid ${T.line}`, borderRadius:10, padding:"10px 13px" }} key={sel}>
         <div style={{ fontSize:13.5, fontWeight:700, marginBottom: day ? 4 : 0 }}>
           {fmtDate(sel)}{sel===todayStr() ? " (today)" : ""}
-          {!day && <span style={{ color:T.sub, fontWeight:500 }}> — rest day 😴</span>}
+          {!day && (sel < todayStr()
+            ? <span style={{ color:T.sub, fontWeight:500 }}> — rest day 😴</span>
+            : <span style={{ color:T.sub, fontWeight:500 }}> — nothing logged yet</span>)}
         </div>
         {day && (
           <>
