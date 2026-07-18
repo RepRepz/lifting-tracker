@@ -135,8 +135,10 @@ function AddFoodModal({ meal, date, onSave, onClose }) {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
       streamRef.current = stream;
-      if (videoRef.current) { videoRef.current.srcObject = stream; await videoRef.current.play(); }
       setScanning(true);
+      // wait a tick so the <video> is on screen before attaching the stream (iOS shows black otherwise)
+      await new Promise(r => setTimeout(r, 0));
+      if (videoRef.current) { videoRef.current.srcObject = stream; await videoRef.current.play().catch(() => {}); }
       const detector = new Detector({ formats: ["ean_13", "ean_8", "upc_a", "upc_e"] });
       const tick = async () => {
         if (!streamRef.current) return;
@@ -207,7 +209,7 @@ function AddFoodModal({ meal, date, onSave, onClose }) {
             {!scanning && <button onClick={startScan} style={{ width: "100%", background: T.green, color: "#000", fontWeight: 700, borderRadius: 10, padding: "12px 0", border: "none", marginBottom: 10 }}>Start camera</button>}
             {scanning && (
               <div style={{ position: "relative", marginBottom: 10 }}>
-                <video ref={videoRef} playsInline muted style={{ width: "100%", borderRadius: 10, background: "#000" }} />
+                <video ref={videoRef} autoPlay playsInline muted style={{ width: "100%", borderRadius: 10, background: "#000" }} />
                 <button onClick={stopScan} style={{ position: "absolute", top: 8, right: 8, background: "rgba(0,0,0,.6)", color: "#fff", border: "none", borderRadius: 8, padding: "4px 10px" }}>Stop</button>
               </div>
             )}
