@@ -1,6 +1,9 @@
 import { useState, useEffect, useMemo, useRef, lazy, Suspense, Fragment, createContext, useContext } from "react";
 import { supabase, loadUserState, saveUserState, listMyGroups, listMembers, createGroup, joinGroup, leaveGroup, listReactions, addReaction, removeReaction, setSecurityQuestion, getSecurityQuestion, lastActiveFor, setGroupEmoji, resetInviteCode } from "./lib/storage.js";
 import { SECURITY_QUESTIONS } from "./AuthScreen.jsx";
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
+import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 /* ---------- theme (Robinhood-style: black + neon green) ---------- */
 export const T = {
@@ -883,43 +886,41 @@ function useReorder(storageKey, defaultIds) {
   return [ids, setSaved];
 }
 
-/* renderItem(id, beginDrag) — attach beginDrag to a grip's onPointerDown. When
-   enabled is false it renders in order with no handles (read-only / not arranging). */
-function DragList({ ids, setIds, enabled, renderItem }) {
-  const els = useRef({});
-  const dragId = useRef(null);
-  const [active, setActive] = useState(null);
-
-  const reorderTo = (clientY) => {
-    const id = dragId.current; if (id == null) return;
-    const cur = ids.indexOf(id);
-    let target = cur;
-    for (let i = 0; i < ids.length; i++) {
-      const el = els.current[ids[i]]; if (!el) continue;
-      const r = el.getBoundingClientRect();
-      if (clientY < r.top + r.height / 2) { target = i; break; }
-      target = i;
-    }
-    if (target !== cur && target >= 0) {
-      const next = ids.slice();
-      next.splice(target, 0, next.splice(cur, 1)[0]);
-      setIds(next);
-    }
-  };
-  const begin = (e, id) => {
-    dragId.current = id; setActive(id);
-    try { els.current[id].setPointerCapture(e.pointerId); } catch {}
-  };
-  const move = (e) => { if (dragId.current != null) { e.preventDefault(); reorderTo(e.clientY); } };
-  const end = () => { dragId.current = null; setActive(null); };
-
-  return ids.map(id => (
-    <div key={id} ref={el => { if (el) els.current[id] = el; }}
-      onPointerMove={enabled ? move : undefined} onPointerUp={end} onPointerCancel={end}
-      className={active === id ? "dragging" : ""}>
-      {renderItem(id, enabled ? (e) => begin(e, id) : null)}
+/* One sortable widget (dnd-kit). Drag starts only from the grip pill, so buttons
+   and charts inside the card keep working normally. */
+function SortableWidget({ id, children }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  return (
+    <div ref={setNodeRef} style={{
+      transform: CSS.Transform.toString(transform), transition,
+      position:"relative", zIndex: isDragging ? 20 : "auto", opacity: isDragging ? 0.9 : 1,
+      outline:`2px dashed ${isDragging ? T.green : T.line}`, outlineOffset:-3, borderRadius:16, marginBottom:2,
+    }}>
+      <div className="drag-handle" {...attributes} {...listeners}
+        style={{ position:"absolute", top:6, left:"50%", transform:"translateX(-50%)", zIndex:6,
+          background:T.green, color:"#000", borderRadius:99, padding:"3px 16px", fontSize:12, fontWeight:800,
+          boxShadow:"0 2px 8px rgba(0,0,0,.4)", cursor:"grab", touchAction:"none", userSelect:"none" }}>
+        ⠿ drag
+      </div>
+      {children}
     </div>
-  ));
+  );
+}
+
+/* renderItem(id) -> node. When enabled is false it just renders in order (no dnd). */
+function DragList({ ids, setIds, enabled, renderItem }) {
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+  const onDragEnd = ({ active, over }) => {
+    if (over && active.id !== over.id) setIds(arrayMove(ids, ids.indexOf(active.id), ids.indexOf(over.id)));
+  };
+  if (!enabled) return ids.map(id => <div key={id}>{renderItem(id)}</div>);
+  return (
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+      <SortableContext items={ids} strategy={verticalListSortingStrategy}>
+        {ids.map(id => <SortableWidget key={id} id={id}>{renderItem(id)}</SortableWidget>)}
+      </SortableContext>
+    </DndContext>
+  );
 }
 
 /* ---------- export helpers ---------- */
@@ -1386,18 +1387,7 @@ function Dashboard({ data, exMap, setData, own = true }) {
       </div>
     )}
     <DragList ids={own ? wOrder : DASH_WIDGETS} setIds={setWOrder} enabled={arrange && own}
-      renderItem={(id, beginDrag) => (
-        <div style={{ position:"relative", outline: arrange ? `2px dashed ${T.line}` : "none", outlineOffset:-3, borderRadius:16 }}>
-          {beginDrag && (
-            <div className="drag-handle" onPointerDown={beginDrag}
-              style={{ position:"absolute", top:6, left:"50%", transform:"translateX(-50%)", zIndex:6,
-                background:T.green, color:"#000", borderRadius:99, padding:"3px 16px", fontSize:12, fontWeight:800, boxShadow:"0 2px 8px rgba(0,0,0,.4)" }}>
-              ⠿ drag
-            </div>
-          )}
-          {widgets[id]}
-        </div>
-      )} />
+      renderItem={(id) => widgets[id]} />
   </>);
 }
 const kpiN = { fontWeight:800, fontSize:28, color:T.ink };
