@@ -9,13 +9,32 @@ const num = (v, d = 0) => { const n = Number(v); return Number.isFinite(n) ? n :
 const addDays = (dateStr, n) => { const d = new Date(dateStr + "T00:00"); d.setDate(d.getDate() + n); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
 const mondayOf = (dateStr) => { const d = new Date(dateStr + "T00:00"); const dow = (d.getDay() + 6) % 7; return addDays(dateStr, -dow); };
 
-/* Open Food Facts — free, no API key. Search by name or fetch by barcode. */
+/* Open Food Facts — free, no API key. Search by name or fetch by barcode.
+   Uses the newer Search-a-licious engine sorted by scan popularity, which returns far
+   more relevant results than the classic search; falls back to the old endpoint. */
 async function offSearch(q) {
-  const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(q)}&search_simple=1&action=process&json=1&page_size=15`;
-  const r = await fetch(url);
-  if (!r.ok) throw new Error("search failed");
-  const j = await r.json();
-  return (j.products || []).filter(p => p.product_name && p.nutriments).map(offToFood);
+  try {
+    const r = await fetch(`https://search.openfoodfacts.org/search?q=${encodeURIComponent(q)}&page_size=15&sort_by=-unique_scans_n`);
+    if (!r.ok) throw new Error("sal failed");
+    const j = await r.json();
+    const out = (j.hits || []).filter(p => p.product_name && p.nutriments).map(offToFood);
+    if (out.length) return rankResults(out, q);
+  } catch {}
+  const r2 = await fetch(`https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(q)}&search_simple=1&action=process&json=1&page_size=15&sort_by=unique_scans_n`);
+  if (!r2.ok) throw new Error("search failed");
+  const j2 = await r2.json();
+  return rankResults((j2.products || []).filter(p => p.product_name && p.nutriments).map(offToFood), q);
+}
+/* names that start with (or contain early) what you typed float to the top */
+function rankResults(list, q) {
+  const s = q.toLowerCase();
+  const score = (f) => {
+    const n = f.name.toLowerCase();
+    if (n.startsWith(s)) return 0;
+    const i = n.indexOf(s);
+    return i === -1 ? 99 : 1 + i / 100;
+  };
+  return [...list].sort((a, b) => score(a) - score(b));
 }
 async function offBarcode(code) {
   const r = await fetch(`https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(code)}.json`);
@@ -140,14 +159,19 @@ function AddFoodModal({ meal, date, data, setData, onSave, onClose }) {
   const customFoods = data.customFoods || [];
   const recipes = data.recipes || [];
 
-  const doSearch = async (e) => {
-    e?.preventDefault();
-    if (!q.trim()) return;
-    setBusy(true); setErr(""); setResults(null);
-    try { setResults(await offSearch(q.trim())); }
-    catch { setErr("Search failed — check your connection."); }
-    setBusy(false);
-  };
+  // live search: suggestions appear as you type (or backspace), no button needed
+  useEffect(() => {
+    if (mode !== "search") return;
+    const s = q.trim();
+    if (s.length < 2) { setResults(null); setErr(""); return; }
+    setBusy(true);
+    const t = setTimeout(async () => {
+      try { setResults(await offSearch(s)); setErr(""); }
+      catch { setErr("Search failed — check your connection."); }
+      setBusy(false);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [q, mode]);
 
   const lookupBarcode = async (code) => {
     setBusy(true); setScanErr("");
@@ -235,25 +259,22 @@ function AddFoodModal({ meal, date, data, setData, onSave, onClose }) {
 
   return (
     <div className="nt-overlay" onClick={close}>
-      <div className="nt-modal" onClick={e => e.stopPropagation()} style={{ background: T.card, borderRadius: "16px 16px 0 0", padding: 18, width: "100%", maxWidth: 480, maxHeight: "88vh", overflowY: "auto" }}>
+      <div className="nt-modal nt-full" onClick={e => e.stopPropagation()} style={{ background: T.card, borderRadius: "16px 16px 0 0", padding: 18, width: "100%", overflowY: "auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
           <div className="h" style={{ fontSize: 18, color: T.tealDk }}>{meal === "Uncategorized" ? "🍎 Add food" : `Add to ${meal}`}</div>
           <button onClick={close} style={{ background: "none", border: "none", color: T.sub, fontSize: 20, padding: 4 }}>✕</button>
         </div>
 
         <div style={{ display: "flex", gap: 5, marginBottom: 14 }}>
-          {tabBtn("search", "🔍 Search")}{tabBtn("scan", "📷 Scan")}{tabBtn("mine", "⭐ Mine")}{tabBtn("manual", "✏️ Manual")}
+          {tabBtn("search", "🔍 Search")}{tabBtn("scan", "📷 Scan")}{tabBtn("mine", "⭐ Favorites")}{tabBtn("manual", "✏️ Manual")}
         </div>
 
         {mode === "search" && !picked && (
           <>
-            <form onSubmit={doSearch} style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-              <input value={q} onChange={e => setQ(e.target.value)} placeholder="e.g. chicken breast" />
-              <button type="submit" style={{ ...btnGreen, padding: "0 16px" }}>Go</button>
-            </form>
-            {busy && <div style={{ color: T.sub, fontSize: 13 }}>Searching…</div>}
+            <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Start typing… e.g. chicken breast" style={{ marginBottom: 10 }} />
+            {busy && <div style={{ color: T.sub, fontSize: 13, marginBottom: 6 }}>Searching…</div>}
             {err && <div style={{ color: T.down, fontSize: 13 }}>{err}</div>}
-            {results?.length === 0 && <div style={{ color: T.sub, fontSize: 13 }}>No results — try a simpler term, or use Manual.</div>}
+            {results?.length === 0 && !busy && <div style={{ color: T.sub, fontSize: 13 }}>No results — try a simpler term, or use Manual.</div>}
             {results?.map((f, i) => (
               <button key={i} onClick={() => setPicked(f)} style={{ display: "block", width: "100%", textAlign: "left", background: T.input, border: `1px solid ${T.line}`, borderRadius: 10, padding: "10px 12px", marginBottom: 6 }}>
                 <div style={{ fontSize: 14, color: T.ink, fontWeight: 600 }}>{f.name}</div>
@@ -286,7 +307,7 @@ function AddFoodModal({ meal, date, data, setData, onSave, onClose }) {
           <div>
             {!customFoods.length && !recipes.length && (
               <div style={{ color: T.sub, fontSize: 13, marginBottom: 8 }}>
-                Nothing saved yet. Save foods with the checkbox in ✏️ Manual, or build recipes in the 🍲 Recipes card on the Macros tab.
+                Nothing saved yet. Favorite foods with the checkbox in ✏️ Manual, or build recipes in the 🍲 Recipes card on the Macros tab.
               </div>
             )}
             {recipes.map(r => (
@@ -339,7 +360,7 @@ function AddFoodModal({ meal, date, data, setData, onSave, onClose }) {
             </div>
             <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: T.ink, marginBottom: 6, cursor: "pointer" }}>
               <input type="checkbox" checked={manual.saveIt} onChange={e => setManual(m => ({ ...m, saveIt: e.target.checked }))} style={{ width: 17, height: 17, minHeight: 0, accentColor: T.green }} />
-              ⭐ Save to My Foods for next time
+              ⭐ Save to Favorites for next time
             </label>
             <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: T.ink, marginBottom: 12, cursor: "pointer" }}>
               <input type="checkbox" checked={manual.recurring} onChange={e => setManual(m => ({ ...m, recurring: e.target.checked }))} style={{ width: 17, height: 17, minHeight: 0, accentColor: T.green }} />
@@ -696,6 +717,11 @@ const NT_CSS = `
   .nt-overlay { align-items:center; }
   .nt-overlay .nt-modal { border-radius:16px !important; max-height:80vh !important; }
 }
+/* add-food: full screen on phones, big centered dialog (background peeking) on desktop */
+.nt-full { height:100dvh; max-height:100dvh !important; border-radius:0 !important; padding-top:calc(14px + env(safe-area-inset-top)) !important; }
+@media (min-width:700px) {
+  .nt-overlay .nt-full { width:min(700px, 90vw); height:88vh; max-height:88vh !important; border-radius:16px !important; padding-top:18px !important; }
+}
 .nt-cal-grid { max-width:420px; margin:0 auto; }
 `;
 const NTStyle = () => <style>{NT_CSS}</style>;
@@ -829,10 +855,18 @@ export function MacroTab({ data, setData, streaksOn = true }) {
                     </div>
                   </div>
                   {moveId === f.id && (
-                    <div style={{ display: "flex", gap: 6, padding: "4px 0 6px", animation: "ntUp .2s ease both" }}>
+                    <div style={{ display: "flex", gap: 6, padding: "4px 0 6px", flexWrap: "wrap", animation: "ntUp .2s ease both" }}>
                       {MEALS.filter(m2 => m2 !== f.meal).map(m2 => (
                         <button key={m2} className="nt-press" onClick={() => moveFood(f.id, m2)} style={{ background: T.mint, color: T.green, border: "none", borderRadius: 99, padding: "4px 11px", fontWeight: 700, fontSize: 12 }}>{m2}</button>
                       ))}
+                      {sel !== todayStr() && (
+                        <button className="nt-press" onClick={() => { setData(d => ({ ...d, foods: [...(d.foods || []), { ...f, id: uid(), date: todayStr(), recurringId: undefined }] })); setMoveId(null); }}
+                          style={{ background: T.input, color: T.ink, border: `1px solid ${T.line}`, borderRadius: 99, padding: "4px 11px", fontWeight: 700, fontSize: 12 }}>⧉ Copy to today</button>
+                      )}
+                      <button className="nt-press" onClick={() => { setData(d => ({ ...d, foods: [...(d.foods || []), { ...f, id: uid(), date: addDays(f.date, 1), recurringId: undefined }] })); setMoveId(null); }}
+                        style={{ background: T.input, color: T.ink, border: `1px solid ${T.line}`, borderRadius: 99, padding: "4px 11px", fontWeight: 700, fontSize: 12 }}>⧉ Copy to tomorrow</button>
+                      <button className="nt-press" onClick={() => { setData(d => ({ ...d, foods: [...(d.foods || []), { ...f, id: uid(), recurringId: undefined }] })); setMoveId(null); }}
+                        style={{ background: T.input, color: T.ink, border: `1px solid ${T.line}`, borderRadius: 99, padding: "4px 11px", fontWeight: 700, fontSize: 12 }}>⧉ Duplicate</button>
                     </div>
                   )}
                 </div>
@@ -864,7 +898,7 @@ export function MacroTab({ data, setData, streaksOn = true }) {
       <div className="card nt-card" style={{ marginBottom: 8, padding: 12, display: "flex", justifyContent: "space-between", alignItems: "center", animationDelay: ".25s" }}>
         <div>
           <div style={{ fontSize: 14, fontWeight: 700, color: T.ink }}>🍲 Recipes</div>
-          <div style={{ fontSize: 12, color: T.sub }}>{(data.recipes || []).length ? `${data.recipes.length} saved — log them from ⭐ Mine` : "Build meals once, log them in one tap"}</div>
+          <div style={{ fontSize: 12, color: T.sub }}>{(data.recipes || []).length ? `${data.recipes.length} saved — log them from ⭐ Favorites` : "Build meals once, log them in one tap"}</div>
         </div>
         <button className="nt-press" onClick={() => setShowRecipe(true)} style={{ ...btnGhost, color: T.green, fontWeight: 700, padding: "7px 14px", fontSize: 13 }}>+ New</button>
       </div>
@@ -989,8 +1023,10 @@ export function GroupMacrosCard({ members, states, myId, streaksOn = true }) {
               {r.name}{r.mine ? " (you)" : ""} {r.done && "✓"}{streaksOn && r.streak > 1 ? ` 🔥${r.streak}` : ""}
             </div>
             <div style={{ textAlign: "right" }}>
-              <div style={{ fontSize: 12.5, color: T.sub }}><b style={{ color: r.t.kcal > r.goal.kcal ? T.down : T.ink }}>{Math.round(r.t.kcal).toLocaleString()}</b> / {r.goal.kcal.toLocaleString()} calories</div>
-              <div style={{ fontSize: 12, color: T.green, fontWeight: 600 }}>{Math.round(r.t.protein)}g protein</div>
+              <div style={{ fontSize: 12.5, color: T.sub }}><b style={{ color: T.ink }}>{Math.round(r.t.kcal).toLocaleString()}</b> / {r.goal.kcal.toLocaleString()} calories</div>
+              <div style={{ fontSize: 12, color: T.sub, fontWeight: 600 }}>
+                <b style={{ color: r.t.protein >= r.goal.protein ? T.green : T.ink }}>{Math.round(r.t.protein)}</b> / {r.goal.protein}g protein{r.t.protein >= r.goal.protein ? " ✓" : ""}
+              </div>
             </div>
           </div>
           {r.foods.length > 0 && (
