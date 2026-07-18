@@ -142,13 +142,21 @@ function platesPerSide(total, bar, plates) {
   return { plates: out, leftover: side };
 }
 
+/* default cardio activities — Sport = calories estimated, Machine = read them off the display */
+const SEED_CARDIO = [
+  ["Walking","Sport"],["Running","Sport"],["Swimming","Sport"],["Cycling","Sport"],
+  ["Hiking","Sport"],["Jump Rope","Sport"],["Basketball","Sport"],
+  ["Treadmill","Machine"],["Elliptical","Machine"],["Stair Master","Machine"],
+  ["Rowing Machine","Machine"],["Exercise Bike","Machine"],
+].map(([name, type]) => ({ name, type }));
+
 const defaultData = {
   // `muscle` (primary) is kept alongside `muscles`/`muscles2` so older cached app versions still work
   exercises: SEED_EXERCISES.map(([name, muscles, muscles2 = []]) => ({ name, muscle: muscles[0], muscles, muscles2, type: BW_SET.has(name) ? "Bodyweight" : "Weighted", barbell: BARBELL_SEED.has(name) })),
-  log: [], bodyweight: [], cardio: [], cardioActivities: [],
+  log: [], bodyweight: [], cardio: [], cardioActivities: SEED_CARDIO,
   profile: {}, // heightIn (inches) lives here once set
   pins: [],    // pinned dashboard charts (exercise names)
-  libraryV: 3, // bumped when the seed library changes, so existing users get the update once
+  libraryV: 4, // bumped when the seed library changes, so existing users get the update once
 };
 
 /* One-time upgrade of previously saved data: pull in newly added seed exercises and
@@ -169,7 +177,9 @@ function migrateData(d) {
     ...(d.exercises || []).map(x => seedMap[x.name] ? { ...x, muscle: seedMap[x.name].muscle, muscles: seedMap[x.name].muscles, muscles2: seedMap[x.name].muscles2 } : x),
     ...defaultData.exercises.filter(s => !have.has(s.name)),
   ];
-  return { ...d, exercises, libraryV: defaultData.libraryV };
+  const haveAct = new Set((d.cardioActivities || []).map(a => a.name));
+  const cardioActivities = [...(d.cardioActivities || []), ...SEED_CARDIO.filter(a => !haveAct.has(a.name))];
+  return { ...d, exercises, cardioActivities, libraryV: defaultData.libraryV };
 }
 
 /* weekly streak (lifting OR cardio) with mid-week protection */
@@ -1146,31 +1156,86 @@ function RecordsTab({ data, exMap }) {
       byDate[e.date] = Math.max(byDate[e.date]||0, v);
     }
     const spark = Object.keys(byDate).sort().map(k=>byDate[k]).slice(-10);
-    if (isBW) return { ...ex, heaviest:"BW", best:"BW", est:"—", mostReps, vol:"—", lastDone, spark };
+    const sessions = Object.keys(byDate).length;
+    if (isBW) return { ...ex, isBW:true, heaviest:"BW", best:"BW", est:null, mostReps, vol:"—", lastDone, spark, sessions };
     const maxW = Math.max(...entries.map(e=>e.weight||0));
     const repsAtMax = Math.max(...entries.filter(e=>e.weight===maxW).map(e=>e.reps));
     const bestEntry = entries.reduce((a,b)=> e1rm(b.weight||0,b.reps)>e1rm(a.weight||0,a.reps)?b:a);
     const vol = Math.max(...entries.map(e=>(e.weight||0)*e.reps));
-    return { ...ex, heaviest:`${dispW(maxW,units)} × ${repsAtMax}`, best:`${dispW(bestEntry.weight,units)} × ${bestEntry.reps}`,
-      est: dispW(e1rm(bestEntry.weight, bestEntry.reps), units), mostReps, vol: Math.round(dispW(vol,units)), lastDone, spark };
+    return { ...ex, isBW:false, heaviest:`${dispW(maxW,units)} × ${repsAtMax}`, best:`${dispW(bestEntry.weight,units)} × ${bestEntry.reps}`,
+      est: dispW(e1rm(bestEntry.weight, bestEntry.reps), units), mostReps, vol: Math.round(dispW(vol,units)), lastDone, spark, sessions };
   }), [data, units]);
   const logged = rows.filter(r=>!r.empty);
-  return (
+
+  const [filter, setFilter] = useState("All");
+  const [openEx, setOpenEx] = useState(null);
+  const hits = (r, m) => musclesOf(r).includes(m) || secondariesOf(r).includes(m);
+  const present = MUSCLES.filter(m => logged.some(r => hits(r, m)));
+  const shown = (filter==="All" ? logged : logged.filter(r => hits(r, filter)))
+    .slice().sort((a,b)=>b.lastDone.localeCompare(a.lastDone) || a.name.localeCompare(b.name));
+
+  const statBox = { background:T.input, border:`1px solid ${T.line}`, borderRadius:10, padding:"8px 10px" };
+  const statL = { fontSize:10.5, color:T.sub, textTransform:"uppercase", letterSpacing:".6px", fontWeight:600 };
+  const statV = { fontSize:15, fontWeight:700, color:T.ink, marginTop:2 };
+
+  return (<>
     <div className="card">
       <div className="h" style={{fontSize:19, color:T.tealDk, marginBottom:2}}>🏆 Personal records</div>
-      <div style={{fontSize:12.5, color:T.sub, marginBottom:10}}>Best-ever numbers per lift, in {uLabel(units)}. Updates as you log.</div>
-      <div style={{overflowX:"auto"}}>
-        <table><thead><tr><th>Exercise</th><th>Trend</th><th>Muscle</th><th>Heaviest</th><th>Best set</th><th>Est. 1RM</th><th>Most reps</th><th>Best volume</th><th>Last done</th></tr></thead>
-          <tbody>
-            {logged.map(r=>(
-              <tr key={r.name}><td>{r.name}</td><td><Spark pts={r.spark} /></td><td style={{whiteSpace:"nowrap"}}>{muscleLabel(r)}</td><td>{r.heaviest}</td><td>{r.best}</td>
-                <td>{r.est}</td><td>{r.mostReps}</td><td>{r.vol}</td><td>{fmtDate(r.lastDone)}</td></tr>
-            ))}
-            {!logged.length && <tr><td colSpan={9} style={{color:T.sub}}>No lifts logged yet — records build themselves as you train.</td></tr>}
-          </tbody></table>
+      <div style={{fontSize:12.5, color:T.sub, marginBottom:12}}>Best-ever numbers per lift, in {uLabel(units)} — freshest first. Tap a lift for the full breakdown.</div>
+      {/* muscle filter chips (scroll sideways if they overflow) */}
+      <div style={{display:"flex", gap:6, overflowX:"auto", paddingBottom:2, WebkitOverflowScrolling:"touch"}}>
+        {["All", ...present].map(m=>(
+          <button key={m} onClick={()=>setFilter(m)} style={{
+            flexShrink:0, padding:"6px 14px", borderRadius:99, fontSize:13, fontWeight:700,
+            background: filter===m ? T.green : T.input, color: filter===m ? "#000" : T.sub,
+            border:`1px solid ${filter===m ? T.green : T.line}`,
+          }}>{m}</button>
+        ))}
       </div>
     </div>
-  );
+
+    {!logged.length && (
+      <div className="card" style={{color:T.sub, fontSize:14, textAlign:"center", padding:"30px 16px"}}>
+        No lifts logged yet — records build themselves as you train. 🏗️
+      </div>
+    )}
+
+    {shown.map(r=>{
+      const open = openEx === r.name;
+      return (
+        <div key={r.name} className="card" onClick={()=>setOpenEx(o=>o===r.name?null:r.name)}
+          style={{padding:"13px 14px", marginBottom:8, cursor:"pointer", borderColor: open ? T.green : T.line}}>
+          <div style={{display:"flex", alignItems:"center", gap:10}}>
+            <div style={{flex:1, minWidth:0}}>
+              <div style={{fontSize:15.5, fontWeight:700, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis"}}>{r.name}</div>
+              <div style={{fontSize:11.5, color:T.sub, marginTop:1}}>{muscleLabel(r)}</div>
+            </div>
+            <div style={{textAlign:"right", flexShrink:0}}>
+              <div style={{fontSize:17, fontWeight:800, color:T.green}}>
+                {r.isBW ? r.mostReps : r.est}<span style={{fontSize:11, color:T.sub, fontWeight:600}}> {r.isBW ? "reps" : uLabel(units)}</span>
+              </div>
+              <div style={{fontSize:10.5, color:T.sub}}>{r.isBW ? "best set" : "est. 1RM"}</div>
+            </div>
+            <Spark pts={r.spark} />
+            <span style={{color:T.sub, fontSize:12, transform: open ? "rotate(90deg)" : "none", transition:"transform .15s ease"}}>▶</span>
+          </div>
+          {open && (
+            <div style={{display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, marginTop:12, animation:"fadeSwap .18s ease-out both"}}>
+              <div style={statBox}><div style={statL}>Heaviest</div><div style={statV}>{r.heaviest}</div></div>
+              <div style={statBox}><div style={statL}>Best set</div><div style={statV}>{r.best}</div></div>
+              <div style={statBox}><div style={statL}>Most reps</div><div style={statV}>{r.mostReps}</div></div>
+              <div style={statBox}><div style={statL}>Top volume</div><div style={statV}>{r.vol}</div></div>
+              <div style={statBox}><div style={statL}>Sessions</div><div style={statV}>{r.sessions}</div></div>
+              <div style={statBox}><div style={statL}>Last done</div><div style={statV}>{fmtDate(r.lastDone)}</div></div>
+            </div>
+          )}
+        </div>
+      );
+    })}
+    {logged.length > 0 && !shown.length && (
+      <div className="card" style={{color:T.sub, fontSize:14, textAlign:"center"}}>Nothing logged for {filter} yet.</div>
+    )}
+  </>);
 }
 
 /* ================= BODY WEIGHT ================= */
@@ -1465,8 +1530,7 @@ function CardioTab({ data, setData, latestBW }) {
         <label style={lbl}>Activity
           <select value={activity} onChange={e=>setActivity(e.target.value)}>
             <option value="">— pick —</option>
-            {data.cardioActivities.map(a=><option key={a.name}>{a.name} ({a.type})</option>).map((o,i)=>
-              <option key={i} value={data.cardioActivities[i].name}>{data.cardioActivities[i].name}</option>)}
+            {data.cardioActivities.map(a=><option key={a.name} value={a.name}>{a.name}</option>)}
           </select>
         </label>
       </div>
