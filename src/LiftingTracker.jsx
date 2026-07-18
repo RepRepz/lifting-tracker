@@ -355,9 +355,9 @@ export default function LiftingTracker({ user }) {
         .app-root { padding-bottom:calc(68px + env(safe-area-inset-bottom)); }
 
         @media (min-width:900px) {
-          /* desktop: tabs move to the TOP bar, bottom bar disappears.
+          /* desktop: tabs move into the TOP app bar, bottom bar disappears.
              Content stays a clean CENTERED single column (no stretching). */
-          .nav-top { display:grid; grid-template-columns:repeat(7, 1fr); max-width:640px; }
+          .nav-top { display:flex; gap:2px; }
           .nav-bottom { display:none; }
           .app-root { padding-bottom:36px; }
           .app-main { max-width:880px; padding:24px 20px; }
@@ -371,25 +371,26 @@ export default function LiftingTracker({ user }) {
       `}</style>
 
       <div style={{ position:"sticky", top:0, zIndex:10, background:T.bg, borderBottom:`1px solid ${T.line}` }}>
-        <header style={{ color:"#fff", padding:"calc(12px + env(safe-area-inset-top)) 16px 8px", display:"flex", justifyContent:"space-between", alignItems:"center", gap:10 }}>
-          <div className="h" onClick={()=>setTab("dash")} style={{ fontSize:20, cursor:"pointer", userSelect:"none", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>🏋️ MY LIFTING TRACKER</div>
-          <button onClick={()=>setShowSettings(true)} style={{ display:"flex", alignItems:"center", gap:6, flexShrink:0, background:"rgba(255,255,255,.10)", color:"#fff", padding:"6px 12px 6px 13px", fontSize:13, fontWeight:600 }}>
+        <div style={{ maxWidth:960, margin:"0 auto", display:"flex", alignItems:"center", gap:14,
+          padding:"calc(12px + env(safe-area-inset-top)) 20px 8px", color:"#fff" }}>
+          <div className="h" onClick={()=>setTab("dash")} style={{ fontSize:19, cursor:"pointer", userSelect:"none", whiteSpace:"nowrap", minWidth:0, overflow:"hidden", textOverflow:"ellipsis" }}>🏋️ MY LIFTING TRACKER</div>
+          {/* tabs: inline & centered in the app bar on desktop; hidden on phone (bottom bar used) */}
+          <nav className="nav-top" style={{ flex:1, justifyContent:"center" }}>
+            {tabs.map(([id,label,icon]) => (
+              <button key={id} onClick={()=>setTab(id)} style={{
+                padding:"6px 12px 8px", background:"none", display:"flex", flexDirection:"column", alignItems:"center", gap:2,
+                color: tab===id?T.green:T.sub, fontWeight: tab===id?700:500, fontSize:12, borderRadius:0,
+                borderBottom: tab===id?`3px solid ${T.green}`:"3px solid transparent",
+              }}>
+                <span className={"navicon" + (tab===id?" on":"")} style={{fontSize:18}}>{icon}</span>
+                <span style={{whiteSpace:"nowrap"}}>{label}</span>
+              </button>
+            ))}
+          </nav>
+          <button onClick={()=>setShowSettings(true)} style={{ display:"flex", alignItems:"center", gap:6, flexShrink:0, marginLeft:"auto", background:"rgba(255,255,255,.10)", color:"#fff", padding:"6px 12px 6px 13px", fontSize:13, fontWeight:600 }}>
             💪 {username} <span style={{ fontSize:15, opacity:.8 }}>⚙️</span>
           </button>
-        </header>
-        {/* desktop tab bar (top). On phone this is hidden — see .nav-top */}
-        <nav className="nav-top" style={{ margin:"0 auto" }}>
-          {tabs.map(([id,label,icon]) => (
-            <button key={id} onClick={()=>setTab(id)} style={{
-              padding:"7px 0 9px", background:"none", display:"flex", flexDirection:"column", alignItems:"center", gap:2,
-              color: tab===id?T.green:T.sub, fontWeight: tab===id?700:500, fontSize:12, borderRadius:0, minWidth:0,
-              borderBottom: tab===id?`3px solid ${T.green}`:"3px solid transparent",
-            }}>
-              <span className={"navicon" + (tab===id?" on":"")} style={{fontSize:18}}>{icon}</span>
-              <span style={{maxWidth:"100%", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{label}</span>
-            </button>
-          ))}
-        </nav>
+        </div>
       </div>
 
       {showSettings && (
@@ -1003,7 +1004,7 @@ function WorkoutHeatmap({ log, cardio, exMap = {} }) {
     const cutoff = new Date(todayStr() + "T00:00"); cutoff.setDate(cutoff.getDate() - 29);
     const cutKey = cutoff.toISOString().slice(0,10);
     return (
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(7, 1fr)", gap:6, maxWidth:380 }}>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(7, 1fr)", gap:6, maxWidth:380, margin:"0 auto" }}>
         {["M","T","W","T","F","S","S"].map((w,i)=>(
           <div key={i} style={{ textAlign:"center", fontSize:10.5, color:T.sub, fontWeight:600 }}>{w}</div>
         ))}
@@ -1026,7 +1027,7 @@ function WorkoutHeatmap({ log, cardio, exMap = {} }) {
 
   /* 3M/6M/1Y: GitHub-style week columns, capped so cells never balloon */
   const weekGrid = () => (
-    <div style={{ maxWidth: weeks===13 ? 400 : weeks===26 ? 700 : "none" }}>
+    <div style={{ maxWidth: weeks===13 ? 400 : weeks===26 ? 700 : "none", margin:"0 auto" }}>
       <div style={{ position:"relative", height:14 }}>
         {monthMarks.map((m,i)=>(
           <span key={i} style={{ position:"absolute", left:`${m.col/weeks*100}%`, fontSize:10, color:T.sub }}>{m.label}</span>
@@ -1050,7 +1051,7 @@ function WorkoutHeatmap({ log, cardio, exMap = {} }) {
   return (
     <div>
       {/* view switcher — remembered */}
-      <div style={{ display:"flex", gap:2, marginBottom:8 }}>
+      <div style={{ display:"flex", gap:2, marginBottom:8, justifyContent:"center" }}>
         {Object.keys(CAL_VIEWS).map(v=>(
           <button key={v} onClick={()=>setView(v)} style={{
             background:"none", padding:"4px 10px", fontSize:12, fontWeight:700, letterSpacing:".5px", borderRadius:0,
