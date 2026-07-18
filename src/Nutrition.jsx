@@ -59,22 +59,45 @@ const CARB_BLUE = "#2E8CFF";
 const FAT_ORANGE = "#FFB300";
 
 /* ---------- shared bits ---------- */
+/* Open gauge (270° arc, gradient + soft glow), centered on calories LEFT — the number
+   people actually decide with — instead of calories eaten. */
 function CalorieRing({ eaten, goal, size = 130 }) {
   const pct = goal ? Math.min(1, eaten / goal) : 0;
-  const r = size * 0.415, c = 2 * Math.PI * r, mid = size / 2;
   const over = eaten > goal;
+  const r = size * 0.40, mid = size / 2, sw = size * 0.085;
+  const sweep = 270, startA = 135; // gap at the bottom
+  const arc = (deg) => {
+    const a = ((startA + deg) % 360) * Math.PI / 180;
+    return [mid + r * Math.cos(a), mid + r * Math.sin(a)];
+  };
+  const path = (deg) => {
+    if (deg <= 0) return "";
+    const [x0, y0] = arc(0), [x1, y1] = arc(Math.min(deg, sweep));
+    return `M ${x0} ${y0} A ${r} ${r} 0 ${deg > 180 ? 1 : 0} 1 ${x1} ${y1}`;
+  };
+  const left = Math.round(goal - eaten);
+  const gid = useRef("g" + Math.random().toString(36).slice(2)).current;
   return (
-    <div style={{ position: "relative", width: size, height: size, margin: "0 auto" }}>
-      <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
-        <circle cx={mid} cy={mid} r={r} stroke={T.line} strokeWidth={10} fill="none" />
-        <circle cx={mid} cy={mid} r={r} stroke={over ? T.down : T.green} strokeWidth={10} fill="none"
-          strokeDasharray={c} strokeDashoffset={c * (1 - pct)} strokeLinecap="round"
-          style={{ transition: "stroke-dashoffset .4s ease" }} />
+    <div style={{ position: "relative", width: size, height: size, margin: "0 auto", flexShrink: 0 }}>
+      <svg width={size} height={size}>
+        <defs>
+          <linearGradient id={gid} x1="0%" y1="100%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor={over ? "#FF5000" : "#007A03"} />
+            <stop offset="100%" stopColor={over ? "#FF8A50" : "#00E606"} />
+          </linearGradient>
+          <filter id={gid + "f"} x="-40%" y="-40%" width="180%" height="180%">
+            <feGaussianBlur stdDeviation={sw * 0.45} result="b" />
+            <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
+          </filter>
+        </defs>
+        <path d={path(sweep)} stroke={T.line} strokeWidth={sw} fill="none" strokeLinecap="round" />
+        <path d={path(pct * sweep)} stroke={`url(#${gid})`} strokeWidth={sw} fill="none" strokeLinecap="round"
+          filter={`url(#${gid}f)`} style={{ transition: "d .5s ease" }} />
       </svg>
       <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-        <div style={{ fontSize: 22, fontWeight: 800, color: T.ink }}>{Math.round(eaten)}</div>
-        <div style={{ fontSize: 11, color: T.sub }}>of {goal} cal</div>
-        {over && <div style={{ fontSize: 10, color: T.down, fontWeight: 700 }}>+{Math.round(eaten - goal)} over</div>}
+        <div style={{ fontSize: size * 0.19, fontWeight: 800, color: over ? T.down : T.ink, lineHeight: 1 }}>{Math.abs(left).toLocaleString()}</div>
+        <div style={{ fontSize: size * 0.085, color: T.sub, marginTop: 2 }}>{over ? "cal over" : "cal left"}</div>
+        <div style={{ fontSize: size * 0.075, color: T.sub, opacity: .75 }}>{Math.round(eaten).toLocaleString()} / {goal.toLocaleString()}</div>
       </div>
     </div>
   );
@@ -214,7 +237,7 @@ function AddFoodModal({ meal, date, data, setData, onSave, onClose }) {
     <div onClick={close} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.7)", zIndex: 200, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
       <div className="nt-modal" onClick={e => e.stopPropagation()} style={{ background: T.card, borderRadius: "16px 16px 0 0", padding: 18, width: "100%", maxWidth: 480, maxHeight: "88vh", overflowY: "auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-          <div className="h" style={{ fontSize: 18, color: T.tealDk }}>Add to {meal}</div>
+          <div className="h" style={{ fontSize: 18, color: T.tealDk }}>{meal === "Uncategorized" ? "🍎 Add food" : `Add to ${meal}`}</div>
           <button onClick={close} style={{ background: "none", border: "none", color: T.sub, fontSize: 20, padding: 4 }}>✕</button>
         </div>
 
@@ -331,7 +354,7 @@ function AddFoodModal({ meal, date, data, setData, onSave, onClose }) {
 }
 
 /* ---------- goals: full TDEE calculator (Mifflin-St Jeor) ---------- */
-function GoalsModal({ data, goals, onSave, onClose }) {
+function GoalsModal({ data, setData, goals, onSave, onClose, firstTime }) {
   const heightIn = data.profile?.heightIn || null;
   const latestBW = useMemo(() => {
     const rows = [...(data.bodyweight || [])].sort((a, b) => a.date.localeCompare(b.date));
@@ -341,6 +364,9 @@ function GoalsModal({ data, goals, onSave, onClose }) {
   const [calc, setCalc] = useState({ age: saved.age || "", sex: saved.sex || "male", activity: saved.activity || "1.375", plan: saved.plan || "maintain" });
   const [g, setG] = useState(goals);
   const [mode, setMode] = useState("calc"); // calc | manual
+  const [goalW, setGoalW] = useState(data.profile?.goalWeight ? Math.round(data.profile.goalWeight) : "");
+  // suggest a plan from the gap between goal weight and current weight
+  const suggestedPlan = (goalW && latestBW) ? (num(goalW) < latestBW - 3 ? "cut" : num(goalW) > latestBW + 3 ? "bulk" : "maintain") : null;
 
   const canCalc = heightIn && latestBW && num(calc.age) > 0;
   const compute = () => {
@@ -359,8 +385,20 @@ function GoalsModal({ data, goals, onSave, onClose }) {
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.7)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" }}>
       <div className="nt-modal" onClick={e => e.stopPropagation()} style={{ background: T.card, borderRadius: 16, padding: 18, width: "92%", maxWidth: 400, maxHeight: "85vh", overflowY: "auto" }}>
-        <div className="h" style={{ fontSize: 18, color: T.tealDk, marginBottom: 10 }}>🎯 Nutrition goals</div>
-        <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+        <div className="h" style={{ fontSize: 18, color: T.tealDk, marginBottom: 4 }}>🎯 {firstTime ? "Welcome — set your goals" : "Nutrition goals"}</div>
+        {firstTime && <div style={{ fontSize: 12.5, color: T.sub, marginBottom: 10 }}>Quick one-time setup so your rings mean something. You can change all of this later.</div>}
+
+        {/* goal weight — shared with the Body tab */}
+        <label style={{ fontSize: 12, color: T.sub }}>Goal weight (lb) — synced with the Body tab</label>
+        <input type="number" inputMode="numeric" value={goalW} placeholder={latestBW ? `current: ${Math.round(latestBW)} lb` : "e.g. 185"}
+          onChange={e => setGoalW(e.target.value)} style={{ marginBottom: 6 }} />
+        {suggestedPlan && suggestedPlan !== calc.plan && (
+          <button onClick={() => setCalc(c => ({ ...c, plan: suggestedPlan }))} style={{ background: T.mint, border: "none", color: T.green, fontSize: 12, fontWeight: 700, borderRadius: 8, padding: "5px 10px", marginBottom: 8 }}>
+            💡 That's {Math.abs(Math.round(num(goalW) - latestBW))} lb {num(goalW) < latestBW ? "down" : "up"} — we'd suggest {suggestedPlan === "cut" ? "✂️ Cut" : suggestedPlan === "bulk" ? "📈 Bulk" : "⚖️ Maintain"}. Tap to use it.
+          </button>
+        )}
+
+        <div style={{ display: "flex", gap: 6, marginBottom: 12, marginTop: 4 }}>
           {[["calc", "Calculate for me"], ["manual", "Enter manually"]].map(([id, l]) => (
             <button key={id} onClick={() => setMode(id)} style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: "none", fontWeight: 700, fontSize: 13, background: mode === id ? T.green : T.input, color: mode === id ? "#000" : T.sub }}>{l}</button>
           ))}
@@ -402,12 +440,30 @@ function GoalsModal({ data, goals, onSave, onClose }) {
           </div>
         )}
 
-        <div style={{ background: T.input, borderRadius: 10, padding: "10px 12px", marginBottom: 12, fontSize: 13.5, color: T.ink }}>
-          <b style={{ color: T.green }}>{g.kcal} cal</b> · P {g.protein}g · C {g.carb}g · F {g.fat}g
+        {/* plain-English daily targets */}
+        <div style={{ fontSize: 11.5, color: T.sub, marginBottom: 6, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".6px" }}>Your daily targets</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
+          {[
+            ["Calories", `${(g.kcal || 0).toLocaleString()}`, "energy for the day", T.ink],
+            ["Protein", `${g.protein}g`, "builds muscle", T.green],
+            ["Carbs", `${g.carb}g`, "fuels workouts", CARB_BLUE],
+            ["Fat", `${g.fat}g`, "hormones & health", FAT_ORANGE],
+          ].map(([label, v, hint, color]) => (
+            <div key={label} style={{ background: T.input, border: `1px solid ${T.line}`, borderRadius: 12, padding: "10px 12px" }}>
+              <div style={{ fontSize: 11.5, color: T.sub, display: "flex", alignItems: "center", gap: 5 }}>
+                <span style={{ width: 8, height: 8, borderRadius: 99, background: color, display: "inline-block" }} />{label}
+              </div>
+              <div style={{ fontSize: 19, fontWeight: 800, color: T.ink, margin: "2px 0" }}>{v}</div>
+              <div style={{ fontSize: 10.5, color: T.sub }}>{hint}</div>
+            </div>
+          ))}
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={onClose} style={{ ...btnGhost, flex: 1, padding: "10px 0" }}>Cancel</button>
-          <button onClick={() => onSave(g)} style={{ ...btnGreen, flex: 1, padding: "10px 0" }}>Save goals</button>
+          {!firstTime && <button onClick={onClose} style={{ ...btnGhost, flex: 1, padding: "10px 0" }}>Cancel</button>}
+          <button onClick={() => {
+            if (goalW && setData) setData(d => ({ ...d, profile: { ...(d.profile || {}), goalWeight: num(goalW), goalStartWeight: d.profile?.goalWeight ? d.profile?.goalStartWeight : latestBW, goalSetDate: d.profile?.goalSetDate || todayStr() } }));
+            onSave({ ...g, set: true });
+          }} style={{ ...btnGreen, flex: 2, padding: "10px 0" }}>{firstTime ? "Start tracking →" : "Save goals"}</button>
         </div>
       </div>
     </div>
@@ -617,14 +673,18 @@ export function MacroTab({ data, setData, streaksOn = true }) {
   const [showGoals, setShowGoals] = useState(false);
   const [showRecipe, setShowRecipe] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [moveId, setMoveId] = useState(null); // food id showing the move-to-meal chips
   const foods = data.foods || [];
   const goals = { ...DEFAULT_GOALS, ...(data.nutritionGoals || {}) };
+  const firstTime = !data.nutritionGoals?.set;
+  useEffect(() => { if (firstTime) setShowGoals(true); }, []); // one-time goal setup before tracking
   const totals = useMemo(() => dayTotals(foods, sel), [foods, sel]);
   const byMeal = useMemo(() => {
-    const m = {}; for (const meal of MEALS) m[meal] = [];
-    for (const f of foods) if (f.date === sel) (m[f.meal] ||= []).push(f);
+    const m = { Uncategorized: [] }; for (const meal of MEALS) m[meal] = [];
+    for (const f of foods) if (f.date === sel) (m[f.meal] || m.Uncategorized).push(f);
     return m;
   }, [foods, sel]);
+  const moveFood = (id, meal) => { setData(d => ({ ...d, foods: (d.foods || []).map(f => f.id === id ? { ...f, meal } : f) })); setMoveId(null); };
 
   /* auto-log recurring foods for today (skipped ones stay skipped) */
   useEffect(() => {
@@ -665,9 +725,12 @@ export function MacroTab({ data, setData, streaksOn = true }) {
   return (
     <div>
       <style>{NT_CSS}</style>
-      {/* slim header: streak left, small date picker + finish-check top right */}
+      {/* slim header: add-food top left, small date picker + finish-check top right */}
       <div className="nt-card" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8, padding: "2px 2px 6px" }}>
-        <div style={{ fontSize: 13, color: T.sub, fontWeight: 600 }}>{streaksOn && streak > 0 ? `🔥 ${streak}-day streak` : "🥗 Diary"}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+          <button className="nt-press" onClick={() => setAddMeal("Uncategorized")} style={{ ...btnGreen, padding: "7px 13px", fontSize: 13.5 }}>🍎 Add food</button>
+          {streaksOn && streak > 0 && <span style={{ fontSize: 12, color: T.sub, fontWeight: 600, whiteSpace: "nowrap" }}>🔥 {streak}</span>}
+        </div>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <button className="nt-press" onClick={() => shiftDay(-1)} style={{ ...btnGhost, color: T.ink, padding: "4px 11px", fontSize: 14 }}>‹</button>
           <button className="nt-press" onClick={() => setSel(todayStr())} style={{ background: "none", border: "none", fontSize: 13.5, fontWeight: 800, color: sel === todayStr() ? T.ink : T.green, minWidth: 52 }}>
@@ -706,27 +769,40 @@ export function MacroTab({ data, setData, streaksOn = true }) {
 
       {/* diary: all meals in one compact card — no scrolling to add food */}
       <div className="card nt-card" style={{ marginBottom: 8, padding: "6px 12px", animationDelay: ".05s" }}>
-        {MEALS.map((meal, mi) => {
+        {["Uncategorized", ...MEALS].map((meal, mi) => {
           const rows = byMeal[meal];
+          if (meal === "Uncategorized" && !rows.length) return null; // only appears when something's in it
           const mealCal = rows.reduce((s, f) => s + num(f.kcal), 0);
           return (
-            <div key={meal} style={{ borderTop: mi ? `1px solid ${T.line}` : "none", padding: "8px 0" }}>
+            <div key={meal} style={{ borderTop: (mi > 1 || (mi === 1 && byMeal.Uncategorized.length > 0)) ? `1px solid ${T.line}` : "none", padding: "8px 0" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div style={{ fontSize: 14, fontWeight: 700, color: T.ink }}>{meal}{mealCal > 0 && <span style={{ fontSize: 11.5, color: T.sub, fontWeight: 500 }}> · {Math.round(mealCal)} cal</span>}</div>
-                <button className="nt-press" onClick={() => setAddMeal(meal)} style={{ background: T.mint, color: T.green, border: "none", borderRadius: 8, padding: "4px 12px", fontWeight: 800, fontSize: 13 }}>+</button>
+                <div style={{ fontSize: 14, fontWeight: 700, color: meal === "Uncategorized" ? T.sub : T.ink }}>{meal === "Uncategorized" ? "🗂 Uncategorized — tap ↪ to file it" : meal}{mealCal > 0 && <span style={{ fontSize: 11.5, color: T.sub, fontWeight: 500 }}> · {Math.round(mealCal)} cal</span>}</div>
+                {meal !== "Uncategorized" && <button className="nt-press" onClick={() => setAddMeal(meal)} style={{ background: T.mint, color: T.green, border: "none", borderRadius: 8, padding: "4px 12px", fontWeight: 800, fontSize: 13 }}>+</button>}
               </div>
               {rows.map(f => (
-                <div key={f.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "5px 0 2px", animation: "ntUp .25s ease both" }}>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 13, color: T.ink, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.recurringId ? "🔁 " : ""}{f.name}{f.grams ? <span style={{ color: T.sub, fontWeight: 400 }}> · {f.grams}g</span> : ""}</div>
-                    <div style={{ fontSize: 11, color: T.sub }}>
-                      <b style={{ color: T.ink }}>{f.kcal} cal</b>
-                      {" · "}<span style={{ color: T.green }}>P {f.protein}</span>
-                      {" · "}<span style={{ color: CARB_BLUE }}>C {f.carb}</span>
-                      {" · "}<span style={{ color: FAT_ORANGE }}>F {f.fat}</span>
+                <div key={f.id} style={{ padding: "5px 0 2px", animation: "ntUp .25s ease both" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 13, color: T.ink, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.recurringId ? "🔁 " : ""}{f.name}{f.grams ? <span style={{ color: T.sub, fontWeight: 400 }}> · {f.grams}g</span> : ""}</div>
+                      <div style={{ fontSize: 11, color: T.sub }}>
+                        <b style={{ color: T.ink }}>{f.kcal} cal</b>
+                        {" · "}<span style={{ color: T.green }}>P {f.protein}</span>
+                        {" · "}<span style={{ color: CARB_BLUE }}>C {f.carb}</span>
+                        {" · "}<span style={{ color: FAT_ORANGE }}>F {f.fat}</span>
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", flexShrink: 0 }}>
+                      <button className="nt-press" onClick={() => setMoveId(m => m === f.id ? null : f.id)} title="Move to another meal" style={{ background: "none", border: "none", color: moveId === f.id ? T.green : T.sub, fontSize: 14, padding: 4 }}>↪</button>
+                      <button className="nt-press" onClick={() => removeFood(f)} style={{ background: "none", border: "none", color: T.sub, fontSize: 14, padding: 4 }}>🗑</button>
                     </div>
                   </div>
-                  <button className="nt-press" onClick={() => removeFood(f)} style={{ background: "none", border: "none", color: T.sub, fontSize: 14, padding: 4, flexShrink: 0 }}>🗑</button>
+                  {moveId === f.id && (
+                    <div style={{ display: "flex", gap: 6, padding: "4px 0 6px", animation: "ntUp .2s ease both" }}>
+                      {MEALS.filter(m2 => m2 !== f.meal).map(m2 => (
+                        <button key={m2} className="nt-press" onClick={() => moveFood(f.id, m2)} style={{ background: T.mint, color: T.green, border: "none", borderRadius: 99, padding: "4px 11px", fontWeight: 700, fontSize: 12 }}>{m2}</button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -760,7 +836,7 @@ export function MacroTab({ data, setData, streaksOn = true }) {
       </div>
 
       {addMeal && <AddFoodModal meal={addMeal} date={sel} data={data} setData={setData} onSave={addFood} onClose={() => setAddMeal(null)} />}
-      {showGoals && <GoalsModal data={data} goals={goals} onSave={saveGoals} onClose={() => setShowGoals(false)} />}
+      {showGoals && <GoalsModal data={data} setData={setData} goals={goals} firstTime={firstTime} onSave={saveGoals} onClose={() => setShowGoals(false)} />}
       {showRecipe && <RecipeModal data={data} setData={setData} onClose={() => setShowRecipe(false)} />}
     </div>
   );

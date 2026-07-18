@@ -2752,15 +2752,18 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
       const st = states[m.user_id]; if (!st) continue;
       const exType = Object.fromEntries((st.exercises || []).map(x => [x.name, x.type]));
       const sorted = [...(st.log || [])].sort((a,b)=>a.date.localeCompare(b.date)||(a.id||0)-(b.id||0));
-      const bestSoFar = {}; const prsByDate = {}; const byDate = {};
+      const bestSoFar = {}; const prsByDate = {}; const byDate = {}; const seenCount = {};
       for (const e of sorted) {
         (byDate[e.date] ||= []).push(e);
         const isBW = exType[e.exercise] === "Bodyweight";
         const score = isBW ? e.reps : e1rm(e.weight || 0, e.reps);
-        if (bestSoFar[e.exercise] != null && score > bestSoFar[e.exercise]) {
+        // PRs only get celebrated once a lift is established (first 5 sets don't count —
+        // otherwise every early session is a "PR" and the chip means nothing)
+        if (bestSoFar[e.exercise] != null && score > bestSoFar[e.exercise] && (seenCount[e.exercise] || 0) >= 5) {
           (prsByDate[e.date] ||= []).push(isBW ? `${e.exercise} ${e.reps} reps` : `${e.exercise} ${dispW(e.weight,units)}×${e.reps}`);
         }
         bestSoFar[e.exercise] = Math.max(bestSoFar[e.exercise] ?? -1, score);
+        seenCount[e.exercise] = (seenCount[e.exercise] || 0) + 1;
       }
       for (const [date, entries] of Object.entries(byDate)) {
         const names = [...new Set(entries.map(e=>e.exercise))];
