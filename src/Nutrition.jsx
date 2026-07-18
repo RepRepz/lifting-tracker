@@ -234,7 +234,7 @@ function AddFoodModal({ meal, date, data, setData, onSave, onClose }) {
   );
 
   return (
-    <div onClick={close} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.7)", zIndex: 200, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+    <div className="nt-overlay" onClick={close}>
       <div className="nt-modal" onClick={e => e.stopPropagation()} style={{ background: T.card, borderRadius: "16px 16px 0 0", padding: 18, width: "100%", maxWidth: 480, maxHeight: "88vh", overflowY: "auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
           <div className="h" style={{ fontSize: 18, color: T.tealDk }}>{meal === "Uncategorized" ? "🍎 Add food" : `Add to ${meal}`}</div>
@@ -385,7 +385,7 @@ function GoalsModal({ data, setData, goals, onSave, onClose, firstTime }) {
   useEffect(() => { if (mode === "calc" && canCalc) compute(); }, [calc, mode, heightIn, latestBW]);
 
   return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.7)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" }}>
+    <div className="nt-overlay" onClick={onClose} style={{ alignItems: "center" }}>
       <div className="nt-modal" onClick={e => e.stopPropagation()} style={{ background: T.card, borderRadius: 16, padding: 18, width: "92%", maxWidth: 400, maxHeight: "85vh", overflowY: "auto" }}>
         <div className="h" style={{ fontSize: 18, color: T.tealDk, marginBottom: 4 }}>🎯 {firstTime ? "Welcome — set your goals" : "Nutrition goals"}</div>
         {firstTime && <div style={{ fontSize: 12.5, color: T.sub, marginBottom: 10 }}>Quick one-time setup so your rings mean something. You can change all of this later.</div>}
@@ -438,7 +438,7 @@ function GoalsModal({ data, setData, goals, onSave, onClose, firstTime }) {
         {mode === "manual" && (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
             {[["kcal", "Calories"], ["protein", "Protein (g)"], ["carb", "Carbs (g)"], ["fat", "Fat (g)"]].map(([k, l]) => (
-              <div key={k}><label style={{ fontSize: 12, color: T.sub }}>{l}</label><input type="number" inputMode="numeric" value={g[k]} onChange={e => setG(s => ({ ...s, [k]: num(e.target.value) }))} /></div>
+              <div key={k}><label style={{ fontSize: 12, color: T.sub }}>{l}</label><input type="number" inputMode="numeric" value={g[k] === 0 || g[k] === undefined ? "" : g[k]} placeholder="0" onChange={e => setG(s => ({ ...s, [k]: e.target.value }))} /></div>
             ))}
           </div>
         )}
@@ -452,10 +452,10 @@ function GoalsModal({ data, setData, goals, onSave, onClose, firstTime }) {
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
           {[
-            ["Calories", g.kcal ? g.kcal.toLocaleString() : "—", "energy for the day", T.ink],
-            ["Protein", g.protein ? `${g.protein}g` : "—", "builds muscle", T.green],
-            ["Carbs", g.carb ? `${g.carb}g` : "—", "fuels workouts", CARB_BLUE],
-            ["Fat", g.fat ? `${g.fat}g` : "—", "hormones & health", FAT_ORANGE],
+            ["Calories", num(g.kcal) ? num(g.kcal).toLocaleString() : "—", "energy for the day", T.ink],
+            ["Protein", num(g.protein) ? `${num(g.protein)}g` : "—", "builds muscle", T.green],
+            ["Carbs", num(g.carb) ? `${num(g.carb)}g` : "—", "fuels workouts", CARB_BLUE],
+            ["Fat", num(g.fat) ? `${num(g.fat)}g` : "—", "hormones & health", FAT_ORANGE],
           ].map(([label, v, hint, color]) => (
             <div key={label} style={{ background: T.input, border: `1px solid ${T.line}`, borderRadius: 12, padding: "10px 12px" }}>
               <div style={{ fontSize: 11.5, color: T.sub, display: "flex", alignItems: "center", gap: 5 }}>
@@ -470,7 +470,7 @@ function GoalsModal({ data, setData, goals, onSave, onClose, firstTime }) {
           {!firstTime && <button onClick={onClose} style={{ ...btnGhost, flex: 1, padding: "10px 0" }}>Cancel</button>}
           <button onClick={() => {
             if (goalW && setData) setData(d => ({ ...d, profile: { ...(d.profile || {}), goalWeight: num(goalW), goalStartWeight: d.profile?.goalWeight ? d.profile?.goalStartWeight : latestBW, goalSetDate: d.profile?.goalSetDate || todayStr() } }));
-            onSave({ ...g, set: true });
+            onSave({ ...g, kcal: num(g.kcal), protein: num(g.protein), carb: num(g.carb), fat: num(g.fat), set: true });
           }} style={{ ...btnGreen, flex: 2, padding: "10px 0" }}>{firstTime ? "Start tracking →" : "Save goals"}</button>
         </div>
       </div>
@@ -497,7 +497,7 @@ function RecipeModal({ data, setData, onClose }) {
     onClose();
   };
   return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.7)", zIndex: 200, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+    <div className="nt-overlay" onClick={onClose}>
       <div className="nt-modal" onClick={e => e.stopPropagation()} style={{ background: T.card, borderRadius: "16px 16px 0 0", padding: 18, width: "100%", maxWidth: 480, maxHeight: "88vh", overflowY: "auto" }}>
         <div className="h" style={{ fontSize: 18, color: T.tealDk, marginBottom: 10 }}>🍲 New recipe</div>
         <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 8, marginBottom: 10 }}>
@@ -606,7 +606,8 @@ const WATER_UNITS = { oz: { label: "oz", dec: 0 }, L: { label: "L", dec: 2 }, ga
 function WaterCard({ data, setData, date }) {
   const prefs = { cupOz: 8, goal: 8, unit: "oz", ...(data.waterPrefs || {}) };
   const u = WATER_UNITS[prefs.unit] || WATER_UNITS.oz;
-  const fmtAmt = (cups) => `${(cups * prefs.cupOz).toFixed(u.dec).replace(/\.00$/, "")} ${u.label}`;
+  const cupSize = num(prefs.cupOz, 8), goalCups = Math.max(1, num(prefs.goal, 8));
+  const fmtAmt = (cups) => `${(cups * cupSize).toFixed(u.dec).replace(/\.00$/, "")} ${u.label}`;
   const entry = (data.water || []).find(w => w.date === date);
   const count = entry?.count || 0;
   const [editing, setEditing] = useState(false);
@@ -614,12 +615,12 @@ function WaterCard({ data, setData, date }) {
     const rest = (d.water || []).filter(w => w.date !== date);
     return { ...d, water: n > 0 ? [...rest, { date, count: n }] : rest };
   });
-  const pct = Math.min(1, count / prefs.goal);
+  const pct = Math.min(1, count / goalCups);
   return (
     <div className="card" style={{ marginBottom: 10 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 7 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <span style={{ fontSize: 14, fontWeight: 700, color: T.ink }}>💧 <span style={{ color: "#4FC3F7" }}>{count}</span><span style={{ fontSize: 12, color: T.sub, fontWeight: 500 }}> / {prefs.goal} cups · {fmtAmt(count)}</span></span>
+          <span style={{ fontSize: 14, fontWeight: 700, color: T.ink }}>💧 <span style={{ color: "#4FC3F7" }}>{count}</span><span style={{ fontSize: 12, color: T.sub, fontWeight: 500 }}> / {goalCups} cups · {fmtAmt(count)}</span></span>
         </div>
         <button className="nt-press" onClick={() => setCount(Math.max(0, count - 1))} style={{ ...btnGhost, width: 34, height: 34, fontSize: 17, fontWeight: 700 }}>−</button>
         <button className="nt-press" onClick={() => setCount(count + 1)} style={{ background: "#4FC3F7", color: "#000", width: 34, height: 34, fontSize: 17, fontWeight: 700, border: "none", borderRadius: 10 }}>+</button>
@@ -642,9 +643,9 @@ function WaterCard({ data, setData, date }) {
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
             <div><label style={{ fontSize: 12, color: T.sub }}>Cup size ({u.label})</label>
-              <input type="number" inputMode="decimal" value={prefs.cupOz} onChange={e => setData(d => ({ ...d, waterPrefs: { ...prefs, cupOz: num(e.target.value, 8) } }))} /></div>
+              <input type="number" inputMode="decimal" value={prefs.cupOz} onChange={e => setData(d => ({ ...d, waterPrefs: { ...prefs, cupOz: e.target.value } }))} /></div>
             <div><label style={{ fontSize: 12, color: T.sub }}>Daily goal (cups)</label>
-              <input type="number" inputMode="numeric" value={prefs.goal} onChange={e => setData(d => ({ ...d, waterPrefs: { ...prefs, goal: num(e.target.value, 8) } }))} /></div>
+              <input type="number" inputMode="numeric" value={prefs.goal} onChange={e => setData(d => ({ ...d, waterPrefs: { ...prefs, goal: e.target.value } }))} /></div>
           </div>
         </div>
       )}
@@ -689,7 +690,15 @@ const NT_CSS = `
 .nt-modal { animation: ntSlide .28s cubic-bezier(.2,.8,.3,1) both; }
 .nt-press { transition: transform .12s ease, opacity .12s ease; }
 .nt-press:active { transform: scale(.94); }
+/* bottom sheet on phones, centered dialog on desktop */
+.nt-overlay { position:fixed; inset:0; background:rgba(0,0,0,.7); z-index:200; display:flex; align-items:flex-end; justify-content:center; }
+@media (min-width:700px) {
+  .nt-overlay { align-items:center; }
+  .nt-overlay .nt-modal { border-radius:16px !important; max-height:80vh !important; }
+}
+.nt-cal-grid { max-width:420px; margin:0 auto; }
 `;
+const NTStyle = () => <style>{NT_CSS}</style>;
 export function MacroTab({ data, setData, streaksOn = true }) {
   const [sel, setSel] = useState(todayStr());
   const [addMeal, setAddMeal] = useState(null);
@@ -770,7 +779,7 @@ export function MacroTab({ data, setData, streaksOn = true }) {
 
       {/* compact summary: small ring + macro bars in one row */}
       <div className="card nt-card" style={{ marginBottom: 8, padding: 12 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14, maxWidth: 520, margin: "0 auto" }}>
           <CalorieRing eaten={totals.kcal} goal={goals.kcal} size={92} />
           <div style={{ flex: 1 }}>
             <MacroBar label="Protein" color={T.green} eaten={totals.protein} goal={goals.protein} />
@@ -893,6 +902,7 @@ export function MacroCalendar({ data, title = "🥗 Nutrition calendar" }) {
 
   return (
     <div className="card" style={{ marginBottom: 8, padding: 12 }}>
+      <NTStyle />
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
         <div style={{ fontSize: 15, fontWeight: 700, color: T.ink }}>{title}</div>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -901,6 +911,7 @@ export function MacroCalendar({ data, title = "🥗 Nutrition calendar" }) {
           <button className="nt-press" onClick={() => shiftMonth(1)} style={{ ...btnGhost, color: T.ink, padding: "3px 10px", fontSize: 13 }}>›</button>
         </div>
       </div>
+      <div className="nt-cal-grid">
       <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4, marginBottom: 4 }}>
         {["M", "T", "W", "T", "F", "S", "S"].map((d, i) => <div key={i} style={{ textAlign: "center", fontSize: 10, color: T.sub, fontWeight: 700 }}>{d}</div>)}
       </div>
@@ -923,6 +934,7 @@ export function MacroCalendar({ data, title = "🥗 Nutrition calendar" }) {
               }}>{Number(d.slice(8))}</button>
           );
         })}
+      </div>
       </div>
       {/* tapped-day details — full food log for that day */}
       <div style={{ marginTop: 10, borderTop: `1px solid ${T.line}`, paddingTop: 8 }}>
