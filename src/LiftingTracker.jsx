@@ -4,6 +4,7 @@ import { SECURITY_QUESTIONS } from "./AuthScreen.jsx";
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { MacroTab, GroupMacrosCard } from "./Nutrition.jsx";
 
 /* ---------- theme (Robinhood-style: black + neon green) ---------- */
 export const T = {
@@ -159,6 +160,7 @@ const defaultData = {
   exercises: SEED_EXERCISES.map(([name, muscles, muscles2 = []]) => ({ name, muscle: muscles[0], muscles, muscles2, type: BW_SET.has(name) ? "Bodyweight" : "Weighted", barbell: BARBELL_SEED.has(name) })),
   log: [], bodyweight: [], cardio: [], cardioActivities: SEED_CARDIO,
   routines: [], // optional workout templates (feature toggled in Settings)
+  foods: [], nutritionGoals: {}, // optional macro tracking (feature toggled in Settings)
   profile: {}, // heightIn (inches) lives here once set
   pins: [],    // pinned dashboard charts (exercise names)
   libraryV: 4, // bumped when the seed library changes, so existing users get the update once
@@ -218,10 +220,20 @@ export default function LiftingTracker({ user }) {
   const [units, setUnits] = useState(() => localStorage.getItem("lt-units") || "lb");
   const [hunit, setHunit] = useState(() => localStorage.getItem("lt-hunit") || "ftin"); // height: "ftin" | "cm"
   const [routinesOn, setRoutinesOn] = useState(() => localStorage.getItem("lt-routines-on") === "1"); // optional templates feature
+  const [liftingOn, setLiftingOn] = useState(() => localStorage.getItem("lt-lifting-on") !== "0"); // default on
+  const [nutritionOn, setNutritionOn] = useState(() => localStorage.getItem("lt-nutrition-on") !== "0"); // default on
   useEffect(() => { localStorage.setItem("lt-start-tab", startTab); }, [startTab]);
   useEffect(() => { localStorage.setItem("lt-units", units); }, [units]);
   useEffect(() => { localStorage.setItem("lt-hunit", hunit); }, [hunit]);
   useEffect(() => { localStorage.setItem("lt-routines-on", routinesOn ? "1" : "0"); }, [routinesOn]);
+  useEffect(() => { localStorage.setItem("lt-lifting-on", liftingOn ? "1" : "0"); }, [liftingOn]);
+  useEffect(() => { localStorage.setItem("lt-nutrition-on", nutritionOn ? "1" : "0"); }, [nutritionOn]);
+  useEffect(() => {
+    const liftTabs = new Set(["dash","log","records","body","cardio","ex"]);
+    if ((liftTabs.has(tab) && !liftingOn) || (tab === "macros" && !nutritionOn)) {
+      setTab(liftingOn ? "dash" : (nutritionOn ? "macros" : "friends"));
+    }
+  }, [liftingOn, nutritionOn, tab]);
   const [loaded, setLoaded] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
   const [syncState, setSyncState] = useState("synced"); // "synced" | "offline"
@@ -297,8 +309,10 @@ export default function LiftingTracker({ user }) {
   if (!loaded) return <div style={{fontFamily:"system-ui",padding:40,color:T.sub}}>Loading your tracker…</div>;
 
   const tabs = [
-    ["dash","Dash","📊"],["log","Log","📝"],["records","Records","🏆"],
-    ["friends","Groups","👥"],["body","Body","⚖️"],["cardio","Cardio","🏃"],["ex","Library","📚"],
+    ...(liftingOn ? [["dash","Dash","📊"],["log","Log","📝"],["records","Records","🏆"]] : []),
+    ["friends","Groups","👥"],
+    ...(nutritionOn ? [["macros","Macros","🥗"]] : []),
+    ...(liftingOn ? [["body","Body","⚖️"],["cardio","Cardio","🏃"],["ex","Library","📚"]] : []),
   ];
 
   return (
@@ -401,6 +415,8 @@ export default function LiftingTracker({ user }) {
           startTab={startTab} setStartTab={setStartTab} tabs={tabs}
           units={units} setUnits={setUnits} hunit={hunit} setHunit={setHunit}
           routinesOn={routinesOn} setRoutinesOn={setRoutinesOn}
+          liftingOn={liftingOn} setLiftingOn={setLiftingOn}
+          nutritionOn={nutritionOn} setNutritionOn={setNutritionOn}
           onClose={()=>setShowSettings(false)} />
       )}
 
@@ -412,13 +428,14 @@ export default function LiftingTracker({ user }) {
 
       <main className="app-main">
         <div className="tabview" key={tab}>
-          {tab==="dash" && <Dashboard data={data} exMap={exMap} setData={setData} />}
-          {tab==="log" && <LogTab data={data} exMap={exMap} setData={setData} routinesOn={routinesOn} />}
-          {tab==="records" && <RecordsTab data={data} exMap={exMap} />}
-          {tab==="friends" && <FriendsTab user={user} />}
-          {tab==="body" && <BodyTab data={data} setData={setData} hunit={hunit} />}
-          {tab==="cardio" && <CardioTab data={data} setData={setData} latestBW={latestBW} />}
-          {tab==="ex" && <ExercisesTab data={data} setData={setData} />}
+          {tab==="dash" && liftingOn && <Dashboard data={data} exMap={exMap} setData={setData} />}
+          {tab==="log" && liftingOn && <LogTab data={data} exMap={exMap} setData={setData} routinesOn={routinesOn} />}
+          {tab==="records" && liftingOn && <RecordsTab data={data} exMap={exMap} />}
+          {tab==="friends" && <FriendsTab user={user} nutritionOn={nutritionOn} />}
+          {tab==="macros" && nutritionOn && <MacroTab data={data} setData={setData} />}
+          {tab==="body" && liftingOn && <BodyTab data={data} setData={setData} hunit={hunit} />}
+          {tab==="cardio" && liftingOn && <CardioTab data={data} setData={setData} latestBW={latestBW} />}
+          {tab==="ex" && liftingOn && <ExercisesTab data={data} setData={setData} />}
         </div>
       </main>
 
@@ -2393,7 +2410,27 @@ function DownloadAppCard() {
   );
 }
 
-function SettingsModal({ user, username, data, startTab, setStartTab, tabs, units, setUnits, hunit, setHunit, routinesOn, setRoutinesOn, onClose }) {
+function FeatureToggle({ label, desc, on, setOn }) {
+  return (
+    <div style={{ ...sCard }}>
+      <div style={{ fontSize:14, fontWeight:700, color:T.ink, marginBottom:2 }}>{label}</div>
+      <div style={{ fontSize:12, color:T.sub, marginBottom:10 }}>{desc}</div>
+      <div style={{ display:"flex", background:T.input, borderRadius:10, padding:3, maxWidth:200 }}>
+        {[["off","Off"],["on","On"]].map(([v,l])=>{
+          const isOn = v === "on";
+          return (
+            <button key={v} onClick={()=>setOn(isOn)} style={{
+              flex:1, padding:"9px 0", borderRadius:8, fontWeight:700, fontSize:14,
+              background: on===isOn ? T.green : "none", color: on===isOn ? "#000" : T.sub,
+            }}>{l}</button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function SettingsModal({ user, username, data, startTab, setStartTab, tabs, units, setUnits, hunit, setHunit, routinesOn, setRoutinesOn, liftingOn, setLiftingOn, nutritionOn, setNutritionOn, onClose }) {
   const memberSince = user.created_at ? new Date(user.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}) : "—";
   const totalSets = (data.log||[]).length;
 
@@ -2465,22 +2502,17 @@ function SettingsModal({ user, username, data, startTab, setStartTab, tabs, unit
           </select>
         </div>
 
+        {/* lifting features on/off */}
+        <FeatureToggle label="Lifting tracker" on={liftingOn} setOn={setLiftingOn}
+          desc="Shows Dash, Log, Records, Body, Cardio and Library. Off by default only for people who just want macro tracking. Turning it off just hides these tabs — your data stays." />
+
+        {/* nutrition / macro tracking on/off */}
+        <FeatureToggle label="Macro tracking" on={nutritionOn} setOn={setNutritionOn}
+          desc="Adds a Macros tab: log food by search, barcode scan, or manual entry, and see calorie/protein/carb/fat rings for the day. Turning it off just hides it — your food log stays." />
+
         {/* workout routines / templates (optional) */}
-        <div style={{ ...sCard }}>
-          <div style={{ fontSize:14, fontWeight:700, color:T.ink, marginBottom:2 }}>Workout routines</div>
-          <div style={{ fontSize:12, color:T.sub, marginBottom:10 }}>Adds a Routines section to the Log tab: build templates like “Push Day,” then tap Start to log them exercise-by-exercise. Off by default. Turning it off just hides it — your saved routines stay.</div>
-          <div style={{ display:"flex", background:T.input, borderRadius:10, padding:3, maxWidth:200 }}>
-            {[["off","Off"],["on","On"]].map(([v,label])=>{
-              const on = v === "on";
-              return (
-                <button key={v} onClick={()=>setRoutinesOn(on)} style={{
-                  flex:1, padding:"9px 0", borderRadius:8, fontWeight:700, fontSize:14,
-                  background: routinesOn===on ? T.green : "none", color: routinesOn===on ? "#000" : T.sub,
-                }}>{label}</button>
-              );
-            })}
-          </div>
-        </div>
+        <FeatureToggle label="Workout routines" on={routinesOn} setOn={setRoutinesOn}
+          desc="Adds a Routines section to the Log tab: build templates like “Push Day,” then tap Start to log them exercise-by-exercise. Off by default. Turning it off just hides it — your saved routines stay." />
 
         <ChangePasswordCard />
         <SecurityCard username={username} />
@@ -2593,7 +2625,7 @@ function SecurityCard({ username }) {
 const BIG_LIFTS = ["Bench Press","Back Squat","Deadlift","Overhead Press"];
 const LIFT_SHORT = { "Bench Press":"Bench", "Back Squat":"Squat", "Deadlift":"Dead", "Overhead Press":"OHP" };
 
-function FriendsTab({ user }) {
+function FriendsTab({ user, nutritionOn }) {
   const units = useUnit();
   const [groups, setGroups] = useState(null);        // null = loading
   const [active, setActive] = useState(null);        // selected group
@@ -2882,6 +2914,7 @@ function FriendsTab({ user }) {
       {!members && <div className="card" style={{color:T.sub}}>Loading group…</div>}
 
       {members && (<>
+        {nutritionOn && <GroupMacrosCard members={members} states={states} myId={user.id} />}
         <div className="card">
           <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:8}}>📣 Recent activity</div>
           {!feed.length && <div style={{color:T.sub, fontSize:14}}>Nothing yet — someone go lift something.</div>}
