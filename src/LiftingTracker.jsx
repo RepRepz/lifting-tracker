@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, lazy, Suspense, Fragment, createContext, useContext } from "react";
-import { supabase, loadUserState, saveUserState, listMyGroups, listMembers, createGroup, joinGroup, leaveGroup, listReactions, addReaction, removeReaction, setSecurityQuestion, getSecurityQuestion } from "./lib/storage.js";
+import { supabase, loadUserState, saveUserState, listMyGroups, listMembers, createGroup, joinGroup, leaveGroup, listReactions, addReaction, removeReaction, setSecurityQuestion, getSecurityQuestion, lastActiveFor } from "./lib/storage.js";
 import { SECURITY_QUESTIONS } from "./AuthScreen.jsx";
 
 /* ---------- theme (Robinhood-style: black + neon green) ---------- */
@@ -2139,6 +2139,30 @@ function FriendsTab({ user }) {
   };
   useEffect(() => { refreshGroups(); }, []);
 
+  /* one-line preview per group: members + how recently each was active */
+  const [previews, setPreviews] = useState({}); // group_id -> [{username, last}]
+  useEffect(() => {
+    if (!groups?.length) return;
+    (async () => {
+      try {
+        const p = {};
+        await Promise.all(groups.map(async (g) => {
+          const ms = await listMembers(g.id);
+          const la = await lastActiveFor(ms.map(m => m.user_id));
+          p[g.id] = ms.map(m => ({ username: m.username, last: la[m.user_id] || null }))
+            .sort((a, b) => (b.last || "").localeCompare(a.last || ""));
+        }));
+        setPreviews(p);
+      } catch { /* previews are a bonus — group list works without them */ }
+    })();
+  }, [groups]);
+  const agoTxt = (ts) => {
+    if (!ts) return null;
+    const d = (Date.now() - new Date(ts).getTime()) / 864e5;
+    if (d < 1) return "today"; if (d < 2) return "1d"; if (d < 7) return `${Math.floor(d)}d`;
+    if (d < 30) return `${Math.floor(d/7)}w`; return `${Math.floor(d/30)}mo`;
+  };
+
   useEffect(() => {
     if (!active) return;
     (async () => {
@@ -2446,15 +2470,28 @@ function FriendsTab({ user }) {
       </div>
       {groups === null && <div style={{color:T.sub}}>Loading…</div>}
       {groups !== null && !groups.length && <div style={{color:T.sub, fontSize:14, marginBottom:4}}>You're not in a group yet — create one below or join with a friend's code.</div>}
-      {groups?.map(g=>(
+      {groups?.map(g=>{
+        const mem = previews[g.id];
+        return (
         <button key={g.id} onClick={()=>setActive(g)} style={{
-          display:"flex", justifyContent:"space-between", alignItems:"center", width:"100%",
+          display:"flex", justifyContent:"space-between", alignItems:"center", gap:10, width:"100%",
           background:T.input, border:`1px solid ${T.line}`, borderRadius:10, padding:"12px 14px",
           color:T.ink, fontSize:15, fontWeight:600, marginBottom:8, textAlign:"left",
         }}>
-          <span>👥 {g.name}</span><span style={{color:T.green}}>→</span>
+          <span style={{flex:1, minWidth:0}}>
+            <span style={{display:"block"}}>👥 {g.name}{mem && <span style={{color:T.sub, fontWeight:500, fontSize:12.5}}> · {mem.length} member{mem.length===1?"":"s"}</span>}</span>
+            {mem && mem.length > 0 && (
+              <span style={{display:"block", fontSize:12, color:T.sub, fontWeight:500, marginTop:3,
+                whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis"}}>
+                {mem.slice(0,4).map(m=>`${m.username}${agoTxt(m.last)?` (${agoTxt(m.last)})`:""}`).join(", ")}
+                {mem.length > 4 ? `, +${mem.length-4} more` : ""}
+              </span>
+            )}
+          </span>
+          <span style={{color:T.green, flexShrink:0}}>→</span>
         </button>
-      ))}
+        );
+      })}
     </div>
 
     <div className="card">

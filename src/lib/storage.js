@@ -63,6 +63,16 @@ export async function listMembers(groupId) {
   return data ?? [];
 }
 
+/** Last-save timestamps for a set of users you share a group with: { user_id: updated_at }. */
+export async function lastActiveFor(userIds) {
+  if (!userIds.length) return {};
+  const { data, error } = await supabase
+    .from("user_state").select("user_id, updated_at")
+    .in("user_id", userIds);
+  if (error) throw error;
+  return Object.fromEntries((data ?? []).map(r => [r.user_id, r.updated_at]));
+}
+
 /** Creates a group and returns { group_id, invite_code }. */
 export async function createGroup(name) {
   const { data, error } = await supabase.rpc("create_group", { p_name: name });
