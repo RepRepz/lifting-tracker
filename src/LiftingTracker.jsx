@@ -297,7 +297,7 @@ export default function LiftingTracker({ user }) {
 
   return (
     <UnitCtx.Provider value={units}>
-    <div style={{ fontFamily:"system-ui,-apple-system,'Segoe UI',Roboto,sans-serif", background:T.bg, minHeight:"100dvh", color:T.ink, paddingBottom:"calc(76px + env(safe-area-inset-bottom))" }}>
+    <div style={{ fontFamily:"system-ui,-apple-system,'Segoe UI',Roboto,sans-serif", background:T.bg, minHeight:"100dvh", color:T.ink, paddingBottom:"calc(24px + env(safe-area-inset-bottom))" }}>
       <style>{`
         html { color-scheme:dark; scroll-behavior:smooth; }
         * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
@@ -340,12 +340,27 @@ export default function LiftingTracker({ user }) {
         @media(prefers-reduced-motion:reduce){ *{transition:none!important;animation:none!important} }
       `}</style>
 
-      <header style={{ background:T.bg, color:"#fff", padding:"calc(14px + env(safe-area-inset-top)) 18px 14px", position:"sticky", top:0, zIndex:5, display:"flex", justifyContent:"space-between", alignItems:"center", gap:10, borderBottom:`1px solid ${T.line}` }}>
-        <div className="h" onClick={()=>setTab("dash")} style={{ fontSize:24, cursor:"pointer", userSelect:"none" }}>🏋️ MY LIFTING TRACKER</div>
-        <button onClick={()=>setShowSettings(true)} style={{ display:"flex", alignItems:"center", gap:7, flexShrink:0, background:"rgba(255,255,255,.10)", color:"#fff", padding:"6px 12px 6px 13px", fontSize:13, fontWeight:600 }}>
-          💪 {username} <span style={{ fontSize:15, opacity:.8 }}>⚙️</span>
-        </button>
-      </header>
+      <div style={{ position:"sticky", top:0, zIndex:10, background:T.bg, borderBottom:`1px solid ${T.line}` }}>
+        <header style={{ color:"#fff", padding:"calc(12px + env(safe-area-inset-top)) 16px 8px", display:"flex", justifyContent:"space-between", alignItems:"center", gap:10 }}>
+          <div className="h" onClick={()=>setTab("dash")} style={{ fontSize:20, cursor:"pointer", userSelect:"none", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>🏋️ MY LIFTING TRACKER</div>
+          <button onClick={()=>setShowSettings(true)} style={{ display:"flex", alignItems:"center", gap:6, flexShrink:0, background:"rgba(255,255,255,.10)", color:"#fff", padding:"6px 12px 6px 13px", fontSize:13, fontWeight:600 }}>
+            💪 {username} <span style={{ fontSize:15, opacity:.8 }}>⚙️</span>
+          </button>
+        </header>
+        {/* top tab bar: 7 equal columns — always fits the screen, nothing scrolls */}
+        <nav style={{ display:"grid", gridTemplateColumns:`repeat(${tabs.length}, 1fr)`, maxWidth:860, margin:"0 auto" }}>
+          {tabs.map(([id,label,icon]) => (
+            <button key={id} onClick={()=>setTab(id)} style={{
+              padding:"5px 0 7px", background:"none", display:"flex", flexDirection:"column", alignItems:"center", gap:1,
+              color: tab===id?T.green:T.sub, fontWeight: tab===id?700:500, fontSize:10.5, borderRadius:0, minWidth:0,
+              borderBottom: tab===id?`3px solid ${T.green}`:"3px solid transparent",
+            }}>
+              <span className={"navicon" + (tab===id?" on":"")} style={{fontSize:17}}>{icon}</span>
+              <span style={{maxWidth:"100%", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{label}</span>
+            </button>
+          ))}
+        </nav>
+      </div>
 
       {showSettings && (
         <SettingsModal user={user} username={username} data={data}
@@ -371,18 +386,6 @@ export default function LiftingTracker({ user }) {
           {tab==="ex" && <ExercisesTab data={data} setData={setData} />}
         </div>
       </main>
-
-      <nav style={{ position:"fixed", bottom:0, left:0, right:0, background:T.bg, borderTop:`1px solid ${T.line}`, display:"flex", zIndex:10, paddingBottom:"env(safe-area-inset-bottom)" }}>
-        {tabs.map(([id,label,icon]) => (
-          <button key={id} onClick={()=>setTab(id)} style={{
-            flex:1, padding:"9px 2px 10px", background:"none", display:"flex", flexDirection:"column", alignItems:"center", gap:2,
-            color: tab===id?T.tealDk:T.sub, fontWeight: tab===id?700:500, fontSize:11.5,
-            borderTop: tab===id?`3px solid ${T.teal}`:"3px solid transparent",
-          }}>
-            <span className={"navicon" + (tab===id?" on":"")} style={{fontSize:18}}>{icon}</span>{label}
-          </button>
-        ))}
-      </nav>
     </div>
     </UnitCtx.Provider>
   );
@@ -1937,6 +1940,52 @@ function ExercisesTab({ data, setData }) {
 }
 
 /* ================= SETTINGS / ACCOUNT ================= */
+/* On a phone browser (not already installed as a home-screen app)? */
+const IS_MOBILE = typeof navigator !== "undefined" && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+const IS_STANDALONE = typeof window !== "undefined" &&
+  (window.matchMedia?.("(display-mode: standalone)").matches || window.navigator?.standalone === true);
+
+function DownloadAppCard() {
+  const [done, setDone] = useState(() => localStorage.getItem("lt-a2hs-done") === "1");
+  if (!IS_MOBILE || IS_STANDALONE || done) return null;
+  const isiOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+  return (
+    <div style={{ ...sCard, borderColor:T.green }}>
+      <div style={{ fontSize:14, fontWeight:700, color:T.green, marginBottom:2 }}>📲 Download the app</div>
+      <div style={{ fontSize:12.5, color:T.ink, lineHeight:1.6 }}>
+        {isiOS ? (<>
+          Put this on your home screen and it opens like a real app — full screen, no browser bar:
+          <ol style={{ margin:"6px 0", paddingLeft:20 }}>
+            <li>Open this site in <b>Safari</b> (Apple's built-in browser).</li>
+            <li>Tap the <b>Share</b> button (the square with the ↑ arrow).</li>
+            <li>Scroll down and tap <b>Add to Home Screen</b>.</li>
+            <li>Tap <b>Add</b>. Done — look for the barbell icon.</li>
+          </ol>
+          <b style={{color:T.down}}>Things to avoid:</b>
+          <ul style={{ margin:"4px 0", paddingLeft:20, color:T.sub }}>
+            <li>In-app browsers (Instagram, Snapchat, TikTok, Messenger) <b>hide</b> Add to Home Screen — copy the link into Safari first.</li>
+            <li>Private/incognito tabs forget your sign-in every time.</li>
+            <li>Some browsers clear cookies aggressively and sign you out. Your data is <b>always safe in the cloud</b> — you'd only have to sign in again — but the home-screen app avoids the hassle.</li>
+          </ul>
+        </>) : (<>
+          Put this on your home screen and it opens like a real app:
+          <ol style={{ margin:"6px 0", paddingLeft:20 }}>
+            <li>Open this site in <b>Chrome</b>.</li>
+            <li>Tap the <b>⋮</b> menu (top right).</li>
+            <li>Tap <b>Add to Home screen</b>, then <b>Add</b>.</li>
+          </ol>
+          <span style={{color:T.sub}}>Avoid in-app browsers (Instagram, Snapchat…) — they hide this option. Your data is always safe in the cloud either way.</span>
+        </>)}
+      </div>
+      <label style={{ display:"flex", alignItems:"center", gap:8, marginTop:10, fontSize:13, fontWeight:600, cursor:"pointer" }}>
+        <input type="checkbox" style={{ width:18, height:18, minHeight:0, accentColor:T.green }}
+          onChange={()=>{ localStorage.setItem("lt-a2hs-done","1"); setDone(true); }} />
+        I added it — hide this
+      </label>
+    </div>
+  );
+}
+
 function SettingsModal({ user, username, data, startTab, setStartTab, tabs, units, setUnits, hunit, setHunit, onClose }) {
   const memberSince = user.created_at ? new Date(user.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}) : "—";
   const totalSets = (data.log||[]).length;
@@ -1969,6 +2018,8 @@ function SettingsModal({ user, username, data, startTab, setStartTab, tabs, unit
           </div>
           <button onClick={onClose} style={{ background:T.input, color:T.sub, width:34, height:34, borderRadius:99, fontSize:16, flexShrink:0 }}>✕</button>
         </div>
+
+        <DownloadAppCard />
 
         {/* units */}
         <div style={{ ...sCard }}>
