@@ -490,6 +490,7 @@ function LogTab({ data, exMap, setData }) {
 
   const addSet = () => {
     if (!exName || !reps || (!isBW && !weight)) return;
+    if (date > todayStr()) { setDate(todayStr()); return; } // no logging the future
     const entry = { id: Date.now(), date, exercise: exName, set: setNum,
       weight: isBW ? null : toLb(parseFloat(weight), units), reps: parseInt(reps), effort, notes };
     const pr = checkPR(entry);
@@ -515,7 +516,7 @@ function LogTab({ data, exMap, setData }) {
   const saveEdit = () => {
     if (!editValid) return;
     setData(d => ({ ...d, log: d.log.map(x => x.id === edit.id ? {
-      ...x, date: edit.date, exercise: edit.exercise, set: parseInt(edit.set) || 1,
+      ...x, date: edit.date > todayStr() ? todayStr() : edit.date, exercise: edit.exercise, set: parseInt(edit.set) || 1,
       weight: editIsBW ? null : toLb(parseFloat(edit.weight), units), reps: parseInt(edit.reps),
       effort: edit.effort, notes: edit.notes,
     } : x) }));
@@ -547,7 +548,7 @@ function LogTab({ data, exMap, setData }) {
     <div className="card">
       <div className="h" style={{fontSize:19, color:T.tealDk, marginBottom:10}}>Log a set</div>
       <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:10}}>
-        <label style={lbl}>Date<input type="date" value={date} onChange={e=>setDate(e.target.value)} /></label>
+        <label style={lbl}>Date<input type="date" value={date} max={todayStr()} onChange={e=>setDate(e.target.value)} /></label>
         <label style={lbl}>Set #<input type="number" min="1" value={setNum} onChange={e=>setSetNum(parseInt(e.target.value)||1)} /></label>
       </div>
       <label style={lbl}>Exercise
@@ -692,7 +693,7 @@ function LogTab({ data, exMap, setData }) {
               <tr><td colSpan={7} style={{padding:"6px 4px"}}>
                 <div style={editBox}>
                   <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:8}}>
-                    <label style={lbl}>Date<input type="date" value={edit.date} onChange={ev=>setEdit(s=>({...s, date:ev.target.value}))} /></label>
+                    <label style={lbl}>Date<input type="date" value={edit.date} max={todayStr()} onChange={ev=>setEdit(s=>({...s, date:ev.target.value}))} /></label>
                     <label style={lbl}>Set #<input type="number" min="1" value={edit.set} onChange={ev=>setEdit(s=>({...s, set:ev.target.value}))} /></label>
                   </div>
                   <label style={{...lbl, marginBottom:8, display:"block"}}>Exercise
@@ -805,8 +806,15 @@ const download = (name, content, type) => {
 
 /* Workout calendar: last 90 days, built for thumbs — the 13-week grid fits the
    screen with no sideways scrolling, and TAPPING a day shows its details below. */
+const CAL_VIEWS = { "1M": 5, "3M": 13, "6M": 26, "1Y": 52 }; // label -> weeks shown
 function WorkoutHeatmap({ log, cardio, exMap = {} }) {
   const [sel, setSel] = useState(todayStr());
+  // view choice sticks (remembered on this device)
+  const [view, setView] = useState(() => {
+    const v = localStorage.getItem("lt-cal-view");
+    return CAL_VIEWS[v] ? v : "3M";
+  });
+  useEffect(() => { localStorage.setItem("lt-cal-view", view); }, [view]);
   const { cols, monthMarks, info } = useMemo(() => {
     const info = {}; // date -> { n (sets), ms (muscles), ex {name:sets}, cd [cardio lines] }
     for (const e of (log||[])) if (e.effort !== "Warm-up") {
@@ -819,7 +827,7 @@ function WorkoutHeatmap({ log, cardio, exMap = {} }) {
       const d = (info[c.date] ||= { n:0, ms:new Set(), ex:{}, cd:[] });
       d.cd.push(`${c.activity} · ${c.duration} min`);
     }
-    const WEEKS = 13; // ~90 days
+    const WEEKS = CAL_VIEWS[view];
     const end = new Date(todayStr() + "T00:00");
     const start = new Date(weekStart(todayStr()) + "T00:00");
     start.setDate(start.getDate() - 7*(WEEKS-1));
@@ -837,7 +845,7 @@ function WorkoutHeatmap({ log, cardio, exMap = {} }) {
       cols.push(days);
     }
     return { cols, monthMarks, info };
-  }, [log, cardio, exMap]);
+  }, [log, cardio, exMap, view]);
 
   const shade = (n, future) => {
     if (future) return "transparent";
@@ -852,21 +860,33 @@ function WorkoutHeatmap({ log, cardio, exMap = {} }) {
   const day = info[sel];
   const muscles = day ? [...day.ms].sort((a,b)=>order.indexOf(a)-order.indexOf(b)) : [];
 
+  const weeks = CAL_VIEWS[view];
+  const gap = weeks > 26 ? 2 : 4;
   return (
     <div>
+      {/* view switcher — remembered */}
+      <div style={{ display:"flex", gap:2, marginBottom:8 }}>
+        {Object.keys(CAL_VIEWS).map(v=>(
+          <button key={v} onClick={()=>setView(v)} style={{
+            background:"none", padding:"4px 10px", fontSize:12, fontWeight:700, letterSpacing:".5px", borderRadius:0,
+            color: view===v?T.green:T.sub, borderBottom: view===v?`2px solid ${T.green}`:"2px solid transparent",
+          }}>{v}</button>
+        ))}
+      </div>
       {/* grid stretches to the card width — cells grow into easy tap targets */}
       <div style={{ position:"relative", height:14 }}>
         {monthMarks.map((m,i)=>(
-          <span key={i} style={{ position:"absolute", left:`${m.col/13*100}%`, fontSize:10, color:T.sub }}>{m.label}</span>
+          <span key={i} style={{ position:"absolute", left:`${m.col/weeks*100}%`, fontSize:10, color:T.sub }}>{m.label}</span>
         ))}
       </div>
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(13, 1fr)", gap:4 }}>
+      <div style={{ display:"grid", gridTemplateColumns:`repeat(${weeks}, 1fr)`, gap }}>
         {cols.map((week,wi)=>(
-          <div key={wi} style={{ display:"flex", flexDirection:"column", gap:4 }}>
+          <div key={wi} style={{ display:"flex", flexDirection:"column", gap }}>
             {week.map(d=>(
               <div key={d.key}
                 onClick={()=>{ if (!d.future) setSel(d.key); }}
-                style={{ aspectRatio:"1", borderRadius:4, background:shade(d.n, d.future),
+                onMouseEnter={()=>{ if (!d.future) setSel(d.key); }}
+                style={{ aspectRatio:"1", borderRadius: weeks > 26 ? 2 : 4, background:shade(d.n, d.future),
                   cursor: d.future ? "default" : "pointer",
                   outline: sel===d.key ? `2px solid ${T.ink}` : d.key===todayStr() ? `1.5px solid ${T.sub}` : "none",
                   outlineOffset:-1 }} />
@@ -956,7 +976,12 @@ function YearRecap({ data }) {
 /* ================= DASHBOARD ================= */
 function Dashboard({ data, exMap, setData, own = true }) {
   const units = useUnit();
-  const [range, setRange] = useState("1Y");
+  // range sticks forever (remembered on this device)
+  const [range, setRange] = useState(() => {
+    const r = localStorage.getItem("lt-range");
+    return r && RANGE_DAYS[r] !== undefined ? r : "1M";
+  });
+  useEffect(() => { localStorage.setItem("lt-range", range); }, [range]);
   /* Pinned charts live in account data (data.pins) so they sync across devices and
      friends' profiles show THEIR pins. Local state first, then persisted when it's your own. */
   const [pins, setPins] = useState(() => Array.isArray(data.pins) ? data.pins : []);
@@ -1161,7 +1186,7 @@ function Dashboard({ data, exMap, setData, own = true }) {
 
     <div className="card">
       <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:2}}>Workout calendar</div>
-      <div style={{fontSize:12, color:T.sub, marginBottom:10}}>Last 90 days — greener means more sets. Tap any day to see what you did.</div>
+      <div style={{fontSize:12, color:T.sub, marginBottom:10}}>Greener means more sets. Tap a day (hover works on a computer) to see what you did.</div>
       <WorkoutHeatmap log={data.log} cardio={data.cardio} exMap={exMap} />
     </div>
 
@@ -1413,7 +1438,7 @@ function BodyTab({ data, setData, hunit }) {
     <div className="card">
       <div className="h" style={{fontSize:19, color:T.tealDk, marginBottom:10}}>⚖️ Log a weigh-in</div>
       <div style={{display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginBottom:12}}>
-        <label style={lbl}>Date<input type="date" value={date} onChange={e=>setDate(e.target.value)} /></label>
+        <label style={lbl}>Date<input type="date" value={date} max={todayStr()} onChange={e=>setDate(e.target.value)} /></label>
         <label style={lbl}>Weight ({uLabel(units)})<input type="number" inputMode="decimal" value={weight} onChange={e=>setWeight(e.target.value)} /></label>
         <label style={lbl}>Creatine today?<select value={creatine} onChange={e=>setCreatine(e.target.value)}><option>No</option><option>Yes</option></select></label>
       </div>
@@ -1472,7 +1497,7 @@ function BodyTab({ data, setData, hunit }) {
             <tr><td colSpan={4} style={{padding:"6px 4px"}}>
               <div style={editBox}>
                 <div style={{display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, marginBottom:10}}>
-                  <label style={lbl}>Date<input type="date" value={edit.date} onChange={ev=>setEdit(s=>({...s, date:ev.target.value}))} /></label>
+                  <label style={lbl}>Date<input type="date" value={edit.date} max={todayStr()} onChange={ev=>setEdit(s=>({...s, date:ev.target.value}))} /></label>
                   <label style={lbl}>Weight ({uLabel(units)})<input type="number" inputMode="decimal" value={edit.weight} onChange={ev=>setEdit(s=>({...s, weight:ev.target.value}))} /></label>
                   <label style={lbl}>Creatine<select value={edit.creatine} onChange={ev=>setEdit(s=>({...s, creatine:ev.target.value}))}><option>No</option><option>Yes</option></select></label>
                 </div>
@@ -1565,7 +1590,7 @@ function CardioTab({ data, setData, latestBW }) {
         Machines: type in what the display says.
       </div>
       <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:10}}>
-        <label style={lbl}>Date<input type="date" value={date} onChange={e=>setDate(e.target.value)} /></label>
+        <label style={lbl}>Date<input type="date" value={date} max={todayStr()} onChange={e=>setDate(e.target.value)} /></label>
         <label style={lbl}>Activity
           <select value={activity} onChange={e=>setActivity(e.target.value)}>
             <option value="">— pick —</option>
@@ -1656,7 +1681,7 @@ function CardioTab({ data, setData, latestBW }) {
             <tr><td colSpan={6} style={{padding:"6px 4px"}}>
               <div style={editBox}>
                 <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:8}}>
-                  <label style={lbl}>Date<input type="date" value={edit.date} onChange={ev=>setEdit(s=>({...s, date:ev.target.value}))} /></label>
+                  <label style={lbl}>Date<input type="date" value={edit.date} max={todayStr()} onChange={ev=>setEdit(s=>({...s, date:ev.target.value}))} /></label>
                   <label style={lbl}>Activity
                     <select value={edit.activity} onChange={ev=>setEdit(s=>({...s, activity:ev.target.value}))}>
                       {data.cardioActivities.map(a=><option key={a.name}>{a.name}</option>)}

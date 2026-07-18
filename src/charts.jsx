@@ -47,7 +47,7 @@ export function TrendChart({ pts, unit = "", dots = false }) {
         <Tooltip content={<NiceTip unit={unit} />} cursor={{ stroke: "#4A4E50", strokeDasharray: "3 3" }} />
         <ReferenceLine y={first} stroke="#4A4E50" strokeDasharray="2 6" />
         <Area type="monotone" dataKey="value" stroke={stroke} strokeWidth={2.5} fill={`url(#${gid})`}
-          dot={dots ? { r: 4.5, fill: stroke, stroke: "#000", strokeWidth: 1.5 } : false}
+          dot={dots ? { r: 4.5, fill: stroke, stroke: "#000", strokeWidth: 1.5 } : { r: 3, fill: stroke, strokeWidth: 0 }}
           activeDot={{ r: 5.5, fill: stroke, stroke: "#000", strokeWidth: 2 }}
           isAnimationActive={ANIM} animationDuration={700} animationEasing="ease-out" />
       </AreaChart>
