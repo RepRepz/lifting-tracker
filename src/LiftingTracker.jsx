@@ -25,47 +25,48 @@ const MusclePie = lazy(() => import("./charts.jsx").then(m => ({ default: m.Musc
 const ChartFallback = ({ h }) => <div style={{ height: h, display:"flex", alignItems:"center", justifyContent:"center", color:T.sub, fontSize:13 }}>loading chart…</div>;
 
 /* ---------- seed exercise library ----------
-   Each entry: [name, [muscle groups it significantly hits — primary first]] */
+   Each entry: [name, [primary muscles — full credit], [secondary muscles — half credit]]
+   A muscle only makes the list at all if it does roughly 20%+ of the work. */
 const SEED_EXERCISES = [
-  // chest pressing (compound: chest + triceps + front delts)
-  ["Bench Press",["Chest","Triceps","Shoulders"]],["Incline Bench Press",["Chest","Shoulders","Triceps"]],
-  ["Incline Dumbbell Press",["Chest","Shoulders","Triceps"]],["Dumbbell Bench Press",["Chest","Triceps","Shoulders"]],
-  ["Machine Chest Press",["Chest","Triceps","Shoulders"]],
+  // chest pressing
+  ["Bench Press",["Chest"],["Triceps"]],["Incline Bench Press",["Chest"],["Shoulders","Triceps"]],
+  ["Incline Dumbbell Press",["Chest"],["Shoulders","Triceps"]],["Dumbbell Bench Press",["Chest"],["Triceps"]],
+  ["Machine Chest Press",["Chest"],["Triceps"]],
   ["Chest Fly",["Chest"]],["Cable Crossover",["Chest"]],
-  ["Dips",["Chest","Triceps","Shoulders"]],
+  ["Dips",["Chest","Triceps"],["Shoulders"]],
   // push-up family
-  ["Push-Up",["Chest","Triceps","Shoulders"]],["Wide Push-Up",["Chest","Shoulders","Triceps"]],
-  ["Diamond Push-Up",["Triceps","Chest","Shoulders"]],["Incline Push-Up",["Chest","Triceps","Shoulders"]],
-  ["Decline Push-Up",["Chest","Shoulders","Triceps"]],["Pike Push-Up",["Shoulders","Triceps"]],
-  ["Archer Push-Up",["Chest","Triceps","Shoulders"]],["Clap Push-Up",["Chest","Triceps","Shoulders"]],
-  ["One-Arm Push-Up",["Chest","Triceps","Abs"]],
+  ["Push-Up",["Chest","Triceps"],["Shoulders"]],["Wide Push-Up",["Chest"],["Triceps","Shoulders"]],
+  ["Diamond Push-Up",["Triceps","Chest"]],["Incline Push-Up",["Chest"],["Triceps"]],
+  ["Decline Push-Up",["Chest","Shoulders"],["Triceps"]],["Pike Push-Up",["Shoulders"],["Triceps"]],
+  ["Archer Push-Up",["Chest"],["Triceps"]],["Clap Push-Up",["Chest"],["Triceps"]],
+  ["One-Arm Push-Up",["Chest","Triceps"],["Abs"]],
   // triceps
   ["Triceps Pushdown",["Triceps"]],["Overhead Triceps Extension",["Triceps"]],["Skullcrusher",["Triceps"]],
-  ["Close-Grip Bench Press",["Triceps","Chest","Shoulders"]],["Triceps Dip",["Triceps","Chest","Shoulders"]],
+  ["Close-Grip Bench Press",["Triceps"],["Chest"]],["Triceps Dip",["Triceps"],["Chest"]],
   // shoulders
-  ["Overhead Press",["Shoulders","Triceps"]],["Dumbbell Shoulder Press",["Shoulders","Triceps"]],
-  ["Arnold Press",["Shoulders","Triceps"]],["Lateral Raise",["Shoulders"]],["Rear Delt Fly",["Shoulders"]],
-  ["Face Pull",["Shoulders","Back"]],["Upright Row",["Shoulders","Back"]],
+  ["Overhead Press",["Shoulders"],["Triceps"]],["Dumbbell Shoulder Press",["Shoulders"],["Triceps"]],
+  ["Arnold Press",["Shoulders"],["Triceps"]],["Lateral Raise",["Shoulders"]],["Rear Delt Fly",["Shoulders"]],
+  ["Face Pull",["Shoulders"],["Back"]],["Upright Row",["Shoulders"],["Back"]],
   // back
-  ["Deadlift",["Back","Legs"]],["Sumo Deadlift",["Legs","Back"]],
-  ["Barbell Row",["Back","Biceps"]],["Pull-Up",["Back","Biceps"]],["Chin-Up",["Back","Biceps"]],
-  ["Lat Pulldown",["Back","Biceps"]],["Seated Cable Row",["Back","Biceps"]],["Dumbbell Row",["Back","Biceps"]],
-  ["T-Bar Row",["Back","Biceps"]],["Inverted Row",["Back","Biceps"]],
-  ["Barbell Shrug",["Back"]],["Dumbbell Shrug",["Back"]],["Back Extension",["Back","Legs"]],
+  ["Deadlift",["Back","Legs"]],["Sumo Deadlift",["Legs"],["Back"]],
+  ["Barbell Row",["Back"],["Biceps"]],["Pull-Up",["Back"],["Biceps"]],["Chin-Up",["Back","Biceps"]],
+  ["Lat Pulldown",["Back"],["Biceps"]],["Seated Cable Row",["Back"],["Biceps"]],["Dumbbell Row",["Back"],["Biceps"]],
+  ["T-Bar Row",["Back"],["Biceps"]],["Inverted Row",["Back"],["Biceps"]],
+  ["Barbell Shrug",["Back"]],["Dumbbell Shrug",["Back"]],["Back Extension",["Back"],["Legs"]],
   // biceps
   ["Barbell Curl",["Biceps"]],["Dumbbell Curl",["Biceps"]],["Hammer Curl",["Biceps"]],
   ["Preacher Curl",["Biceps"]],["Cable Curl",["Biceps"]],["Concentration Curl",["Biceps"]],
   // legs
-  ["Back Squat",["Legs"]],["Front Squat",["Legs","Abs"]],["Machine Squat",["Legs"]],["Hack Squat",["Legs"]],
+  ["Back Squat",["Legs"]],["Front Squat",["Legs"]],["Machine Squat",["Legs"]],["Hack Squat",["Legs"]],
   ["Goblet Squat",["Legs"]],["Bodyweight Squat",["Legs"]],["Leg Press",["Legs"]],["Leg Extension",["Legs"]],
-  ["Lying Leg Curl",["Legs"]],["Seated Leg Curl",["Legs"]],["Romanian Deadlift",["Legs","Back"]],
-  ["Good Morning",["Legs","Back"]],["Bulgarian Split Squat",["Legs"]],["Walking Lunge",["Legs"]],
+  ["Lying Leg Curl",["Legs"]],["Seated Leg Curl",["Legs"]],["Romanian Deadlift",["Legs"],["Back"]],
+  ["Good Morning",["Legs"],["Back"]],["Bulgarian Split Squat",["Legs"]],["Walking Lunge",["Legs"]],
   ["Step-Up",["Legs"]],["Hip Thrust",["Legs"]],["Glute Bridge",["Legs"]],["Hip Abduction Machine",["Legs"]],
-  ["Kettlebell Swing",["Legs","Back","Abs"]],["Standing Calf Raise",["Legs"]],["Seated Calf Raise",["Legs"]],
+  ["Kettlebell Swing",["Legs"],["Back"]],["Standing Calf Raise",["Legs"]],["Seated Calf Raise",["Legs"]],
   // abs / full body
   ["Plank",["Abs"]],["Hanging Leg Raise",["Abs"]],["Cable Crunch",["Abs"]],["Ab Wheel",["Abs"]],
   ["Sit-Up",["Abs"]],["Crunch",["Abs"]],["Russian Twist",["Abs"]],["Mountain Climber",["Abs"]],
-  ["Farmer's Carry",["Back","Abs","Legs"]],
+  ["Farmer's Carry",["Back"],["Abs"]],
 ];
 const BW_SET = new Set([
   "Pull-Up","Chin-Up","Dips","Triceps Dip","Inverted Row","Back Extension","Bodyweight Squat","Glute Bridge",
@@ -78,11 +79,17 @@ const BARBELL_SEED = new Set([
   "Deadlift","Sumo Deadlift","Barbell Row","T-Bar Row","Barbell Curl","Back Squat","Front Squat",
   "Romanian Deadlift","Hip Thrust","Barbell Shrug","Upright Row","Good Morning",
 ]);
-/* Every muscle group an exercise hits (old saved data may only have a single `muscle`). */
+/* Primary muscle groups an exercise hits (old saved data may only have a single `muscle`). */
 const musclesOf = (ex) => !ex ? []
   : Array.isArray(ex.muscles) && ex.muscles.length ? ex.muscles
   : ex.muscle ? [ex.muscle] : [];
+/* Secondary (half-credit) muscle groups. */
+const secondariesOf = (ex) => (ex && Array.isArray(ex.muscles2)) ? ex.muscles2 : [];
 const muscleOf = (ex) => musclesOf(ex)[0];
+/* [muscle, credit] pairs: primaries count as a full set, secondaries as half. */
+const muscleCredits = (ex) => [...musclesOf(ex).map(m => [m, 1]), ...secondariesOf(ex).map(m => [m, 0.5])];
+/* "Chest · Triceps ½" — for tables and exports */
+const muscleLabel = (ex) => [...musclesOf(ex), ...secondariesOf(ex).map(m => m + " ½")].join(" · ");
 /* An exercise uses plates if it's flagged barbell (or, for older data with no flag, matches a known barbell move). */
 const usesPlates = (ex) => !!ex && ex.type !== "Bodyweight" && (ex.barbell ?? BARBELL_SEED.has(ex.name));
 const EQUIP_OPTS = ["Barbell (plates)", "Weighted (other)", "Bodyweight"];
@@ -136,22 +143,23 @@ function platesPerSide(total, bar, plates) {
 }
 
 const defaultData = {
-  // `muscle` (primary) is kept alongside `muscles` so older cached app versions still work
-  exercises: SEED_EXERCISES.map(([name, muscles]) => ({ name, muscle: muscles[0], muscles, type: BW_SET.has(name) ? "Bodyweight" : "Weighted", barbell: BARBELL_SEED.has(name) })),
+  // `muscle` (primary) is kept alongside `muscles`/`muscles2` so older cached app versions still work
+  exercises: SEED_EXERCISES.map(([name, muscles, muscles2 = []]) => ({ name, muscle: muscles[0], muscles, muscles2, type: BW_SET.has(name) ? "Bodyweight" : "Weighted", barbell: BARBELL_SEED.has(name) })),
   log: [], bodyweight: [], cardio: [], cardioActivities: [],
-  libraryV: 2, // bumped when the seed library gains exercises, so existing users get them once
+  profile: {}, // heightIn (inches) lives here once set
+  libraryV: 3, // bumped when the seed library changes, so existing users get the update once
 };
 
 /* One-time upgrade of previously saved data: pull in newly added seed exercises and
-   the multi-muscle lists — without touching anything the user added or renamed.
+   the current primary/secondary muscle lists — custom moves pass through untouched.
    Runs only when libraryV is behind, so later deletions stay deleted. */
 function migrateData(d) {
   if ((d.libraryV || 0) >= defaultData.libraryV) return d;
   const seedMap = Object.fromEntries(defaultData.exercises.map(s => [s.name, s]));
   const have = new Set((d.exercises || []).map(x => x.name));
   const exercises = [
-    // known seeds get the new muscles list (unless already upgraded); custom moves pass through
-    ...(d.exercises || []).map(x => seedMap[x.name] && !x.muscles ? { ...x, muscle: seedMap[x.name].muscle, muscles: seedMap[x.name].muscles } : x),
+    // known seeds get the refreshed muscle lists (type/equipment edits are kept)
+    ...(d.exercises || []).map(x => seedMap[x.name] ? { ...x, muscle: seedMap[x.name].muscle, muscles: seedMap[x.name].muscles, muscles2: seedMap[x.name].muscles2 } : x),
     ...defaultData.exercises.filter(s => !have.has(s.name)),
   ];
   return { ...d, exercises, libraryV: defaultData.libraryV };
@@ -186,8 +194,10 @@ export default function LiftingTracker({ user }) {
   const [tab, setTab] = useState(() => localStorage.getItem("lt-start-tab") || "dash");
   const [showSettings, setShowSettings] = useState(false);
   const [units, setUnits] = useState(() => localStorage.getItem("lt-units") || "lb");
+  const [hunit, setHunit] = useState(() => localStorage.getItem("lt-hunit") || "ftin"); // height: "ftin" | "cm"
   useEffect(() => { localStorage.setItem("lt-start-tab", startTab); }, [startTab]);
   useEffect(() => { localStorage.setItem("lt-units", units); }, [units]);
+  useEffect(() => { localStorage.setItem("lt-hunit", hunit); }, [hunit]);
   const [loaded, setLoaded] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
   const [syncState, setSyncState] = useState("synced"); // "synced" | "offline"
@@ -322,7 +332,7 @@ export default function LiftingTracker({ user }) {
       {showSettings && (
         <SettingsModal user={user} username={username} data={data}
           startTab={startTab} setStartTab={setStartTab} tabs={tabs}
-          units={units} setUnits={setUnits}
+          units={units} setUnits={setUnits} hunit={hunit} setHunit={setHunit}
           onClose={()=>setShowSettings(false)} />
       )}
 
@@ -338,7 +348,7 @@ export default function LiftingTracker({ user }) {
           {tab==="log" && <LogTab data={data} exMap={exMap} setData={setData} />}
           {tab==="records" && <RecordsTab data={data} exMap={exMap} />}
           {tab==="friends" && <FriendsTab user={user} />}
-          {tab==="body" && <BodyTab data={data} setData={setData} />}
+          {tab==="body" && <BodyTab data={data} setData={setData} hunit={hunit} />}
           {tab==="cardio" && <CardioTab data={data} setData={setData} latestBW={latestBW} />}
           {tab==="ex" && <ExercisesTab data={data} setData={setData} />}
         </div>
@@ -822,8 +832,8 @@ function YearRecap({ data }) {
     const days = new Set([...log.map(e=>e.date), ...cardio.map(c=>c.date)]);
     const volume = log.reduce((s,e)=>s + (e.weight||0)*e.reps, 0);
     const byMuscle = {};
-    const exMuscles = Object.fromEntries((data.exercises||[]).map(x=>[x.name,musclesOf(x)]));
-    for (const e of log) { if (e.effort==="Warm-up") continue; for (const m of exMuscles[e.exercise]||[]) byMuscle[m]=(byMuscle[m]||0)+1; }
+    const exCred = Object.fromEntries((data.exercises||[]).map(x=>[x.name,muscleCredits(x)]));
+    for (const e of log) { if (e.effort==="Warm-up") continue; for (const [m,w] of exCred[e.exercise]||[]) byMuscle[m]=(byMuscle[m]||0)+w; }
     const topMuscle = Object.entries(byMuscle).sort((a,b)=>b[1]-a[1])[0];
     let bigPR = null;
     for (const e of log) {
@@ -935,7 +945,7 @@ function Dashboard({ data, exMap, setData }) {
     for (const e of data.log) {
       if (e.effort==="Warm-up") continue;
       if (weekStart(e.date)!==wkStart) continue;
-      for (const m of musclesOf(exMap[e.exercise])) if (m in c) c[m]++;
+      for (const [m,w] of muscleCredits(exMap[e.exercise])) if (m in c) c[m]+=w;
     }
     return c;
   }, [data.log, exMap, wkStart]);
@@ -947,9 +957,9 @@ function Dashboard({ data, exMap, setData }) {
     for (const e of data.log) {
       if (e.effort==="Warm-up") continue;
       if (new Date(e.date+"T00:00") < cutoff) continue;
-      for (const m of musclesOf(exMap[e.exercise])) if (m in c) c[m]++;
+      for (const [m,w] of muscleCredits(exMap[e.exercise])) if (m in c) c[m]+=w;
     }
-    return MUSCLES.map((m,i)=>({name:m, value:c[m], fill:MUSCLE_COLORS[i]})).filter(x=>x.value>0);
+    return MUSCLES.map((m,i)=>({name:m, value:Math.round(c[m]*10)/10, fill:MUSCLE_COLORS[i]})).filter(x=>x.value>0);
   }, [data.log, exMap]);
 
   /* weekly streak (lifting OR cardio) with mid-week protection */
@@ -1009,7 +1019,7 @@ function Dashboard({ data, exMap, setData }) {
 
     <div className="card">
       <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:2}}>Weekly set target</div>
-      <div style={{fontSize:12, color:T.sub, marginBottom:12}}>Aim for 12–16 hard sets per muscle — the brighter zone on each bar. Compound lifts count for every muscle they hit.</div>
+      <div style={{fontSize:12, color:T.sub, marginBottom:12}}>Aim for 12–16 hard sets per muscle — the brighter zone on each bar. Main muscles count a full set; secondary ones (like triceps on bench) count half.</div>
       {MUSCLES.map((m,i)=>{
         const n = weekSets[m];
         const status = n<12 ? "under" : n<=16 ? "✓ on target" : "over";
@@ -1040,7 +1050,7 @@ function Dashboard({ data, exMap, setData }) {
 
     <div className="card">
       <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:4}}>Last 30 days — work by muscle</div>
-      <div style={{fontSize:12, color:T.sub, marginBottom:4}}>Every muscle a lift hits gets credit — bench press counts for chest, triceps, and shoulders.</div>
+      <div style={{fontSize:12, color:T.sub, marginBottom:4}}>Main muscles get full credit, secondaries half — a bench set counts 1 for chest, ½ for triceps.</div>
       {pieData.length ? (
         <Suspense fallback={<ChartFallback h={230} />}><MusclePie data={pieData} /></Suspense>
       ) : <div style={{color:T.sub, fontSize:14}}>Log some sets and your split shows up here.</div>}
@@ -1085,7 +1095,7 @@ function RecordsTab({ data, exMap }) {
         <table><thead><tr><th>Exercise</th><th>Trend</th><th>Muscle</th><th>Heaviest</th><th>Best set</th><th>Est. 1RM</th><th>Most reps</th><th>Best volume</th><th>Last done</th></tr></thead>
           <tbody>
             {logged.map(r=>(
-              <tr key={r.name}><td>{r.name}</td><td><Spark pts={r.spark} /></td><td style={{whiteSpace:"nowrap"}}>{musclesOf(r).join(" · ")}</td><td>{r.heaviest}</td><td>{r.best}</td>
+              <tr key={r.name}><td>{r.name}</td><td><Spark pts={r.spark} /></td><td style={{whiteSpace:"nowrap"}}>{muscleLabel(r)}</td><td>{r.heaviest}</td><td>{r.best}</td>
                 <td>{r.est}</td><td>{r.mostReps}</td><td>{r.vol}</td><td>{fmtDate(r.lastDone)}</td></tr>
             ))}
             {!logged.length && <tr><td colSpan={9} style={{color:T.sub}}>No lifts logged yet — records build themselves as you train.</td></tr>}
@@ -1096,7 +1106,79 @@ function RecordsTab({ data, exMap }) {
 }
 
 /* ================= BODY WEIGHT ================= */
-function BodyTab({ data, setData }) {
+/* ---------- BMI (height saved once; weight auto-follows the latest weigh-in) ---------- */
+const BMI_CATS = [
+  { max: 18.5, label: "Underweight", color: "#E3BE55" },
+  { max: 25,   label: "Normal",      color: T.green },
+  { max: 30,   label: "Overweight",  color: "#E3BE55" },
+  { max: Infinity, label: "Obese",   color: T.down },
+];
+function BMICard({ data, setData, hunit, current }) {
+  const units = useUnit();
+  const saved = data.profile?.heightIn || null; // inches, canonical
+  const [ft, setFt] = useState(saved ? String(Math.floor(saved / 12)) : "");
+  const [inch, setInch] = useState(saved ? String(Math.round((saved % 12) * 10) / 10) : "");
+  const [cm, setCm] = useState(saved ? String(Math.round(saved * 2.54)) : "");
+  const typedIn = hunit === "cm"
+    ? (parseFloat(cm) || 0) / 2.54
+    : (parseFloat(ft) || 0) * 12 + (parseFloat(inch) || 0);
+  const canSave = typedIn >= 36 && typedIn <= 96; // 3ft–8ft sanity window
+  const dirty = canSave && Math.abs(typedIn - (saved || 0)) > 0.05;
+  const save = () => setData(d => ({ ...d, profile: { ...(d.profile || {}), heightIn: Math.round(typedIn * 10) / 10 } }));
+
+  const bmi = saved && current ? Math.round(703 * current.weight / (saved * saved) * 10) / 10 : null;
+  const cat = bmi != null ? BMI_CATS.find(c => bmi < c.max) : null;
+  const lo = saved ? 18.5 * saved * saved / 703 : null, hi = saved ? 24.9 * saved * saved / 703 : null;
+  const hLabel = saved ? (hunit === "cm" ? `${Math.round(saved * 2.54)} cm` : `${Math.floor(saved / 12)}'${Math.round(saved % 12)}"`) : null;
+
+  return (
+    <div className="card">
+      <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:4}}>🧮 BMI</div>
+      <div style={{fontSize:12, color:T.sub, marginBottom:10}}>
+        Uses your latest weigh-in automatically — just set your height once.
+        (Height unit switches to cm in ⚙️ Settings.)
+      </div>
+      <div style={{display:"flex", gap:8, alignItems:"flex-end", flexWrap:"wrap", marginBottom: bmi != null ? 12 : 0}}>
+        {hunit === "cm" ? (
+          <label style={{...lbl, flex:1, minWidth:110, marginBottom:0}}>Height (cm)
+            <input type="number" inputMode="decimal" value={cm} onChange={e=>setCm(e.target.value)} placeholder="e.g. 180" />
+          </label>
+        ) : (<>
+          <label style={{...lbl, flex:1, minWidth:80, marginBottom:0}}>Height (ft)
+            <input type="number" inputMode="numeric" value={ft} onChange={e=>setFt(e.target.value)} placeholder="5" />
+          </label>
+          <label style={{...lbl, flex:1, minWidth:80, marginBottom:0}}>+ inches
+            <input type="number" inputMode="decimal" value={inch} onChange={e=>setInch(e.target.value)} placeholder="11" />
+          </label>
+        </>)}
+        {(dirty || !saved) && (
+          <button onClick={save} disabled={!canSave} style={{background:T.green, color:"#000", padding:"11px 18px", fontWeight:700, opacity:canSave?1:0.45}}>
+            Save height
+          </button>
+        )}
+      </div>
+      {!saved ? (
+        <div style={{fontSize:13, color:T.sub, marginTop:10}}>Type your height and hit save — BMI shows up right here.</div>
+      ) : !current ? (
+        <div style={{fontSize:13, color:T.sub}}>Log a weigh-in above and your BMI appears here.</div>
+      ) : (
+        <>
+          <div style={{display:"flex", alignItems:"baseline", gap:10, flexWrap:"wrap"}}>
+            <span style={{fontSize:34, fontWeight:800, color:cat.color}}>{bmi}</span>
+            <span className="chip" style={{background:"none", border:`1px solid ${cat.color}`, color:cat.color}}>{cat.label}</span>
+          </div>
+          <div style={{fontSize:12.5, color:T.sub, marginTop:6}}>
+            {hLabel} · {showW(current.weight, units)} (latest weigh-in, {fmtDate(current.date)})
+            <br/>Healthy-BMI weight range for your height: <b style={{color:T.ink}}>{Math.round(dispW(lo,units))}–{Math.round(dispW(hi,units))} {uLabel(units)}</b>
+            <br/>Heads up: BMI can't tell muscle from fat — lifters often read a category high.
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function BodyTab({ data, setData, hunit }) {
   const units = useUnit();
   const [date, setDate] = useState(todayStr());
   const [weight, setWeight] = useState("");
@@ -1162,6 +1244,8 @@ function BodyTab({ data, setData }) {
       <div><div style={{...kpiN, color: changeDisp==null ? T.ink : changeDisp >= 0 ? T.green : T.down}}>{changeDisp!=null?(changeDisp>0?"+":"")+changeDisp:"—"}</div><div style={kpiL}>Change ({uLabel(units)})</div></div>
       <div><div style={{...kpiN, fontSize:20, paddingTop:8}}>{current?fmtDate(current.date):"—"}</div><div style={kpiL}>Latest</div></div>
     </div>
+
+    <BMICard data={data} setData={setData} hunit={hunit} current={current} />
 
     <div className="card">
       <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:4}}>Body weight — monthly average</div>
@@ -1425,21 +1509,27 @@ function CardioTab({ data, setData, latestBW }) {
 }
 
 /* ================= EXERCISES ================= */
-/* tap-to-toggle muscle group picker — first selected = primary (decides where it sorts) */
-function MuscleChips({ value, onChange }) {
-  const toggle = (m) => onChange(value.includes(m) ? value.filter(x => x !== m) : [...value, m]);
+/* 3-state muscle picker: tap once = main muscle (full credit, green ✓),
+   tap again = secondary (half credit, amber ½), third tap = off. */
+const AMBER = "#E3BE55";
+function MuscleChips({ prim, sec, onChange }) {
+  const cycle = (m) => {
+    if (prim.includes(m)) onChange(prim.filter(x => x !== m), [...sec, m]);
+    else if (sec.includes(m)) onChange(prim, sec.filter(x => x !== m));
+    else onChange([...prim, m], sec);
+  };
   return (
     <div style={{display:"flex", flexWrap:"wrap", gap:6}}>
-      {MUSCLES.map((m,i)=>{
-        const on = value.includes(m);
+      {MUSCLES.map((m)=>{
+        const state = prim.includes(m) ? "prim" : sec.includes(m) ? "sec" : "off";
+        const col = state === "prim" ? T.green : state === "sec" ? AMBER : T.sub;
         return (
-          <button key={m} type="button" onClick={()=>toggle(m)} style={{
+          <button key={m} type="button" onClick={()=>cycle(m)} style={{
             padding:"6px 12px", borderRadius:99, fontSize:13, fontWeight:600, minHeight:36,
-            background: on ? "rgba(0,200,5,.14)" : "none",
-            border: `1px solid ${on ? T.green : T.line}`,
-            color: on ? T.green : T.sub,
+            background: state === "prim" ? "rgba(0,200,5,.14)" : state === "sec" ? "rgba(227,190,85,.12)" : "none",
+            border: `1px solid ${state === "off" ? T.line : col}`, color: col,
           }}>
-            {on ? "✓ " : ""}{m}
+            {state === "prim" ? "✓ " : state === "sec" ? "½ " : ""}{m}
           </button>
         );
       })}
@@ -1448,22 +1538,23 @@ function MuscleChips({ value, onChange }) {
 }
 
 function ExercisesTab({ data, setData }) {
-  const [name, setName] = useState(""); const [muscles, setMuscles] = useState(["Chest"]); const [equip, setEquip] = useState("Barbell (plates)");
+  const [name, setName] = useState(""); const [muscles, setMuscles] = useState(["Chest"]);
+  const [muscles2, setMuscles2] = useState([]); const [equip, setEquip] = useState("Barbell (plates)");
 
-  const [edit, setEdit] = useState(null); // { orig, name, muscles, equip }
+  const [edit, setEdit] = useState(null); // { orig, name, muscles, muscles2, equip }
   const editValid = edit && edit.name.trim() && edit.muscles.length > 0 &&
     !data.exercises.some(x => x.name === edit.name.trim() && x.name !== edit.orig);
   const saveEdit = () => {
     if (!editValid) return;
     const nn = edit.name.trim();
     setData(d=>({ ...d,
-      exercises: d.exercises.map(x => x.name===edit.orig ? { name:nn, muscle:edit.muscles[0], muscles:edit.muscles, ...fromEquip(edit.equip) } : x),
+      exercises: d.exercises.map(x => x.name===edit.orig ? { name:nn, muscle:edit.muscles[0], muscles:edit.muscles, muscles2:edit.muscles2, ...fromEquip(edit.equip) } : x),
       log: nn !== edit.orig ? d.log.map(e => e.exercise===edit.orig ? { ...e, exercise:nn } : e) : d.log,
     }));
     setEdit(null);
   };
 
-  const exMuscle = Object.fromEntries(data.exercises.map(x => [x.name, musclesOf(x).join(" + ")]));
+  const exMuscle = Object.fromEntries(data.exercises.map(x => [x.name, muscleLabel(x)]));
   const stamp = todayStr();
   const exportLog = () => download(`workout-log-${stamp}.csv`, "﻿" + [
     "date,exercise,muscle,set,weight_lb,reps,effort,notes",
@@ -1491,17 +1582,17 @@ function ExercisesTab({ data, setData }) {
         <input value={name} onChange={e=>setName(e.target.value)} placeholder="Exercise name" style={{flex:2, minWidth:150}} />
         <select value={equip} onChange={e=>setEquip(e.target.value)} style={{flex:1, minWidth:150}}>{EQUIP_OPTS.map(o=><option key={o}>{o}</option>)}</select>
       </div>
-      <div style={{fontSize:12, color:T.sub, marginBottom:6}}>Muscle groups it hits — tap all that apply (first pick = where it sorts in lists):</div>
-      <MuscleChips value={muscles} onChange={setMuscles} />
-      <button onClick={()=>{ if(!name.trim()||!muscles.length)return; setData(d=>({...d, exercises:[...d.exercises.filter(x=>x.name!==name.trim()), {name:name.trim(), muscle:muscles[0], muscles, ...fromEquip(equip)}]})); setName(""); setMuscles(["Chest"]); }}
+      <div style={{fontSize:12, color:T.sub, marginBottom:6}}>Muscle groups: tap once = <b style={{color:T.green}}>✓ main</b> (full set credit) · tap again = <b style={{color:AMBER}}>½ secondary</b> (half credit) · third tap clears. First main pick decides where it sorts.</div>
+      <MuscleChips prim={muscles} sec={muscles2} onChange={(p,s)=>{setMuscles(p);setMuscles2(s);}} />
+      <button onClick={()=>{ if(!name.trim()||!muscles.length)return; setData(d=>({...d, exercises:[...d.exercises.filter(x=>x.name!==name.trim()), {name:name.trim(), muscle:muscles[0], muscles, muscles2, ...fromEquip(equip)}]})); setName(""); setMuscles(["Chest"]); setMuscles2([]); }}
         disabled={!name.trim()||!muscles.length}
         style={{background:T.green, color:"#000", padding:"10px 20px", fontWeight:700, marginTop:10, marginBottom:14, opacity:(!name.trim()||!muscles.length)?0.45:1}}>Add exercise</button>
       <div style={{overflowX:"auto"}}>
         <table><thead><tr><th>Exercise</th><th>Muscle</th><th>Equipment</th><th></th></tr></thead>
           <tbody>{data.exercises.map(x=>(<Fragment key={x.name}>
-            <tr><td>{x.name}</td><td>{musclesOf(x).join(" · ")}</td><td>{equipOf(x)}</td>
+            <tr><td>{x.name}</td><td>{muscleLabel(x)}</td><td>{equipOf(x)}</td>
               <td style={{whiteSpace:"nowrap"}}>
-                <PencilBtn onClick={()=>setEdit({ orig:x.name, name:x.name, muscles:musclesOf(x), equip:equipOf(x) })} />
+                <PencilBtn onClick={()=>setEdit({ orig:x.name, name:x.name, muscles:musclesOf(x), muscles2:secondariesOf(x), equip:equipOf(x) })} />
                 <ConfirmX onConfirm={()=>setData(d=>({...d, exercises:d.exercises.filter(e=>e.name!==x.name)}))} />
               </td></tr>
             {edit?.orig === x.name && (
@@ -1512,9 +1603,9 @@ function ExercisesTab({ data, setData }) {
                     <input value={edit.name} onChange={ev=>setEdit(s=>({...s, name:ev.target.value}))} style={{flex:2, minWidth:150}} />
                     <select value={edit.equip} onChange={ev=>setEdit(s=>({...s, equip:ev.target.value}))} style={{flex:1, minWidth:150}}>{EQUIP_OPTS.map(o=><option key={o}>{o}</option>)}</select>
                   </div>
-                  <div style={{fontSize:12, color:T.sub, marginBottom:6}}>Muscle groups it hits (first pick = where it sorts):</div>
+                  <div style={{fontSize:12, color:T.sub, marginBottom:6}}>Tap once = ✓ main (full credit) · again = ½ secondary (half credit) · again = off:</div>
                   <div style={{marginBottom:10}}>
-                    <MuscleChips value={edit.muscles} onChange={(ms)=>setEdit(s=>({...s, muscles:ms}))} />
+                    <MuscleChips prim={edit.muscles} sec={edit.muscles2} onChange={(p,s2)=>setEdit(s=>({...s, muscles:p, muscles2:s2}))} />
                   </div>
                   <div style={{display:"flex", gap:8}}>
                     <button onClick={saveEdit} disabled={!editValid} style={{...saveSm, opacity:editValid?1:0.45}}>Save changes</button>
@@ -1545,7 +1636,7 @@ function ExercisesTab({ data, setData }) {
 }
 
 /* ================= SETTINGS / ACCOUNT ================= */
-function SettingsModal({ user, username, data, startTab, setStartTab, tabs, units, setUnits, onClose }) {
+function SettingsModal({ user, username, data, startTab, setStartTab, tabs, units, setUnits, hunit, setHunit, onClose }) {
   const memberSince = user.created_at ? new Date(user.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}) : "—";
   const totalSets = (data.log||[]).length;
 
@@ -1588,6 +1679,20 @@ function SettingsModal({ user, username, data, startTab, setStartTab, tabs, unit
                 flex:1, padding:"9px 0", borderRadius:8, fontWeight:700, fontSize:14,
                 background: units===u ? T.green : "none", color: units===u ? "#000" : T.sub,
               }}>{u === "lb" ? "Pounds (lb)" : "Kilos (kg)"}</button>
+            ))}
+          </div>
+        </div>
+
+        {/* height units (for the BMI calculator on the Body tab) */}
+        <div style={{ ...sCard }}>
+          <div style={{ fontSize:14, fontWeight:700, color:T.ink, marginBottom:2 }}>Height units</div>
+          <div style={{ fontSize:12, color:T.sub, marginBottom:10 }}>Used by the BMI calculator on the Body tab.</div>
+          <div style={{ display:"flex", background:T.input, borderRadius:10, padding:3, maxWidth:230 }}>
+            {[["ftin","Feet + inches"],["cm","Centimeters"]].map(([v,label])=>(
+              <button key={v} onClick={()=>setHunit(v)} style={{
+                flex:1, padding:"9px 0", borderRadius:8, fontWeight:700, fontSize:14,
+                background: hunit===v ? T.green : "none", color: hunit===v ? "#000" : T.sub,
+              }}>{label}</button>
             ))}
           </div>
         </div>
