@@ -902,7 +902,9 @@ function SortableWidget({ id, children }) {
           boxShadow:"0 2px 8px rgba(0,0,0,.4)", cursor:"grab", touchAction:"none", userSelect:"none" }}>
         ⠿ drag
       </div>
-      {children}
+      {/* freeze the card's interior while arranging so hovering (e.g. the
+          calendar's day cells) can't fire — only the drag handle stays live */}
+      <div style={{ pointerEvents:"none" }}>{children}</div>
     </div>
   );
 }
