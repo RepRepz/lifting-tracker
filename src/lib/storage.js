@@ -49,7 +49,7 @@ export async function resetPasswordWithAnswer(uname, answer, new_password) {
 
 /** Groups the signed-in user belongs to. */
 export async function listMyGroups() {
-  const { data, error } = await supabase.from("groups").select("id, name, invite_code, emoji").order("created_at");
+  const { data, error } = await supabase.from("groups").select("id, name, invite_code, emoji, created_by").order("created_at");
   if (error) throw error;
   return data ?? [];
 }
@@ -93,6 +93,14 @@ export async function joinGroup(code) {
   return Array.isArray(data) ? data[0] : data;
 }
 
+/** Owner-only: regenerates the invite code and returns the new one. */
+export async function resetInviteCode(groupId) {
+  const { data, error } = await supabase.rpc("reset_invite_code", { p_group_id: groupId });
+  if (error) throw error;
+  return data;
+}
+
+/** Also used by the owner to remove a member (RLS decides who may). */
 export async function leaveGroup(groupId, userId) {
   const { error } = await supabase
     .from("group_members").delete()

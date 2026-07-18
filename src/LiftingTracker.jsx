@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, lazy, Suspense, Fragment, createContext, useContext } from "react";
-import { supabase, loadUserState, saveUserState, listMyGroups, listMembers, createGroup, joinGroup, leaveGroup, listReactions, addReaction, removeReaction, setSecurityQuestion, getSecurityQuestion, lastActiveFor, setGroupEmoji } from "./lib/storage.js";
+import { supabase, loadUserState, saveUserState, listMyGroups, listMembers, createGroup, joinGroup, leaveGroup, listReactions, addReaction, removeReaction, setSecurityQuestion, getSecurityQuestion, lastActiveFor, setGroupEmoji, resetInviteCode } from "./lib/storage.js";
 import { SECURITY_QUESTIONS } from "./AuthScreen.jsx";
 
 /* ---------- theme (Robinhood-style: black + neon green) ---------- */
@@ -2133,7 +2133,9 @@ function FriendsTab({ user }) {
   const [reactions, setReactions] = useState({}); // event_key -> [{reactor_id, reactor_name}]
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [customEmoji, setCustomEmoji] = useState("");
+  const [feedN, setFeedN] = useState(5); // feed items shown before "View more"
   const myName = user.user_metadata?.username || "you";
+  const isOwner = active?.created_by === user.id;
 
   const saveEmoji = async (e) => {
     if (!e || !active) return;
@@ -2176,7 +2178,7 @@ function FriendsTab({ user }) {
   useEffect(() => {
     if (!active) return;
     (async () => {
-      setMembers(null); setStates({}); setReactions({}); setEmojiOpen(false);
+      setMembers(null); setStates({}); setReactions({}); setEmojiOpen(false); setFeedN(5);
       try {
         const ms = await listMembers(active.id);
         setMembers(ms);
@@ -2399,17 +2401,50 @@ function FriendsTab({ user }) {
             </div>
           </div>
         )}
-        <div style={{marginTop:8, fontSize:13.5, color:T.sub}}>
-          Invite code: <b style={{color:T.green, letterSpacing:"1px"}}>{active.invite_code}</b>
-          <button onClick={copyCode} style={{background:"none", color:T.green, fontSize:12.5, marginLeft:8, textDecoration:"underline"}}>{copied ? "Copied!" : "Copy"}</button>
-          <span style={{marginLeft:6}}>— send it to a friend; they enter it under Friends → Join.</span>
-        </div>
       </div>
 
       {err && <div className="card" style={{color:T.danger, fontSize:13.5}}>{err}</div>}
       {!members && <div className="card" style={{color:T.sub}}>Loading group…</div>}
 
       {members && (<>
+        <div className="card">
+          <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:8}}>📣 Recent activity</div>
+          {!feed.length && <div style={{color:T.sub, fontSize:14}}>Nothing yet — someone go lift something.</div>}
+          {feed.slice(0, feedN).map(ev=>{
+            const rs = reactions[ev.key] || [];
+            const mine = rs.some(r=>r.reactor_id===user.id);
+            return (
+              <div key={ev.key} style={{padding:"9px 0", borderBottom:`1px solid ${T.line}`, fontSize:14}}>
+                <span style={{color:T.sub, fontSize:12.5}}>{fmtDate(ev.date)}</span>{" "}
+                <b>{ev.user}</b>{" "}
+                {ev.kind==="cardio" ? <>🏃 {ev.text}</> : <>
+                  logged {ev.sets} set{ev.sets===1?"":"s"} — {ev.names.join(", ")}{ev.more>0?` +${ev.more} more`:""}
+                </>}
+                {ev.prs?.map(pr=>(
+                  <span key={pr} className="chip" style={{background:T.mint, color:T.green, marginLeft:6}}>🎉 PR: {pr}</span>
+                ))}
+                <div style={{marginTop:5, display:"flex", alignItems:"center", gap:8}}>
+                  <button onClick={()=>toggleReact(ev.key)} style={{
+                    background: mine ? T.mint : "none", border:`1px solid ${mine ? T.green : T.line}`,
+                    color: mine ? T.green : T.sub, padding:"2px 12px", fontSize:12.5, fontWeight:600, borderRadius:99,
+                  }}>
+                    💪 {rs.length > 0 ? rs.length : ""}
+                  </button>
+                  {rs.length > 0 && (
+                    <span style={{color:T.sub, fontSize:11.5}}>{rs.map(r=>r.reactor_name).join(", ")}</span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+          {feed.length > feedN && (
+            <button onClick={()=>setFeedN(n=>n+15)} style={{
+              width:"100%", marginTop:10, padding:"9px 0", background:T.input, color:T.green,
+              fontWeight:700, fontSize:13.5, border:`1px solid ${T.line}`,
+            }}>View more ({feed.length - feedN} older)</button>
+          )}
+        </div>
+
         <div className="card">
           <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:8}}>🏁 This week</div>
           <table><thead><tr><th>Member</th><th>Workouts</th><th>Streak (wks)</th><th></th></tr></thead>
@@ -2463,35 +2498,34 @@ function FriendsTab({ user }) {
         )}
 
         <div className="card">
-          <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:8}}>📣 Recent activity</div>
-          {!feed.length && <div style={{color:T.sub, fontSize:14}}>Nothing yet — someone go lift something.</div>}
-          {feed.map(ev=>{
-            const rs = reactions[ev.key] || [];
-            const mine = rs.some(r=>r.reactor_id===user.id);
-            return (
-              <div key={ev.key} style={{padding:"9px 0", borderBottom:`1px solid ${T.line}`, fontSize:14}}>
-                <span style={{color:T.sub, fontSize:12.5}}>{fmtDate(ev.date)}</span>{" "}
-                <b>{ev.user}</b>{" "}
-                {ev.kind==="cardio" ? <>🏃 {ev.text}</> : <>
-                  logged {ev.sets} set{ev.sets===1?"":"s"} — {ev.names.join(", ")}{ev.more>0?` +${ev.more} more`:""}
-                </>}
-                {ev.prs?.map(pr=>(
-                  <span key={pr} className="chip" style={{background:T.mint, color:T.green, marginLeft:6}}>🎉 PR: {pr}</span>
-                ))}
-                <div style={{marginTop:5, display:"flex", alignItems:"center", gap:8}}>
-                  <button onClick={()=>toggleReact(ev.key)} style={{
-                    background: mine ? T.mint : "none", border:`1px solid ${mine ? T.green : T.line}`,
-                    color: mine ? T.green : T.sub, padding:"2px 12px", fontSize:12.5, fontWeight:600, borderRadius:99,
-                  }}>
-                    💪 {rs.length > 0 ? rs.length : ""}
-                  </button>
-                  {rs.length > 0 && (
-                    <span style={{color:T.sub, fontSize:11.5}}>{rs.map(r=>r.reactor_name).join(", ")}</span>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+          <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:8}}>🎟️ Invite & members</div>
+          <div style={{fontSize:13.5, color:T.sub, marginBottom:10}}>
+            Invite code: <b style={{color:T.green, letterSpacing:"1px"}}>{active.invite_code}</b>
+            <button onClick={copyCode} style={{background:"none", color:T.green, fontSize:12.5, marginLeft:8, textDecoration:"underline"}}>{copied ? "Copied!" : "Copy"}</button>
+            <span style={{marginLeft:6}}>— friends enter it under Friends → Join.</span>
+          </div>
+          {members.map(m=>(
+            <div key={m.user_id} style={{display:"flex", alignItems:"center", gap:8, padding:"7px 0", borderBottom:`1px solid ${T.line}`, fontSize:14}}>
+              <span style={{flex:1, fontWeight: m.user_id===user.id?700:500}}>
+                {m.user_id===active.created_by ? "👑 " : ""}{m.username}{m.user_id===user.id?" (you)":""}
+              </span>
+              {isOwner && m.user_id !== user.id && (
+                <ConfirmX label="Remove" onConfirm={async ()=>{
+                  try { await leaveGroup(active.id, m.user_id); setMembers(ms=>ms.filter(x=>x.user_id!==m.user_id)); }
+                  catch(e){ setErr(String(e?.message||e)); }
+                }} />
+              )}
+            </div>
+          ))}
+          {isOwner && (
+            <div style={{marginTop:10}}>
+              <ConfirmX label="🔄 Reset invite code" onConfirm={async ()=>{
+                try { const nc = await resetInviteCode(active.id); setActive(a=>({...a, invite_code:nc})); refreshGroups(); }
+                catch(e){ setErr(String(e?.message||e)); }
+              }} />
+              <div style={{fontSize:11.5, color:T.sub, marginTop:4}}>Resetting kills the old code — anyone who hasn't joined yet needs the new one.</div>
+            </div>
+          )}
         </div>
       </>)}
     </>);
