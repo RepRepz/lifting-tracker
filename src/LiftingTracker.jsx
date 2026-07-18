@@ -4,7 +4,7 @@ import { SECURITY_QUESTIONS } from "./AuthScreen.jsx";
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { MacroTab, GroupMacrosCard } from "./Nutrition.jsx";
+import { MacroTab, GroupMacrosCard, MacroCalendar } from "./Nutrition.jsx";
 
 import { T, tipStyle } from "./theme.js";
 export { T, tipStyle }; // re-export so older imports keep working
@@ -2885,6 +2885,9 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
         <div className="card" style={{color:T.sub}}>They haven't logged anything yet.</div>
       ) : (<>
         <Dashboard data={pdata} exMap={pexMap} setData={()=>{}} own={false} />
+        {nutritionOn && (pdata.foods || []).length > 0 && (
+          <MacroCalendar data={pdata} title={`🥗 ${profile.username}'s nutrition`} />
+        )}
         <RecordsTab data={pdata} exMap={pexMap} />
         <div className="card" style={{display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, textAlign:"center"}}>
           <div><div style={kpiN}>{bw.length ? dispW(bw[bw.length-1].weight, units) : "—"}</div><div style={kpiL}>Body wt ({uLabel(units)})</div></div>
