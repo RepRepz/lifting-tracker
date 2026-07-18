@@ -212,7 +212,7 @@ function AddFoodModal({ meal, date, data, setData, onSave, onClose }) {
 
   return (
     <div onClick={close} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.7)", zIndex: 200, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: T.card, borderRadius: "16px 16px 0 0", padding: 18, width: "100%", maxWidth: 480, maxHeight: "88vh", overflowY: "auto" }}>
+      <div className="nt-modal" onClick={e => e.stopPropagation()} style={{ background: T.card, borderRadius: "16px 16px 0 0", padding: 18, width: "100%", maxWidth: 480, maxHeight: "88vh", overflowY: "auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
           <div className="h" style={{ fontSize: 18, color: T.tealDk }}>Add to {meal}</div>
           <button onClick={close} style={{ background: "none", border: "none", color: T.sub, fontSize: 20, padding: 4 }}>✕</button>
@@ -358,7 +358,7 @@ function GoalsModal({ data, goals, onSave, onClose }) {
 
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.7)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: T.card, borderRadius: 16, padding: 18, width: "92%", maxWidth: 400, maxHeight: "85vh", overflowY: "auto" }}>
+      <div className="nt-modal" onClick={e => e.stopPropagation()} style={{ background: T.card, borderRadius: 16, padding: 18, width: "92%", maxWidth: 400, maxHeight: "85vh", overflowY: "auto" }}>
         <div className="h" style={{ fontSize: 18, color: T.tealDk, marginBottom: 10 }}>🎯 Nutrition goals</div>
         <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
           {[["calc", "Calculate for me"], ["manual", "Enter manually"]].map(([id, l]) => (
@@ -434,7 +434,7 @@ function RecipeModal({ data, setData, onClose }) {
   };
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.7)", zIndex: 200, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: T.card, borderRadius: "16px 16px 0 0", padding: 18, width: "100%", maxWidth: 480, maxHeight: "88vh", overflowY: "auto" }}>
+      <div className="nt-modal" onClick={e => e.stopPropagation()} style={{ background: T.card, borderRadius: "16px 16px 0 0", padding: 18, width: "100%", maxWidth: 480, maxHeight: "88vh", overflowY: "auto" }}>
         <div className="h" style={{ fontSize: 18, color: T.tealDk, marginBottom: 10 }}>🍲 New recipe</div>
         <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 8, marginBottom: 10 }}>
           <div><label style={{ fontSize: 12, color: T.sub }}>Recipe name</label><input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Chicken rice bowl" /></div>
@@ -497,22 +497,23 @@ function FastingCard({ data, setData }) {
   const save = (patch) => setData(d => ({ ...d, fasting: { ...(d.fasting || {}), ...patch } }));
 
   if (!f.enabled) return (
-    <div className="card" style={{ marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-      <div style={{ fontSize: 14, color: T.sub }}>⏳ Intermittent fasting</div>
-      <button onClick={() => save({ enabled: true, protocol: "16:8", eatStart: "12:00" })} style={{ ...btnGhost, color: T.green, fontWeight: 700, padding: "7px 14px", fontSize: 13 }}>Turn on</button>
+    <div className="card" style={{ marginBottom: 8, padding: "9px 12px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <div style={{ fontSize: 13.5, color: T.sub }}>⏳ Intermittent fasting</div>
+      <button className="nt-press" onClick={() => save({ enabled: true, protocol: "16:8", eatStart: "12:00" })} style={{ ...btnGhost, color: T.green, fontWeight: 700, padding: "6px 13px", fontSize: 12.5 }}>Turn on</button>
     </div>
   );
 
   return (
-    <div className="card" style={{ marginBottom: 10 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-        <div style={{ fontSize: 15, fontWeight: 700, color: T.ink }}>⏳ Fasting {f.protocol !== "custom" ? `(${f.protocol || "16:8"})` : "(custom)"}</div>
-        <button onClick={() => setEditing(e => !e)} style={{ background: "none", border: "none", color: T.sub, fontSize: 13 }}>{editing ? "Done" : "⚙️"}</button>
+    <div className="card" style={{ marginBottom: 8, padding: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ fontSize: 13, color: st?.fasting ? T.green : T.ink, fontWeight: 700, minWidth: 0 }}>{st?.label} <span style={{ color: T.sub, fontWeight: 500, fontSize: 11.5 }}>({f.protocol !== "custom" ? (f.protocol || "16:8") : "custom"})</span></div>
+        <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+          {!f.adHoc
+            ? <button className="nt-press" onClick={() => save({ adHoc: new Date().toISOString() })} style={{ ...btnGhost, color: T.green, fontWeight: 700, padding: "6px 11px", fontSize: 12.5 }}>▶ Fast now</button>
+            : <button className="nt-press" onClick={() => save({ adHoc: null })} style={{ ...btnGreen, padding: "6px 11px", fontSize: 12.5 }}>■ End</button>}
+          <button className="nt-press" onClick={() => setEditing(e => !e)} style={{ background: "none", border: "none", color: T.sub, fontSize: 13 }}>{editing ? "Done" : "⚙️"}</button>
+        </div>
       </div>
-      <div style={{ fontSize: 14, color: st?.fasting ? T.green : T.ink, fontWeight: 600, marginBottom: 8 }}>{st?.label}</div>
-      {!f.adHoc
-        ? <button onClick={() => save({ adHoc: new Date().toISOString() })} style={{ ...btnGhost, color: T.green, fontWeight: 700, padding: "8px 14px", fontSize: 13 }}>▶ Start a fast right now</button>
-        : <button onClick={() => save({ adHoc: null })} style={{ ...btnGreen, padding: "8px 14px", fontSize: 13 }}>■ End fast</button>}
       {editing && (
         <div style={{ marginTop: 10, borderTop: `1px solid ${T.line}`, paddingTop: 10 }}>
           <label style={{ fontSize: 12, color: T.sub }}>Protocol</label>
@@ -549,17 +550,13 @@ function WaterCard({ data, setData, date }) {
   const pct = Math.min(1, count / prefs.goal);
   return (
     <div className="card" style={{ marginBottom: 10 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-        <div style={{ fontSize: 15, fontWeight: 700, color: T.ink }}>💧 Water</div>
-        <button onClick={() => setEditing(e => !e)} style={{ background: "none", border: "none", color: T.sub, fontSize: 13 }}>{editing ? "Done" : "⚙️"}</button>
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
-        <button onClick={() => setCount(Math.max(0, count - 1))} style={{ ...btnGhost, width: 42, height: 42, fontSize: 20, fontWeight: 700 }}>−</button>
-        <div style={{ flex: 1, textAlign: "center" }}>
-          <div style={{ fontSize: 20, fontWeight: 800, color: "#4FC3F7" }}>{count} <span style={{ fontSize: 13, color: T.sub, fontWeight: 500 }}>/ {prefs.goal} cups</span></div>
-          <div style={{ fontSize: 11.5, color: T.sub }}>{count * prefs.cupOz} oz today ({prefs.cupOz} oz cups)</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 7 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <span style={{ fontSize: 14, fontWeight: 700, color: T.ink }}>💧 <span style={{ color: "#4FC3F7" }}>{count}</span><span style={{ fontSize: 12, color: T.sub, fontWeight: 500 }}> / {prefs.goal} cups · {count * prefs.cupOz} oz</span></span>
         </div>
-        <button onClick={() => setCount(count + 1)} style={{ background: "#4FC3F7", color: "#000", width: 42, height: 42, fontSize: 20, fontWeight: 700, border: "none", borderRadius: 10 }}>+</button>
+        <button className="nt-press" onClick={() => setCount(Math.max(0, count - 1))} style={{ ...btnGhost, width: 34, height: 34, fontSize: 17, fontWeight: 700 }}>−</button>
+        <button className="nt-press" onClick={() => setCount(count + 1)} style={{ background: "#4FC3F7", color: "#000", width: 34, height: 34, fontSize: 17, fontWeight: 700, border: "none", borderRadius: 10 }}>+</button>
+        <button className="nt-press" onClick={() => setEditing(e => !e)} style={{ background: "none", border: "none", color: T.sub, fontSize: 13, padding: 2 }}>{editing ? "Done" : "⚙️"}</button>
       </div>
       <div style={{ height: 7, borderRadius: 4, background: T.input, overflow: "hidden" }}>
         <div style={{ height: "100%", width: `${pct * 100}%`, background: "#4FC3F7", borderRadius: 4, transition: "width .3s ease" }} />
@@ -605,6 +602,15 @@ function weekAverages(foods, weekMon) {
 }
 
 /* ---------- main tab ---------- */
+const fmtShort = (d) => new Date(d + "T00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });
+const NT_CSS = `
+@keyframes ntUp { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:none; } }
+@keyframes ntSlide { from { transform:translateY(40px); opacity:.4; } to { transform:none; opacity:1; } }
+.nt-card { animation: ntUp .35s ease both; }
+.nt-modal { animation: ntSlide .28s cubic-bezier(.2,.8,.3,1) both; }
+.nt-press { transition: transform .12s ease, opacity .12s ease; }
+.nt-press:active { transform: scale(.94); }
+`;
 export function MacroTab({ data, setData }) {
   const [sel, setSel] = useState(todayStr());
   const [addMeal, setAddMeal] = useState(null);
@@ -658,95 +664,99 @@ export function MacroTab({ data, setData }) {
 
   return (
     <div>
-      {/* header: date nav + streak + finish-day check */}
-      <div className="card" style={{ marginBottom: 10, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-        <button onClick={() => shiftDay(-1)} style={{ ...btnGhost, color: T.ink, padding: "6px 13px" }}>‹</button>
-        <div style={{ textAlign: "center", flex: 1 }}>
-          <div style={{ fontSize: 15, fontWeight: 800, color: T.ink }}>{sel === todayStr() ? "Today" : sel}</div>
-          {streak > 0 && <div style={{ fontSize: 11.5, color: T.sub }}>🔥 {streak}-day logging streak</div>}
+      <style>{NT_CSS}</style>
+      {/* slim header: streak left, small date picker + finish-check top right */}
+      <div className="nt-card" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8, padding: "2px 2px 6px" }}>
+        <div style={{ fontSize: 13, color: T.sub, fontWeight: 600 }}>{streak > 0 ? `🔥 ${streak}-day streak` : "🥗 Diary"}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <button className="nt-press" onClick={() => shiftDay(-1)} style={{ ...btnGhost, color: T.ink, padding: "4px 11px", fontSize: 14 }}>‹</button>
+          <button className="nt-press" onClick={() => setSel(todayStr())} style={{ background: "none", border: "none", fontSize: 13.5, fontWeight: 800, color: sel === todayStr() ? T.ink : T.green, minWidth: 52 }}>
+            {sel === todayStr() ? "Today" : fmtShort(sel)}
+          </button>
+          <button className="nt-press" onClick={() => shiftDay(1)} style={{ ...btnGhost, color: T.ink, padding: "4px 11px", fontSize: 14 }}>›</button>
+          <button className="nt-press" onClick={toggleDone} title="Finish logging for the day" style={{
+            width: 34, height: 34, borderRadius: 10, fontSize: 15, fontWeight: 800,
+            background: isDone ? T.green : T.input, color: isDone ? "#000" : T.sub,
+            border: `1px solid ${isDone ? T.green : T.line}`, transition: "background .2s ease, color .2s ease",
+          }}>✓</button>
         </div>
-        <button onClick={() => shiftDay(1)} style={{ ...btnGhost, color: T.ink, padding: "6px 13px" }}>›</button>
-        <button onClick={toggleDone} title="Finish logging for the day" style={{
-          width: 42, height: 42, borderRadius: 12, fontSize: 19, fontWeight: 800,
-          background: isDone ? T.green : T.input, color: isDone ? "#000" : T.sub,
-          border: `1px solid ${isDone ? T.green : T.line}`,
-        }}>✓</button>
       </div>
 
-      {/* summary: ring + macro bars */}
-      <div className="card" style={{ marginBottom: 10 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-          <CalorieRing eaten={totals.kcal} goal={goals.kcal} size={118} />
+      {/* compact summary: small ring + macro bars in one row */}
+      <div className="card nt-card" style={{ marginBottom: 8, padding: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <CalorieRing eaten={totals.kcal} goal={goals.kcal} size={92} />
           <div style={{ flex: 1 }}>
             <MacroBar label="Protein" color={T.green} eaten={totals.protein} goal={goals.protein} />
             <MacroBar label="Carbs" color={CARB_BLUE} eaten={totals.carb} goal={goals.carb} />
             <MacroBar label="Fat" color={FAT_ORANGE} eaten={totals.fat} goal={goals.fat} />
           </div>
         </div>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
-          <button onClick={() => setShowGoals(true)} style={{ background: "none", border: "none", color: T.green, fontSize: 12.5, fontWeight: 700, padding: 0 }}>🎯 Goals</button>
-          <button onClick={() => setExpanded(x => !x)} style={{ background: "none", border: "none", color: T.sub, fontSize: 12, padding: 0 }}>{expanded ? "Hide ▴" : "Show more ▾"}</button>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6 }}>
+          <button className="nt-press" onClick={() => setShowGoals(true)} style={{ background: "none", border: "none", color: T.green, fontSize: 12.5, fontWeight: 700, padding: 0 }}>🎯 Goals</button>
+          <button className="nt-press" onClick={() => setExpanded(x => !x)} style={{ background: "none", border: "none", color: T.sub, fontSize: 12, padding: 0 }}>{expanded ? "Less ▴" : "More ▾"}</button>
         </div>
         {expanded && (
-          <div style={{ fontSize: 12.5, color: T.sub, marginTop: 6, borderTop: `1px solid ${T.line}`, paddingTop: 8 }}>
+          <div style={{ fontSize: 12.5, color: T.sub, marginTop: 6, borderTop: `1px solid ${T.line}`, paddingTop: 8, animation: "ntUp .25s ease both" }}>
             Fiber: {Math.round(totals.fiber)}g · Sodium: {Math.round(totals.sodium)}mg
             <br />Remaining: {Math.max(0, goals.kcal - Math.round(totals.kcal))} cal · P {Math.max(0, goals.protein - Math.round(totals.protein))}g · C {Math.max(0, goals.carb - Math.round(totals.carb))}g · F {Math.max(0, goals.fat - Math.round(totals.fat))}g
           </div>
         )}
       </div>
 
-      <FastingCard data={data} setData={setData} />
-      <WaterCard data={data} setData={setData} date={sel} />
+      {/* diary: all meals in one compact card — no scrolling to add food */}
+      <div className="card nt-card" style={{ marginBottom: 8, padding: "6px 12px", animationDelay: ".05s" }}>
+        {MEALS.map((meal, mi) => {
+          const rows = byMeal[meal];
+          const mealCal = rows.reduce((s, f) => s + num(f.kcal), 0);
+          return (
+            <div key={meal} style={{ borderTop: mi ? `1px solid ${T.line}` : "none", padding: "8px 0" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: T.ink }}>{meal}{mealCal > 0 && <span style={{ fontSize: 11.5, color: T.sub, fontWeight: 500 }}> · {Math.round(mealCal)} cal</span>}</div>
+                <button className="nt-press" onClick={() => setAddMeal(meal)} style={{ background: T.mint, color: T.green, border: "none", borderRadius: 8, padding: "4px 12px", fontWeight: 800, fontSize: 13 }}>+</button>
+              </div>
+              {rows.map(f => (
+                <div key={f.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "5px 0 2px", animation: "ntUp .25s ease both" }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 13, color: T.ink, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.recurringId ? "🔁 " : ""}{f.name}{f.grams ? <span style={{ color: T.sub, fontWeight: 400 }}> · {f.grams}g</span> : ""}</div>
+                    <div style={{ fontSize: 11, color: T.sub }}>
+                      <b style={{ color: T.ink }}>{f.kcal} cal</b>
+                      {" · "}<span style={{ color: T.green }}>P {f.protein}</span>
+                      {" · "}<span style={{ color: CARB_BLUE }}>C {f.carb}</span>
+                      {" · "}<span style={{ color: FAT_ORANGE }}>F {f.fat}</span>
+                    </div>
+                  </div>
+                  <button className="nt-press" onClick={() => removeFood(f)} style={{ background: "none", border: "none", color: T.sub, fontSize: 14, padding: 4, flexShrink: 0 }}>🗑</button>
+                </div>
+              ))}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="nt-card" style={{ animationDelay: ".1s" }}><WaterCard data={data} setData={setData} date={sel} /></div>
+      <div className="nt-card" style={{ animationDelay: ".15s" }}><FastingCard data={data} setData={setData} /></div>
 
       {/* weekly averages */}
       {(thisWeek || lastWeek) && (
-        <div className="card" style={{ marginBottom: 10 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: T.ink, marginBottom: 8 }}>📅 Weekly averages <span style={{ fontSize: 11.5, color: T.sub, fontWeight: 500 }}>(weeks start Monday)</span></div>
+        <div className="card nt-card" style={{ marginBottom: 8, padding: 12, animationDelay: ".2s" }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: T.ink, marginBottom: 6 }}>📅 Weekly averages <span style={{ fontSize: 11, color: T.sub, fontWeight: 500 }}>(from Monday)</span></div>
           {[["This week", thisWeek], ["Last week", lastWeek]].map(([label, w]) => w && (
-            <div key={label} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderTop: `1px solid ${T.line}`, fontSize: 13.5 }}>
-              <span style={{ color: T.ink, fontWeight: 600 }}>{label} <span style={{ color: T.sub, fontWeight: 400, fontSize: 11.5 }}>({w.n} day{w.n > 1 ? "s" : ""})</span></span>
+            <div key={label} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderTop: `1px solid ${T.line}`, fontSize: 13 }}>
+              <span style={{ color: T.ink, fontWeight: 600 }}>{label} <span style={{ color: T.sub, fontWeight: 400, fontSize: 11 }}>({w.n}d)</span></span>
               <span style={{ color: T.sub }}><b style={{ color: T.green }}>{w.kcal}</b> cal · P {w.protein}g · F {w.fat}g</span>
             </div>
           ))}
         </div>
       )}
 
-      {/* meals */}
-      {MEALS.map(meal => {
-        const rows = byMeal[meal];
-        const mealCal = rows.reduce((s, f) => s + num(f.kcal), 0);
-        return (
-          <div key={meal} className="card" style={{ marginBottom: 10 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-              <div style={{ fontSize: 15, fontWeight: 700, color: T.ink }}>{meal}{mealCal > 0 && <span style={{ fontSize: 12, color: T.sub, fontWeight: 500 }}> · {Math.round(mealCal)} cal</span>}</div>
-              <button onClick={() => setAddMeal(meal)} style={{ background: T.mint, color: T.green, border: "none", borderRadius: 8, padding: "5px 10px", fontWeight: 700, fontSize: 13 }}>+ Add</button>
-            </div>
-            {!rows.length && <div style={{ fontSize: 13, color: T.sub }}>Nothing logged</div>}
-            {rows.map(f => (
-              <div key={f.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0", borderTop: `1px solid ${T.line}` }}>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 13.5, color: T.ink, fontWeight: 600 }}>{f.recurringId ? "🔁 " : ""}{f.name}{f.grams ? <span style={{ color: T.sub, fontWeight: 400 }}> · {f.grams}g</span> : ""}</div>
-                  <div style={{ fontSize: 11.5, color: T.sub }}>
-                    <b style={{ color: T.ink }}>{f.kcal} cal</b>
-                    {" · "}<span style={{ color: T.green }}>P {f.protein}</span>
-                    {" · "}<span style={{ color: CARB_BLUE }}>C {f.carb}</span>
-                    {" · "}<span style={{ color: FAT_ORANGE }}>F {f.fat}</span>
-                  </div>
-                </div>
-                <button onClick={() => removeFood(f)} style={{ background: "none", border: "none", color: T.sub, fontSize: 15, padding: 4 }}>🗑</button>
-              </div>
-            ))}
-          </div>
-        );
-      })}
-
       {/* recipes entry point */}
-      <div className="card" style={{ marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <div className="card nt-card" style={{ marginBottom: 8, padding: 12, display: "flex", justifyContent: "space-between", alignItems: "center", animationDelay: ".25s" }}>
         <div>
           <div style={{ fontSize: 14, fontWeight: 700, color: T.ink }}>🍲 Recipes</div>
-          <div style={{ fontSize: 12, color: T.sub }}>{(data.recipes || []).length ? `${data.recipes.length} saved — add them from ⭐ Mine when logging` : "Build meals once, log them in one tap"}</div>
+          <div style={{ fontSize: 12, color: T.sub }}>{(data.recipes || []).length ? `${data.recipes.length} saved — log them from ⭐ Mine` : "Build meals once, log them in one tap"}</div>
         </div>
-        <button onClick={() => setShowRecipe(true)} style={{ ...btnGhost, color: T.green, fontWeight: 700, padding: "7px 14px", fontSize: 13 }}>+ New</button>
+        <button className="nt-press" onClick={() => setShowRecipe(true)} style={{ ...btnGhost, color: T.green, fontWeight: 700, padding: "7px 14px", fontSize: 13 }}>+ New</button>
       </div>
 
       {addMeal && <AddFoodModal meal={addMeal} date={sel} data={data} setData={setData} onSave={addFood} onClose={() => setAddMeal(null)} />}
