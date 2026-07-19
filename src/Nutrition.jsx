@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
-import { DndContext, MouseSensor, TouchSensor, useSensor, useSensors, useDraggable, useDroppable, DragOverlay } from "@dnd-kit/core";
+import { DndContext, MouseSensor, TouchSensor, useSensor, useSensors, useDraggable, useDroppable } from "@dnd-kit/core";
 import { T } from "./theme.js";
 
 /* ---------- helpers ---------- */
@@ -873,14 +873,20 @@ const NTStyle = () => <style>{NT_CSS}</style>;
    Text selection is disabled so dragging on mobile never highlights the label.
    Kept at module scope so it isn't remounted every render (which would kill drags). */
 function DiaryRow({ f, onDelete, onMenu }) {
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: f.id });
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: f.id });
   const noSelect = { userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none" };
   return (
     <div ref={setNodeRef} {...attributes} {...listeners}
       onContextMenu={(e) => { e.preventDefault(); onMenu(f, e.clientX, e.clientY); }}
       style={{ position: "relative", background: "#17191B", border: `1px solid ${isDragging ? T.green : "#22262A"}`, borderRadius: 12,
         marginTop: 7, padding: "10px 10px 10px 9px", display: "flex", alignItems: "center", gap: 8,
-        opacity: isDragging ? 0.4 : 1, cursor: "grab", touchAction: "manipulation", outline: "none", ...noSelect }}>
+        // move the real row with the finger from where it was grabbed (no floating clone that
+        // mis-anchors on iOS); lift it above the other cards while dragging
+        transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
+        zIndex: isDragging ? 9999 : "auto",
+        boxShadow: isDragging ? "0 14px 34px rgba(0,0,0,.6)" : "none",
+        transition: isDragging ? "none" : "box-shadow .15s ease, border-color .15s ease",
+        opacity: 1, cursor: "grab", touchAction: "manipulation", outline: "none", ...noSelect }}>
       <span style={{ color: "#4A4E52", fontSize: 15, lineHeight: 1, flexShrink: 0, ...noSelect }}>⠿</span>
       <div style={{ minWidth: 0, flex: 1, ...noSelect }}>
         <div style={{ fontSize: 13.5, color: T.ink, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.recurringId ? "🔁 " : ""}{f.name}{f.grams ? <span style={{ color: T.sub, fontWeight: 400 }}> · {f.grams}g</span> : ""}</div>
@@ -930,7 +936,6 @@ export function MacroTab({ data, setData, streaksOn = true, waterOn = true }) {
   const [showGoals, setShowGoals] = useState(false);
   const [showRecipe, setShowRecipe] = useState(false);
   const [expanded, setExpanded] = useState(false);
-  const [dragId, setDragId] = useState(null);  // food id currently being dragged
   const [menu, setMenu] = useState(null);      // { f, x, y } right-click / ⋯ menu
   useEffect(() => {
     if (!menu) return;
@@ -960,9 +965,7 @@ export function MacroTab({ data, setData, streaksOn = true, waterOn = true }) {
     return m;
   }, [foods, sel]);
   const moveFood = (id, meal) => setData(d => ({ ...d, foods: (d.foods || []).map(f => f.id === id ? { ...f, meal } : f) }));
-  const dragFood = dragId != null ? foods.find(f => f.id === dragId) : null;
   const onDragEnd = ({ active, over }) => {
-    setDragId(null);
     if (over && String(over.id).startsWith("meal:")) moveFood(active.id, String(over.id).slice(5));
   };
   const copyFood = (f, date) => setData(d => ({ ...d, foods: [...(d.foods || []), { ...f, id: uid(), date, recurringId: undefined }] }));
@@ -1085,7 +1088,7 @@ export function MacroTab({ data, setData, streaksOn = true, waterOn = true }) {
       </div>
 
       {/* diary: each meal is its own card; drag ⠿ between them, ⋯ / right-click / swipe to manage */}
-      <DndContext sensors={sensors} onDragStart={({ active }) => setDragId(active.id)} onDragEnd={onDragEnd} onDragCancel={() => setDragId(null)}>
+      <DndContext sensors={sensors} onDragEnd={onDragEnd}>
         {["Uncategorized", ...MEALS].map((meal) => {
           const rows = byMeal[meal];
           if (meal === "Uncategorized" && !rows.length) return null; // only appears when something's in it
@@ -1107,13 +1110,6 @@ export function MacroTab({ data, setData, streaksOn = true, waterOn = true }) {
             </MealDrop>
           );
         })}
-        <DragOverlay dropAnimation={null}>
-          {dragFood && (
-            <div style={{ background: "#17191B", border: `1px solid ${T.green}`, borderRadius: 12, padding: "9px 14px", fontSize: 13.5, fontWeight: 600, color: T.ink, boxShadow: "0 12px 30px rgba(0,0,0,.6)" }}>
-              {dragFood.name} <span style={{ color: T.sub, fontWeight: 400 }}>· {dragFood.kcal} cal</span>
-            </div>
-          )}
-        </DragOverlay>
       </DndContext>
 
       {/* right-click / ⋯ context menu */}
