@@ -208,14 +208,23 @@ function AddFoodModal({ meal, date, data, setData, onSave, onClose }) {
     return Object.values(byName).sort((a, b) => b.n - a.n).slice(0, 8);
   }, [data.foods]);
 
-  // most recent distinct foods logged in THIS meal (breakfast/lunch/…), newest first —
-  // shown up top so you can re-add your usual for this time of day in one tap
+  // foods logged in THIS meal over the last 2 weeks, ranked by how often you logged them
+  // (most popular first), so re-adding your usual for this time of day is one tap
   const mealRecents = useMemo(() => {
-    if (meal === "Uncategorized") return [];
-    const seen = new Set(); const out = [];
-    const sorted = [...(data.foods || [])].filter(f => f.meal === meal).sort((a, b) => b.date.localeCompare(a.date) || (b.id > a.id ? 1 : -1));
-    for (const f of sorted) { if (seen.has(f.name)) continue; seen.add(f.name); out.push(f); if (out.length >= 8) break; }
-    return out;
+    const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 14);
+    const cutKey = cutoff.toISOString().slice(0, 10);
+    const byName = {};
+    for (const f of (data.foods || [])) {
+      if (f.date < cutKey) continue;
+      if (meal !== "Uncategorized" && f.meal !== meal) continue;
+      const e = (byName[f.name] ||= { n: 0, last: f });
+      e.n++;
+      if (f.date >= e.last.date) e.last = f;
+    }
+    return Object.values(byName)
+      .sort((a, b) => b.n - a.n || b.last.date.localeCompare(a.last.date))
+      .map(e => ({ ...e.last, _n: e.n }))
+      .slice(0, 15);
   }, [data.foods, meal]);
   const quickPick = (f) => setPicked({ name: f.name, fixed: { kcal: f.kcal, protein: f.protein, carb: f.carb, fat: f.fat, fiber: f.fiber || 0, sodium: f.sodium || 0 } });
 
@@ -320,7 +329,7 @@ function AddFoodModal({ meal, date, data, setData, onSave, onClose }) {
   const close = () => { stopScan(); onClose(); };
   const tabBtn = (id, label) => (
     <button onClick={() => { stopScan(); setMode(id); setPicked(null); }} style={{
-      flex: 1, padding: "9px 0", borderRadius: 8, border: "none", fontWeight: 700, fontSize: 12.5,
+      flex: 1, padding: "9px 2px", borderRadius: 8, border: "none", fontWeight: 700, fontSize: 11.5, lineHeight: 1.3,
       background: mode === id ? T.green : T.input, color: mode === id ? "#000" : T.sub,
     }}>{label}</button>
   );
@@ -333,26 +342,26 @@ function AddFoodModal({ meal, date, data, setData, onSave, onClose }) {
           <button onClick={close} style={{ background: "none", border: "none", color: T.sub, fontSize: 20, padding: 4 }}>✕</button>
         </div>
 
-        <div style={{ display: "flex", gap: 5, marginBottom: 14 }}>
-          {tabBtn("search", "🔍 Search")}{tabBtn("scan", "📷 Scan")}{tabBtn("mine", "⭐ Favorites")}{tabBtn("manual", "✏️ Manual")}
+        <div style={{ display: "flex", gap: 4, marginBottom: 14 }}>
+          {tabBtn("search", "🔍 Search")}{tabBtn("recents", "🕑 Recents")}{tabBtn("mine", "⭐ Favorites")}{tabBtn("scan", "📷 Camera")}{tabBtn("manual", "✏️ Manual")}
         </div>
+
+        {mode === "recents" && !picked && (
+          <div>
+            <div style={{ fontSize: 12, color: T.sub, marginBottom: 8 }}>Your {meal === "Uncategorized" ? "" : `${meal.toLowerCase()} `}foods from the last 2 weeks — most logged first.</div>
+            {!mealRecents.length && <div style={{ color: T.sub, fontSize: 13 }}>Nothing logged {meal === "Uncategorized" ? "" : `for ${meal.toLowerCase()} `}in the last 2 weeks yet.</div>}
+            {mealRecents.map((f, i) => (
+              <button key={i} onClick={() => quickPick(f)} style={{ display: "block", width: "100%", textAlign: "left", background: T.input, border: `1px solid ${T.line}`, borderRadius: 10, padding: "10px 12px", marginBottom: 6 }}>
+                <div style={{ fontSize: 14, color: T.ink, fontWeight: 600 }}>{f.name}{f.grams ? <span style={{ color: T.sub, fontWeight: 400 }}> · {f.grams}g</span> : ""}{f._n > 1 && <span style={{ fontSize: 11, color: T.green, fontWeight: 700, marginLeft: 6 }}>×{f._n}</span>}</div>
+                <div style={{ fontSize: 12, color: T.sub }}>{f.kcal} cal · {Math.round(f.protein)}g protein · {Math.round(f.carb)}g carbs · {Math.round(f.fat)}g fat</div>
+              </button>
+            ))}
+          </div>
+        )}
 
         {mode === "search" && !picked && (
           <>
             <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Start typing… e.g. chicken breast" style={{ marginBottom: 10 }} />
-            {/* recent foods for this meal — shown until you start typing */}
-            {!q.trim() && mealRecents.length > 0 && (
-              <>
-                <div style={{ fontSize: 11.5, color: T.sub, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".5px", marginBottom: 6 }}>🕑 Recent in {meal}</div>
-                {mealRecents.map((f, i) => (
-                  <button key={i} onClick={() => quickPick(f)} style={{ display: "block", width: "100%", textAlign: "left", background: T.input, border: `1px solid ${T.line}`, borderRadius: 10, padding: "10px 12px", marginBottom: 6 }}>
-                    <div style={{ fontSize: 14, color: T.ink, fontWeight: 600 }}>{f.name}{f.grams ? <span style={{ color: T.sub, fontWeight: 400 }}> · {f.grams}g</span> : ""}</div>
-                    <div style={{ fontSize: 12, color: T.sub }}>{f.kcal} cal · {Math.round(f.protein)}g protein · {Math.round(f.carb)}g carbs · {Math.round(f.fat)}g fat</div>
-                  </button>
-                ))}
-                <div style={{ fontSize: 11.5, color: T.sub, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".5px", margin: "10px 0 6px" }}>Or search a new food</div>
-              </>
-            )}
             {busy && <div style={{ color: T.sub, fontSize: 13, marginBottom: 6 }}>Searching…</div>}
             {err && <div style={{ color: T.down, fontSize: 13 }}>{err}</div>}
             {results?.length === 0 && !busy && <div style={{ color: T.sub, fontSize: 13 }}>No results — try a simpler term, or use Manual.</div>}
