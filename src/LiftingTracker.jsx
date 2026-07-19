@@ -155,6 +155,7 @@ const defaultData = {
   routines: [], // optional workout templates (feature toggled in Settings)
   foods: [], nutritionGoals: {}, // optional macro tracking (feature toggled in Settings)
   customFoods: [], recipes: [], recurringSkips: [], water: [], waterPrefs: {}, fasting: {}, dayDone: [],
+  journal: {}, // { "YYYY-MM-DD": { mood, sleep, text } } — daily notes
   profile: {}, // heightIn (inches) lives here once set
   pins: [],    // pinned dashboard charts (exercise names)
   libraryV: 5, // bumped when the seed library changes, so existing users get the update once
@@ -336,6 +337,7 @@ export default function LiftingTracker({ user }) {
   const tabs = [
     ...(liftingOn ? [["dash","Dash","📊"],["log","Log","📝"],["records","Records","🏆"],["ex","Library","📚"]] : []),
     ...(nutritionOn ? [["macros","Macros","🥗"]] : []),
+    ["journal","Journal","📓"],
     ["friends","Groups","👥"],
     ...(liftingOn ? [["cardio","Cardio","🏃"],["body","Body","⚖️"]] : []),
   ];
@@ -482,6 +484,7 @@ export default function LiftingTracker({ user }) {
           {tab==="dash" && liftingOn && <Dashboard data={data} exMap={exMap} setData={setData} />}
           {tab==="log" && liftingOn && <LogTab data={data} exMap={exMap} setData={setData} routinesOn={routinesOn} />}
           {tab==="records" && liftingOn && <RecordsTab data={data} exMap={exMap} />}
+          {tab==="journal" && <JournalTab data={data} setData={setData} />}
           {tab==="friends" && <FriendsTab user={user} nutritionOn={nutritionOn} streaksOn={streaksOn} />}
           {tab==="macros" && nutritionOn && <MacroTab data={data} setData={setData} streaksOn={streaksOn} waterOn={waterOn} />}
           {tab==="body" && liftingOn && <BodyTab data={data} setData={setData} hunit={hunit} />}
@@ -2529,6 +2532,73 @@ function FeatureToggle({ label, desc, on, setOn }) {
   );
 }
 
+/* ===== JOURNAL: free-form daily notes (mood, sleep, text) to spot patterns ===== */
+const JOURNAL_MOODS = [["💪","Strong"],["🙂","Good"],["😐","Meh"],["😴","Tired"],["🤕","Sore"],["🤒","Sick"]];
+function JournalTab({ data, setData }) {
+  const [sel, setSel] = useState(todayStr());
+  const journal = data.journal || {};
+  const entry = journal[sel] || { mood:"", sleep:"", text:"" };
+  const shift = (n) => { const d = new Date(sel+"T00:00"); d.setDate(d.getDate()+n); setSel(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`); };
+  const update = (patch) => setData(d => {
+    const j = { ...(d.journal||{}) };
+    const next = { ...(j[sel]||{ mood:"", sleep:"", text:"" }), ...patch };
+    if (!String(next.text||"").trim() && !next.mood && !String(next.sleep||"").trim()) delete j[sel];
+    else j[sel] = next;
+    return { ...d, journal: j };
+  });
+  const recent = useMemo(() => Object.entries(journal)
+    .filter(([,e]) => String(e.text||"").trim() || e.mood || String(e.sleep||"").trim())
+    .sort((a,b) => b[0].localeCompare(a[0])).slice(0, 30), [journal]);
+
+  return (<>
+    <div className="card">
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
+        <button onClick={()=>shift(-1)} style={{ background:T.input, color:T.ink, border:`1px solid ${T.line}`, borderRadius:8, padding:"6px 12px" }}>‹</button>
+        <button onClick={()=>setSel(todayStr())} style={{ background:"none", border:"none", fontSize:16, fontWeight:800, color: sel===todayStr()?T.tealDk:T.green }}>
+          {sel===todayStr() ? "Today" : fmtDate(sel)}
+        </button>
+        <button onClick={()=>shift(1)} disabled={sel>=todayStr()} style={{ background:T.input, color: sel>=todayStr()?T.line:T.ink, border:`1px solid ${T.line}`, borderRadius:8, padding:"6px 12px" }}>›</button>
+      </div>
+
+      <div style={{ fontSize:12.5, color:T.sub, marginBottom:6 }}>How did today feel?</div>
+      <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:14 }}>
+        {JOURNAL_MOODS.map(([emo,label])=>{
+          const on = entry.mood === emo;
+          return (
+            <button key={emo} onClick={()=>update({ mood: on ? "" : emo })} style={{
+              display:"flex", alignItems:"center", gap:5, padding:"7px 12px", borderRadius:99, fontSize:13, fontWeight:700,
+              border:`1px solid ${on ? T.green : T.line}`, background: on ? T.mint : T.input, color: on ? T.green : T.sub,
+            }}>{emo} {label}</button>
+          );
+        })}
+      </div>
+
+      <label style={{ fontSize:12.5, color:T.sub, display:"block" }}>Sleep (hours) <span style={{opacity:.6}}>— optional</span></label>
+      <input type="number" inputMode="decimal" value={entry.sleep} onChange={e=>update({ sleep:e.target.value })}
+        placeholder="e.g. 7.5" style={{ display:"block", marginBottom:14, maxWidth:160 }} />
+
+      <label style={{ fontSize:12.5, color:T.sub }}>Notes</label>
+      <textarea value={entry.text} onChange={e=>update({ text:e.target.value })}
+        placeholder="Soreness, energy, injuries, gym was packed, new PR feeling, diet slips… anything you'll want to look back on."
+        rows={6} style={{ width:"100%", marginTop:4, border:`1px solid ${T.line}`, borderRadius:10, padding:"10px 12px", background:T.input, color:T.ink, fontFamily:"inherit", fontSize:15, resize:"vertical" }} />
+    </div>
+
+    <div className="card">
+      <div className="h" style={{ fontSize:17, color:T.tealDk, marginBottom:8 }}>📓 Past entries</div>
+      {!recent.length && <div style={{ color:T.sub, fontSize:14 }}>Nothing yet — jot down how today went and it'll show here.</div>}
+      {recent.map(([d,e])=>(
+        <button key={d} onClick={()=>setSel(d)} style={{ display:"block", width:"100%", textAlign:"left", background: d===sel?T.mint:"none", border:"none", borderTop:`1px solid ${T.line}`, padding:"10px 4px", cursor:"pointer" }}>
+          <div style={{ fontSize:13.5, fontWeight:700, color: d===sel?T.green:T.ink }}>
+            {e.mood ? e.mood+" " : ""}{fmtDate(d)}{d===todayStr()?" (today)":""}
+            {String(e.sleep||"").trim() && <span style={{ fontSize:11.5, color:T.sub, fontWeight:500 }}> · 😴 {e.sleep}h</span>}
+          </div>
+          {String(e.text||"").trim() && <div style={{ fontSize:12.5, color:T.sub, marginTop:2, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{e.text}</div>}
+        </button>
+      ))}
+    </div>
+  </>);
+}
+
 function SectionHead({ icon, label }) {
   return (
     <div style={{ display:"flex", alignItems:"center", gap:8, margin:"20px 2px 10px" }}>
@@ -3270,3 +3340,5 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
     {err && <div className="card" style={{color:T.danger, fontSize:13.5}}>{err}</div>}
   </>);
 }
+
+export { JournalTab as __JournalTest };
