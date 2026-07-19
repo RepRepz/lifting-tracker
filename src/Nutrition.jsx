@@ -984,6 +984,23 @@ export function MacroTab({ data, setData, streaksOn = true, waterOn = true }) {
   }));
   const saveGoals = (g) => { setData(d => ({ ...d, nutritionGoals: g })); setShowGoals(false); };
 
+  // make a food auto-log every day going forward (uses the recurring-foods system)
+  const makeRecurring = (f) => {
+    const cf = { id: uid(), name: f.name, meal: f.meal, recurring: true,
+      fixed: { kcal: f.kcal, protein: f.protein, carb: f.carb, fat: f.fat, fiber: f.fiber || 0, sodium: f.sodium || 0 } };
+    setData(d => ({ ...d,
+      customFoods: [...(d.customFoods || []), cf],
+      // tag this occurrence so the auto-logger doesn't add a duplicate for its day
+      foods: (d.foods || []).map(x => x.id === f.id ? { ...x, recurringId: cf.id } : x),
+    }));
+  };
+  // stop the daily repeat: removes it from today forward, keeps every previous day's entry
+  const stopRecurring = (f) => setData(d => ({ ...d,
+    customFoods: (d.customFoods || []).filter(c => c.id !== f.recurringId),
+    foods: (d.foods || []).filter(x => x.id !== f.id),
+    recurringSkips: [...(d.recurringSkips || []), `${f.date}:${f.recurringId}`],
+  }));
+
   const doneDates = data.dayDone || [];
   const isDone = doneDates.includes(sel);
   const streak = dayStreak(doneDates);
@@ -1095,6 +1112,9 @@ export function MacroTab({ data, setData, streaksOn = true, waterOn = true }) {
         <div onClick={e => e.stopPropagation()} style={{ position: "fixed", left: Math.min(menu.x, (typeof window !== "undefined" ? window.innerWidth : 400) - 190), top: Math.min(menu.y, (typeof window !== "undefined" ? window.innerHeight : 700) - 340), zIndex: 300,
           background: T.card, border: `1px solid ${T.line}`, borderRadius: 10, padding: 5, minWidth: 182, boxShadow: "0 10px 30px rgba(0,0,0,.55)", animation: "ntUp .12s ease both" }}>
           <MenuItem label="✏️ Edit food" onClick={() => { setEditFood(menu.f); setMenu(null); }} />
+          {menu.f.recurringId
+            ? <MenuItem label="🔁 Stop making daily" onClick={() => { stopRecurring(menu.f); setMenu(null); }} />
+            : menu.f.date >= todayStr() && <MenuItem label="🔁 Make daily (auto-log)" onClick={() => { makeRecurring(menu.f); setMenu(null); }} />}
           <div style={{ height: 1, background: T.line, margin: "4px 6px" }} />
           <div style={{ fontSize: 10.5, color: T.sub, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".5px", padding: "3px 10px" }}>Move to</div>
           {MEALS.filter(m2 => m2 !== menu.f.meal).map(m2 => (
