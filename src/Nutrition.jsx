@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
+import { DndContext, PointerSensor, TouchSensor, useSensor, useSensors, useDraggable, useDroppable, DragOverlay } from "@dnd-kit/core";
 import { T } from "./theme.js";
 
 /* ---------- helpers ---------- */
@@ -797,15 +798,96 @@ const NT_CSS = `
 }
 `;
 const NTStyle = () => <style>{NT_CSS}</style>;
+
+/* One food row in the diary:
+   - drag it by the ⠿ handle onto any meal (dnd-kit)
+   - swipe it left on touch to delete
+   - right-click (or the ⋯ button) opens a menu with copy/duplicate/delete
+   Kept at module scope so it isn't remounted every render (which would kill drags/gestures). */
+function DiaryRow({ f, onDelete, onMenu }) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: f.id });
+  const [dx, setDx] = useState(0);
+  const [removing, setRemoving] = useState(false);
+  const g = useRef({ x: 0, y: 0, mode: null });
+  const onTouchStart = (e) => { const t = e.touches[0]; g.current = { x: t.clientX, y: t.clientY, mode: null }; };
+  const onTouchMove = (e) => {
+    const t = e.touches[0];
+    const ddx = t.clientX - g.current.x, ddy = t.clientY - g.current.y;
+    if (g.current.mode == null && (Math.abs(ddx) > 6 || Math.abs(ddy) > 6)) g.current.mode = Math.abs(ddx) > Math.abs(ddy) ? "h" : "v";
+    if (g.current.mode === "h") setDx(Math.max(-130, Math.min(0, ddx)));
+  };
+  const onTouchEnd = () => {
+    if (dx < -70) { setRemoving(true); setTimeout(() => onDelete(f), 180); }
+    else setDx(0);
+    g.current.mode = null;
+  };
+  return (
+    <div style={{ position: "relative", overflow: "hidden", maxHeight: removing ? 0 : 70, opacity: removing ? 0 : 1, transition: "max-height .2s ease, opacity .2s ease" }}>
+      {/* red zone revealed on swipe-left */}
+      <div style={{ position: "absolute", inset: 0, background: T.dangerBg, display: "flex", alignItems: "center", justifyContent: "flex-end", paddingRight: 16, color: T.danger, fontWeight: 700, fontSize: 13 }}>🗑 Delete</div>
+      <div ref={setNodeRef}
+        onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
+        onContextMenu={(e) => { e.preventDefault(); onMenu(f, e.clientX, e.clientY); }}
+        style={{ position: "relative", background: T.card, transform: `translateX(${dx}px)`, transition: dx === 0 ? "transform .2s ease" : "none",
+          padding: "6px 0 4px", display: "flex", alignItems: "center", gap: 8, opacity: isDragging ? 0.35 : 1 }}>
+        <span {...attributes} {...listeners} title="Drag to another meal"
+          style={{ cursor: "grab", color: T.sub, fontSize: 16, lineHeight: 1, padding: "0 2px", touchAction: "none", flexShrink: 0 }}>⠿</span>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ fontSize: 13, color: T.ink, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.recurringId ? "🔁 " : ""}{f.name}{f.grams ? <span style={{ color: T.sub, fontWeight: 400 }}> · {f.grams}g</span> : ""}</div>
+          <div style={{ fontSize: 11, color: T.sub }}>
+            <b style={{ color: T.ink }}>{f.kcal} cal</b>
+            {" · "}<span style={{ color: T.green }}>{f.protein}g protein</span>
+            {" · "}<span style={{ color: CARB_BLUE }}>{f.carb}g carbs</span>
+            {" · "}<span style={{ color: FAT_ORANGE }}>{f.fat}g fat</span>
+          </div>
+        </div>
+        <button className="nt-press" onClick={(e) => onMenu(f, e.clientX, e.clientY)} title="More"
+          style={{ background: "none", border: "none", color: T.sub, fontSize: 17, padding: "0 6px", flexShrink: 0 }}>⋯</button>
+      </div>
+    </div>
+  );
+}
+
+function MenuItem({ label, onClick, danger }) {
+  return (
+    <button onClick={onClick} style={{ display: "block", width: "100%", textAlign: "left", background: "none", border: "none",
+      color: danger ? T.danger : T.ink, fontSize: 13.5, fontWeight: 600, padding: "9px 10px", borderRadius: 7 }}
+      onMouseEnter={e => e.currentTarget.style.background = T.input}
+      onMouseLeave={e => e.currentTarget.style.background = "none"}>{label}</button>
+  );
+}
+
+/* A meal section that food can be dropped into. */
+function MealDrop({ meal, children, hasBorder, header }) {
+  const { setNodeRef, isOver } = useDroppable({ id: `meal:${meal}` });
+  return (
+    <div ref={setNodeRef} style={{ borderTop: hasBorder ? `1px solid ${T.line}` : "none", padding: "8px 0",
+      background: isOver ? T.mint : "transparent", borderRadius: isOver ? 10 : 0, transition: "background .15s ease",
+      outline: isOver ? `1.5px dashed ${T.green}` : "none", outlineOffset: -3 }}>
+      {header}
+      {children}
+    </div>
+  );
+}
 export function MacroTab({ data, setData, streaksOn = true, waterOn = true }) {
   const [sel, setSel] = useState(todayStr());
   const [addMeal, setAddMeal] = useState(null);
   const [showGoals, setShowGoals] = useState(false);
   const [showRecipe, setShowRecipe] = useState(false);
   const [expanded, setExpanded] = useState(false);
-  const [moveId, setMoveId] = useState(null); // food id showing the move-to-meal chips
-  const [delId, setDelId] = useState(null);   // food id awaiting delete confirmation
-  useEffect(() => { if (!delId) return; const t = setTimeout(() => setDelId(null), 4000); return () => clearTimeout(t); }, [delId]);
+  const [dragId, setDragId] = useState(null);  // food id currently being dragged
+  const [menu, setMenu] = useState(null);      // { f, x, y } right-click / ⋯ menu
+  useEffect(() => {
+    if (!menu) return;
+    const close = () => setMenu(null);
+    window.addEventListener("click", close);
+    window.addEventListener("scroll", close, true);
+    return () => { window.removeEventListener("click", close); window.removeEventListener("scroll", close, true); };
+  }, [menu]);
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 160, tolerance: 8 } }),
+  );
   const foods = data.foods || [];
   const goals = { ...DEFAULT_GOALS, ...(data.nutritionGoals || {}) };
   const firstTime = !data.nutritionGoals?.set;
@@ -816,7 +898,13 @@ export function MacroTab({ data, setData, streaksOn = true, waterOn = true }) {
     for (const f of foods) if (f.date === sel) (m[f.meal] || m.Uncategorized).push(f);
     return m;
   }, [foods, sel]);
-  const moveFood = (id, meal) => { setData(d => ({ ...d, foods: (d.foods || []).map(f => f.id === id ? { ...f, meal } : f) })); setMoveId(null); };
+  const moveFood = (id, meal) => setData(d => ({ ...d, foods: (d.foods || []).map(f => f.id === id ? { ...f, meal } : f) }));
+  const dragFood = dragId != null ? foods.find(f => f.id === dragId) : null;
+  const onDragEnd = ({ active, over }) => {
+    setDragId(null);
+    if (over && String(over.id).startsWith("meal:")) moveFood(active.id, String(over.id).slice(5));
+  };
+  const copyFood = (f, date) => setData(d => ({ ...d, foods: [...(d.foods || []), { ...f, id: uid(), date, recurringId: undefined }] }));
 
   /* auto-log recurring foods for today (skipped ones stay skipped) */
   useEffect(() => {
@@ -916,58 +1004,46 @@ export function MacroTab({ data, setData, streaksOn = true, waterOn = true }) {
         )}
       </div>
 
-      {/* diary: all meals in one compact card — no scrolling to add food */}
+      {/* diary: drag a food by its ⠿ handle onto any meal; swipe-left or right-click to delete */}
       <div className="card nt-card" style={{ marginBottom: 8, padding: "6px 12px", animationDelay: ".05s" }}>
-        {["Uncategorized", ...MEALS].map((meal, mi) => {
-          const rows = byMeal[meal];
-          if (meal === "Uncategorized" && !rows.length) return null; // only appears when something's in it
-          const mealCal = rows.reduce((s, f) => s + num(f.kcal), 0);
-          return (
-            <div key={meal} style={{ borderTop: (mi > 1 || (mi === 1 && byMeal.Uncategorized.length > 0)) ? `1px solid ${T.line}` : "none", padding: "8px 0" }}>
+        <div style={{ fontSize: 11, color: T.sub, marginBottom: 2 }}>Drag <b style={{ color: T.ink }}>⠿</b> to move a food between meals · swipe left or right-click to delete</div>
+        <DndContext sensors={sensors} onDragStart={({ active }) => setDragId(active.id)} onDragEnd={onDragEnd} onDragCancel={() => setDragId(null)}>
+          {["Uncategorized", ...MEALS].map((meal, mi) => {
+            const rows = byMeal[meal];
+            if (meal === "Uncategorized" && !rows.length) return null; // only appears when something's in it
+            const mealCal = rows.reduce((s, f) => s + num(f.kcal), 0);
+            const header = (
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div style={{ fontSize: 14, fontWeight: 700, color: meal === "Uncategorized" ? T.sub : T.ink }}>{meal === "Uncategorized" ? "🗂 Uncategorized — tap ↪ to file it" : meal}{mealCal > 0 && <span style={{ fontSize: 11.5, color: T.sub, fontWeight: 500 }}> · {Math.round(mealCal)} cal</span>}</div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: meal === "Uncategorized" ? T.sub : T.ink }}>{meal === "Uncategorized" ? "🗂 Uncategorized — drag ⠿ into a meal" : meal}{mealCal > 0 && <span style={{ fontSize: 11.5, color: T.sub, fontWeight: 500 }}> · {Math.round(mealCal)} cal</span>}</div>
                 {meal !== "Uncategorized" && <button className="nt-press" onClick={() => setAddMeal(meal)} style={{ background: T.mint, color: T.green, border: "none", borderRadius: 8, padding: "4px 12px", fontWeight: 800, fontSize: 13 }}>+</button>}
               </div>
-              {rows.map(f => (
-                <div key={f.id} style={{ padding: "5px 0 2px", animation: "ntUp .25s ease both" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 13, color: T.ink, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.recurringId ? "🔁 " : ""}{f.name}{f.grams ? <span style={{ color: T.sub, fontWeight: 400 }}> · {f.grams}g</span> : ""}</div>
-                      <div style={{ fontSize: 11, color: T.sub }}>
-                        <b style={{ color: T.ink }}>{f.kcal} cal</b>
-                        {" · "}<span style={{ color: T.green }}>{f.protein}g protein</span>
-                        {" · "}<span style={{ color: CARB_BLUE }}>{f.carb}g carbs</span>
-                        {" · "}<span style={{ color: FAT_ORANGE }}>{f.fat}g fat</span>
-                      </div>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", flexShrink: 0 }}>
-                      <button className="nt-press" onClick={() => setMoveId(m => m === f.id ? null : f.id)} title="Move to another meal" style={{ background: "none", border: "none", color: moveId === f.id ? T.green : T.sub, fontSize: 14, padding: 4 }}>↪</button>
-                      {delId === f.id
-                        ? <button className="nt-press" onClick={() => { removeFood(f); setDelId(null); }} style={{ background: T.dangerBg, color: T.danger, border: `1px solid ${T.danger}`, borderRadius: 8, padding: "3px 10px", fontSize: 12, fontWeight: 700 }}>Sure? Tap again</button>
-                        : <button className="nt-press" onClick={() => setDelId(f.id)} style={{ background: "none", border: "none", color: T.sub, fontSize: 14, padding: 4 }}>🗑</button>}
-                    </div>
-                  </div>
-                  {moveId === f.id && (
-                    <div style={{ display: "flex", gap: 6, padding: "4px 0 6px", flexWrap: "wrap", animation: "ntUp .2s ease both" }}>
-                      {MEALS.filter(m2 => m2 !== f.meal).map(m2 => (
-                        <button key={m2} className="nt-press" onClick={() => moveFood(f.id, m2)} style={{ background: T.mint, color: T.green, border: "none", borderRadius: 99, padding: "4px 11px", fontWeight: 700, fontSize: 12 }}>{m2}</button>
-                      ))}
-                      {sel !== todayStr() && (
-                        <button className="nt-press" onClick={() => { setData(d => ({ ...d, foods: [...(d.foods || []), { ...f, id: uid(), date: todayStr(), recurringId: undefined }] })); setMoveId(null); }}
-                          style={{ background: T.input, color: T.ink, border: `1px solid ${T.line}`, borderRadius: 99, padding: "4px 11px", fontWeight: 700, fontSize: 12 }}>⧉ Copy to today</button>
-                      )}
-                      <button className="nt-press" onClick={() => { setData(d => ({ ...d, foods: [...(d.foods || []), { ...f, id: uid(), date: addDays(f.date, 1), recurringId: undefined }] })); setMoveId(null); }}
-                        style={{ background: T.input, color: T.ink, border: `1px solid ${T.line}`, borderRadius: 99, padding: "4px 11px", fontWeight: 700, fontSize: 12 }}>⧉ Copy to tomorrow</button>
-                      <button className="nt-press" onClick={() => { setData(d => ({ ...d, foods: [...(d.foods || []), { ...f, id: uid(), recurringId: undefined }] })); setMoveId(null); }}
-                        style={{ background: T.input, color: T.ink, border: `1px solid ${T.line}`, borderRadius: 99, padding: "4px 11px", fontWeight: 700, fontSize: 12 }}>⧉ Duplicate</button>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          );
-        })}
+            );
+            return (
+              <MealDrop key={meal} meal={meal} hasBorder={mi > 1 || (mi === 1 && byMeal.Uncategorized.length > 0)} header={header}>
+                {rows.map(f => <DiaryRow key={f.id} f={f} onDelete={removeFood} onMenu={(food, x, y) => setMenu({ f: food, x, y })} />)}
+              </MealDrop>
+            );
+          })}
+          <DragOverlay dropAnimation={null}>
+            {dragFood && (
+              <div style={{ background: T.card, border: `1px solid ${T.green}`, borderRadius: 8, padding: "6px 12px", fontSize: 13, fontWeight: 600, color: T.ink, boxShadow: "0 6px 20px rgba(0,0,0,.5)" }}>
+                {dragFood.name} <span style={{ color: T.sub, fontWeight: 400 }}>· {dragFood.kcal} cal</span>
+              </div>
+            )}
+          </DragOverlay>
+        </DndContext>
       </div>
+
+      {/* right-click / ⋯ context menu */}
+      {menu && (
+        <div onClick={e => e.stopPropagation()} style={{ position: "fixed", left: Math.min(menu.x, (typeof window !== "undefined" ? window.innerWidth : 400) - 180), top: menu.y, zIndex: 300,
+          background: T.card, border: `1px solid ${T.line}`, borderRadius: 10, padding: 5, minWidth: 172, boxShadow: "0 10px 30px rgba(0,0,0,.55)", animation: "ntUp .12s ease both" }}>
+          {sel !== todayStr() && <MenuItem label="⧉ Copy to today" onClick={() => { copyFood(menu.f, todayStr()); setMenu(null); }} />}
+          <MenuItem label="⧉ Copy to tomorrow" onClick={() => { copyFood(menu.f, addDays(menu.f.date, 1)); setMenu(null); }} />
+          <MenuItem label="⧉ Duplicate here" onClick={() => { copyFood(menu.f, menu.f.date); setMenu(null); }} />
+          <MenuItem label="🗑 Delete" danger onClick={() => { removeFood(menu.f); setMenu(null); }} />
+        </div>
+      )}
 
       {waterOn && <div className="nt-card" style={{ animationDelay: ".1s" }}><WaterCard data={data} setData={setData} date={sel} /></div>}
       <div className="nt-card" style={{ animationDelay: ".15s" }}><FastingCard data={data} setData={setData} /></div>

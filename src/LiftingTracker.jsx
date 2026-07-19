@@ -2843,8 +2843,9 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
           prs: [...new Set(prsByDate[date] || [])] });
       }
       for (const c of (st.cardio || [])) {
+        const txt = c.steps ? `${c.steps.toLocaleString()} steps — ${c.activity}` : `${c.duration} min ${c.activity}`;
         evs.push({ key:`${m.user_id}-${c.id}-cardio`, date:c.date, user:m.username, kind:"cardio",
-          text: `${c.duration} min ${c.activity}` });
+          icon: c.steps ? "👣" : "🏃", text: txt });
       }
     }
     return evs.sort((a,b)=>b.date.localeCompare(a.date)).slice(0, 25);
@@ -2869,6 +2870,18 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
       ]);
       return { user: m.username, uid: m.user_id, workouts: days.size, streak: computeStreak(st.log, st.cardio).cur };
     }).sort((a,b)=>b.workouts-a.workouts || b.streak-a.streak);
+  }, [members, states]);
+
+  /* steps leaderboard — this week's total per member (only shown if anyone logged steps) */
+  const stepBoard = useMemo(() => {
+    if (!members) return [];
+    const thisWk = weekStart(todayStr());
+    const rows = members.map(m => {
+      const st = states[m.user_id] || {};
+      const week = (st.cardio || []).filter(c => c.steps && weekStart(c.date) === thisWk).reduce((s,c)=>s+c.steps, 0);
+      return { user: m.username, uid: m.user_id, week };
+    }).filter(r => r.week > 0).sort((a,b)=>b.week - a.week);
+    return rows;
   }, [members, states]);
 
   const strength = useMemo(() => {
@@ -3018,7 +3031,7 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
               <div key={ev.key} style={{padding:"9px 0", borderBottom:`1px solid ${T.line}`, fontSize:14}}>
                 <span style={{color:T.sub, fontSize:12.5}}>{fmtDate(ev.date)}</span>{" "}
                 <b>{ev.user}</b>{" "}
-                {ev.kind==="cardio" ? <>🏃 {ev.text}</> : <>
+                {ev.kind==="cardio" ? <>{ev.icon||"🏃"} {ev.text}</> : <>
                   logged {ev.sets} set{ev.sets===1?"":"s"} — {ev.names.join(", ")}{ev.more>0?` +${ev.more} more`:""}
                 </>}
                 {ev.prs?.map(pr=>(
@@ -3073,6 +3086,24 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
               </tr>
             ))}</tbody></table>
         </div>
+
+        {stepBoard.length > 0 && (
+          <div className="card">
+            <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:8}}>👣 Steps this week</div>
+            {stepBoard.map((r,i)=>{
+              const top = stepBoard[0].week || 1;
+              return (
+                <div key={r.uid} style={{display:"flex", alignItems:"center", gap:8, padding:"5px 0"}}>
+                  <div style={{width:96, fontSize:13.5, fontWeight: r.uid===user.id?700:400, color: r.uid===user.id?T.green:T.ink, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{i===0?"👑 ":""}{r.user}{r.uid===user.id?" (you)":""}</div>
+                  <div style={{flex:1, height:8, background:T.input, borderRadius:99, overflow:"hidden"}}>
+                    <div style={{width:`${r.week/top*100}%`, height:"100%", background:T.green, borderRadius:99, transition:"width .5s ease"}} />
+                  </div>
+                  <b style={{fontSize:13, color:T.ink, minWidth:58, textAlign:"right"}}>{r.week.toLocaleString()}</b>
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         <div className="card">
           <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:2}}>🏋️ Strength — best est. 1RM ({uLabel(units)})</div>
