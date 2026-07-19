@@ -437,6 +437,41 @@ function AddFoodModal({ meal, date, data, setData, onSave, onClose }) {
   );
 }
 
+/* ---------- edit a logged food (name, amount label, macros) ---------- */
+function EditFoodModal({ food, onSave, onClose }) {
+  const [f, setF] = useState({
+    name: food.name, grams: food.grams ?? "",
+    kcal: food.kcal, protein: food.protein, carb: food.carb, fat: food.fat,
+  });
+  const set = (k, v) => setF(s => ({ ...s, [k]: v }));
+  const save = () => {
+    if (!f.name.trim()) return;
+    onSave({ name: f.name.trim(), grams: f.grams === "" ? null : num(f.grams),
+      kcal: num(f.kcal), protein: num(f.protein), carb: num(f.carb), fat: num(f.fat) });
+  };
+  return (
+    <div className="nt-overlay" onClick={onClose}>
+      <div className="nt-modal" onClick={e => e.stopPropagation()} style={{ background: T.card, borderRadius: 16, padding: 18, width: "92%", maxWidth: 400 }}>
+        <div className="h" style={{ fontSize: 18, color: T.tealDk, marginBottom: 10 }}>✏️ Edit food</div>
+        <label style={{ fontSize: 12, color: T.sub }}>Name</label>
+        <input value={f.name} onChange={e => set("name", e.target.value)} style={{ marginBottom: 8 }} />
+        <label style={{ fontSize: 12, color: T.sub }}>Amount (grams, optional)</label>
+        <input type="number" inputMode="decimal" value={f.grams} onChange={e => set("grams", e.target.value)} placeholder="e.g. 200" style={{ marginBottom: 8 }} />
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
+          {[["kcal", "Calories"], ["protein", "Protein (g)"], ["carb", "Carbs (g)"], ["fat", "Fat (g)"]].map(([k, l]) => (
+            <div key={k}><label style={{ fontSize: 12, color: T.sub }}>{l}</label>
+              <input type="number" inputMode="decimal" value={f[k]} onChange={e => set(k, e.target.value)} /></div>
+          ))}
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={onClose} style={{ ...btnGhost, flex: 1, padding: "10px 0" }}>Cancel</button>
+          <button onClick={save} disabled={!f.name.trim()} style={{ ...btnGreen, flex: 1, padding: "10px 0", opacity: f.name.trim() ? 1 : .5 }}>Save</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ---------- goals: full TDEE calculator (Mifflin-St Jeor) ---------- */
 function GoalsModal({ data, setData, goals, onSave, onClose, firstTime }) {
   const heightIn = data.profile?.heightIn || null;
@@ -858,14 +893,21 @@ function MenuItem({ label, onClick, danger }) {
 }
 
 /* A meal section that food can be dropped into. */
-function MealDrop({ meal, children, hasBorder, header }) {
+function MealDrop({ meal, children, hasBorder, header, empty }) {
   const { setNodeRef, isOver } = useDroppable({ id: `meal:${meal}` });
   return (
-    <div ref={setNodeRef} style={{ borderTop: hasBorder ? `1px solid ${T.line}` : "none", padding: "8px 0",
-      background: isOver ? T.mint : "transparent", borderRadius: isOver ? 10 : 0, transition: "background .15s ease",
-      outline: isOver ? `1.5px dashed ${T.green}` : "none", outlineOffset: -3 }}>
+    <div ref={setNodeRef} style={{ borderTop: hasBorder ? `1px solid ${T.line}` : "none",
+      padding: "10px 8px", margin: "2px -8px", borderRadius: 12,
+      background: isOver ? "rgba(0,200,5,.14)" : "transparent", transition: "background .15s ease",
+      outline: isOver ? `2px dashed ${T.green}` : "2px solid transparent", outlineOffset: -2 }}>
       {header}
       {children}
+      {empty && (
+        <div style={{ marginTop: 6, border: `1.5px dashed ${isOver ? T.green : T.line}`, borderRadius: 10,
+          padding: "12px 0", textAlign: "center", fontSize: 12, color: isOver ? T.green : T.sub, transition: "all .15s ease" }}>
+          {isOver ? "Drop here" : "Drag a food here, or tap +"}
+        </div>
+      )}
     </div>
   );
 }
@@ -905,6 +947,8 @@ export function MacroTab({ data, setData, streaksOn = true, waterOn = true }) {
     if (over && String(over.id).startsWith("meal:")) moveFood(active.id, String(over.id).slice(5));
   };
   const copyFood = (f, date) => setData(d => ({ ...d, foods: [...(d.foods || []), { ...f, id: uid(), date, recurringId: undefined }] }));
+  const [editFood, setEditFood] = useState(null); // food being edited
+  const updateFood = (patch) => { setData(d => ({ ...d, foods: (d.foods || []).map(f => f.id === editFood.id ? { ...f, ...patch } : f) })); setEditFood(null); };
 
   /* auto-log recurring foods for today (skipped ones stay skipped) */
   useEffect(() => {
@@ -1006,7 +1050,7 @@ export function MacroTab({ data, setData, streaksOn = true, waterOn = true }) {
 
       {/* diary: drag a food by its ⠿ handle onto any meal; swipe-left or right-click to delete */}
       <div className="card nt-card" style={{ marginBottom: 8, padding: "6px 12px", animationDelay: ".05s" }}>
-        <div style={{ fontSize: 11, color: T.sub, marginBottom: 2 }}>Drag <b style={{ color: T.ink }}>⠿</b> to move a food between meals · swipe left or right-click to delete</div>
+        <div style={{ fontSize: 11, color: T.sub, marginBottom: 4 }}>Drag <b style={{ color: T.ink }}>⠿</b> between meals · tap <b style={{ color: T.ink }}>⋯</b> (or right-click) to edit, move or delete · swipe left to delete</div>
         <DndContext sensors={sensors} onDragStart={({ active }) => setDragId(active.id)} onDragEnd={onDragEnd} onDragCancel={() => setDragId(null)}>
           {["Uncategorized", ...MEALS].map((meal, mi) => {
             const rows = byMeal[meal];
@@ -1019,7 +1063,7 @@ export function MacroTab({ data, setData, streaksOn = true, waterOn = true }) {
               </div>
             );
             return (
-              <MealDrop key={meal} meal={meal} hasBorder={mi > 1 || (mi === 1 && byMeal.Uncategorized.length > 0)} header={header}>
+              <MealDrop key={meal} meal={meal} hasBorder={mi > 1 || (mi === 1 && byMeal.Uncategorized.length > 0)} header={header} empty={meal !== "Uncategorized" && !rows.length}>
                 {rows.map(f => <DiaryRow key={f.id} f={f} onDelete={removeFood} onMenu={(food, x, y) => setMenu({ f: food, x, y })} />)}
               </MealDrop>
             );
@@ -1036,14 +1080,22 @@ export function MacroTab({ data, setData, streaksOn = true, waterOn = true }) {
 
       {/* right-click / ⋯ context menu */}
       {menu && (
-        <div onClick={e => e.stopPropagation()} style={{ position: "fixed", left: Math.min(menu.x, (typeof window !== "undefined" ? window.innerWidth : 400) - 180), top: menu.y, zIndex: 300,
-          background: T.card, border: `1px solid ${T.line}`, borderRadius: 10, padding: 5, minWidth: 172, boxShadow: "0 10px 30px rgba(0,0,0,.55)", animation: "ntUp .12s ease both" }}>
+        <div onClick={e => e.stopPropagation()} style={{ position: "fixed", left: Math.min(menu.x, (typeof window !== "undefined" ? window.innerWidth : 400) - 190), top: Math.min(menu.y, (typeof window !== "undefined" ? window.innerHeight : 700) - 340), zIndex: 300,
+          background: T.card, border: `1px solid ${T.line}`, borderRadius: 10, padding: 5, minWidth: 182, boxShadow: "0 10px 30px rgba(0,0,0,.55)", animation: "ntUp .12s ease both" }}>
+          <MenuItem label="✏️ Edit food" onClick={() => { setEditFood(menu.f); setMenu(null); }} />
+          <div style={{ height: 1, background: T.line, margin: "4px 6px" }} />
+          <div style={{ fontSize: 10.5, color: T.sub, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".5px", padding: "3px 10px" }}>Move to</div>
+          {MEALS.filter(m2 => m2 !== menu.f.meal).map(m2 => (
+            <MenuItem key={m2} label={`→ ${m2}`} onClick={() => { moveFood(menu.f.id, m2); setMenu(null); }} />
+          ))}
+          <div style={{ height: 1, background: T.line, margin: "4px 6px" }} />
           {sel !== todayStr() && <MenuItem label="⧉ Copy to today" onClick={() => { copyFood(menu.f, todayStr()); setMenu(null); }} />}
           <MenuItem label="⧉ Copy to tomorrow" onClick={() => { copyFood(menu.f, addDays(menu.f.date, 1)); setMenu(null); }} />
           <MenuItem label="⧉ Duplicate here" onClick={() => { copyFood(menu.f, menu.f.date); setMenu(null); }} />
           <MenuItem label="🗑 Delete" danger onClick={() => { removeFood(menu.f); setMenu(null); }} />
         </div>
       )}
+      {editFood && <EditFoodModal food={editFood} onSave={updateFood} onClose={() => setEditFood(null)} />}
 
       {waterOn && <div className="nt-card" style={{ animationDelay: ".1s" }}><WaterCard data={data} setData={setData} date={sel} /></div>}
       <div className="nt-card" style={{ animationDelay: ".15s" }}><FastingCard data={data} setData={setData} /></div>
