@@ -954,6 +954,16 @@ export function MacroTab({ data, setData, streaksOn = true, waterOn = true }) {
     useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 8 } }),
   );
+  // keep a dragged food inside the meals region (never over the calendar etc.) and moving
+  // only up/down — a dnd-kit modifier that clamps the live transform each move
+  const diaryRef = useRef(null);
+  const restrictToDiary = ({ transform, draggingNodeRect }) => {
+    if (!draggingNodeRect || !diaryRef.current) return { ...transform, x: 0 };
+    const c = diaryRef.current.getBoundingClientRect();
+    const minY = c.top - draggingNodeRect.top;
+    const maxY = c.bottom - draggingNodeRect.bottom;
+    return { ...transform, x: 0, y: Math.max(minY, Math.min(maxY, transform.y)) };
+  };
   const foods = data.foods || [];
   const goals = { ...DEFAULT_GOALS, ...(data.nutritionGoals || {}) };
   const firstTime = !data.nutritionGoals?.set;
@@ -1087,8 +1097,10 @@ export function MacroTab({ data, setData, streaksOn = true, waterOn = true }) {
         )}
       </div>
 
-      {/* diary: each meal is its own card; drag ⠿ between them, ⋯ / right-click / swipe to manage */}
-      <DndContext sensors={sensors} onDragEnd={onDragEnd}>
+      {/* diary: drag a food between meals — movement is locked to this region and to the
+          vertical axis, so it can't wander off over the calendar or other cards */}
+      <DndContext sensors={sensors} onDragEnd={onDragEnd} modifiers={[restrictToDiary]}>
+        <div ref={diaryRef}>
         {["Uncategorized", ...MEALS].map((meal) => {
           const rows = byMeal[meal];
           if (meal === "Uncategorized" && !rows.length) return null; // only appears when something's in it
@@ -1110,6 +1122,7 @@ export function MacroTab({ data, setData, streaksOn = true, waterOn = true }) {
             </MealDrop>
           );
         })}
+        </div>
       </DndContext>
 
       {/* right-click / ⋯ context menu */}
