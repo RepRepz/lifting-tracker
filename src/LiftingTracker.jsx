@@ -233,11 +233,12 @@ export default function LiftingTracker({ user }) {
   const [units, setUnits] = useState(() => localStorage.getItem("lt-units") || "lb");
   const [hunit, setHunit] = useState(() => localStorage.getItem("lt-hunit") || "ftin"); // height: "ftin" | "cm"
   const [routinesOn, setRoutinesOn] = useState(() => localStorage.getItem("lt-routines-on") === "1"); // optional templates feature
-  // Lifting is always on for everyone. Macros is a dev-only feature: on ONLY for the
-  // "dimi" account (the dev/test account), and there's no way for others to enable it.
-  const isDimi = (user.user_metadata?.username || "").toLowerCase() === "dimi";
+  // Lifting is always on for everyone. The full Macros/nutrition feature is built and kept
+  // in the codebase (Nutrition.jsx + the tab wiring below) but PARKED for now — set to off
+  // for every account. To bring it back for testing, flip nutritionOn to true (or gate it on
+  // an account, e.g. username === "dimi"). Nothing else needs to change.
   const liftingOn = true;
-  const nutritionOn = isDimi;
+  const nutritionOn = false;
   const [streaksOn, setStreaksOn] = useState(() => localStorage.getItem("lt-streaks-on") !== "0"); // default on
   const [waterOn, setWaterOn] = useState(() => localStorage.getItem("lt-water-on") !== "0"); // default on
   useEffect(() => { localStorage.setItem("lt-streaks-on", streaksOn ? "1" : "0"); }, [streaksOn]);
@@ -459,7 +460,7 @@ export default function LiftingTracker({ user }) {
           routinesOn={routinesOn} setRoutinesOn={setRoutinesOn}
           streaksOn={streaksOn} setStreaksOn={setStreaksOn}
           waterOn={waterOn} setWaterOn={setWaterOn}
-          isDimi={isDimi} onClose={()=>setShowSettings(false)} />
+          onClose={()=>setShowSettings(false)} />
       )}
 
       {syncState === "offline" && (
@@ -2577,7 +2578,7 @@ function SectionHead({ icon, label }) {
   );
 }
 
-function SettingsModal({ user, username, data, startTab, setStartTab, tabs, units, setUnits, hunit, setHunit, routinesOn, setRoutinesOn, streaksOn, setStreaksOn, waterOn, setWaterOn, isDimi, onClose }) {
+function SettingsModal({ user, username, data, startTab, setStartTab, tabs, units, setUnits, hunit, setHunit, routinesOn, setRoutinesOn, streaksOn, setStreaksOn, waterOn, setWaterOn, onClose }) {
   const memberSince = user.created_at ? new Date(user.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}) : "—";
   const totalSets = (data.log||[]).length;
 
@@ -2657,11 +2658,7 @@ function SettingsModal({ user, username, data, startTab, setStartTab, tabs, unit
         <FeatureToggle label="Workout routines" on={routinesOn} setOn={setRoutinesOn}
           desc="Adds a Routines section to the Log tab: build templates like “Push Day,” then tap Start to log them exercise-by-exercise. Off by default. Turning it off just hides it — your saved routines stay." />
 
-        {/* water + streaks are Macros-tab features — only the dev account (dimi) has Macros */}
-        {isDimi && <FeatureToggle label="Water tracker" on={waterOn} setOn={setWaterOn}
-          desc="Shows the 💧 water card on the Macros tab. Turn it off if you don't want to count cups — your logged water stays saved." />}
-        {isDimi && <FeatureToggle label="Streaks & fire" on={streaksOn} setOn={setStreaksOn}
-          desc="Shows 🔥 streak counters on the Macros tab and in your group. Turn off if streaks stress you out — nothing is lost, they keep counting quietly." />}
+        {/* Water + Streaks toggles belong to the parked Macros feature — hidden while it's off */}
 
         <SectionHead icon="🔐" label="Keys to the castle" />
         <ChangePasswordCard />
