@@ -44,20 +44,30 @@ async function usdaSearch(q) {
 /* both databases at once — whichever answers contributes; only fails if BOTH fail */
 async function searchAll(q) {
   const [usda, off] = await Promise.allSettled([usdaSearch(q), offSearch(q)]);
-  const list = [...(usda.value || []), ...(off.value || [])];
+  // junk filter: no zero-calorie ghosts, no essay-length names, name must actually
+  // contain what was typed; barcode DB capped so it can't drown the good stuff
+  const s = q.toLowerCase();
+  const clean = (list) => (list || []).filter(f =>
+    f.per100.kcal >= 5 && f.name.length <= 60 && f.name.toLowerCase().includes(s.split(" ")[0]));
+  const list = [...clean(usda.value), ...clean(off.value).slice(0, 6)];
   if (!list.length && usda.status === "rejected" && off.status === "rejected") throw new Error("all failed");
   const seen = new Set();
   return rankResults(list.filter(f => { const k = f.name.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; }), q);
 }
 
-/* names that start with (or contain early) what you typed float to the top */
+/* relevance: exact name, then starts-with, then whole-word match, then the rest —
+   USDA (lab-verified whole foods) wins every tie */
 function rankResults(list, q) {
-  const s = q.toLowerCase();
+  const s = q.toLowerCase().trim();
   const score = (f) => {
-    const n = f.name.toLowerCase();
-    if (n.startsWith(s)) return 0;
-    const i = n.indexOf(s);
-    return i === -1 ? 99 : 1 + i / 100;
+    const n = f.name.toLowerCase().replace(/ \(.*\)$/, "");
+    let base;
+    if (n === s) base = 0;
+    else if (n.startsWith(s)) base = 1;
+    else if (new RegExp(`\\b${s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(n)) base = 2;
+    else if (n.includes(s)) base = 3;
+    else base = 4;
+    return base + (f.src === "USDA" ? 0 : 0.5);
   };
   return [...list].sort((a, b) => score(a) - score(b));
 }
@@ -99,6 +109,7 @@ function dayTotals(foods, date) {
 }
 
 const DEFAULT_GOALS = { kcal: 2200, protein: 160, carb: 220, fat: 70 };
+const NCAL_VIEWS = { "1M": 5, "3M": 13, "6M": 26, "1Y": 52 }; // label -> weeks shown
 const CARB_BLUE = "#2E8CFF";
 const FAT_ORANGE = "#FFB300";
 
@@ -138,10 +149,8 @@ function CalorieRing({ eaten, goal, size = 130 }) {
         <path d={path(pct * sweep)} stroke={`url(#${gid})`} strokeWidth={sw} fill="none" strokeLinecap="round"
           filter={`url(#${gid}f)`} style={{ transition: "d .5s ease" }} />
       </svg>
-      <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-        <div style={{ fontSize: size * 0.19, fontWeight: 800, color: over ? T.down : T.ink, lineHeight: 1 }}>{Math.abs(left).toLocaleString()}</div>
-        <div style={{ fontSize: size * 0.085, color: T.sub, marginTop: 2 }}>{over ? "cal over" : "cal left"}</div>
-        <div style={{ fontSize: size * 0.075, color: T.sub, opacity: .75 }}>{Math.round(eaten).toLocaleString()} / {goal.toLocaleString()}</div>
+      <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ fontSize: size * 0.22, fontWeight: 800, color: over ? T.down : T.green }}>{Math.round(pct * 100)}%</div>
       </div>
     </div>
   );
@@ -178,11 +187,24 @@ function AddFoodModal({ meal, date, data, setData, onSave, onClose }) {
   const [manual, setManual] = useState({ name: "", kcal: "", protein: "", carb: "", fat: "", saveIt: false, recurring: false });
   const [scanErr, setScanErr] = useState("");
   const [scanning, setScanning] = useState(false);
-  const [manualCode, setManualCode] = useState("");
+  
   const videoRef = useRef(null); const streamRef = useRef(null);
 
   const customFoods = data.customFoods || [];
   const recipes = data.recipes || [];
+  // most-logged foods over the last 2 weeks, ready to re-add in one tap
+  const commonFoods = useMemo(() => {
+    const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 14);
+    const cutKey = cutoff.toISOString().slice(0, 10);
+    const byName = {};
+    for (const f of (data.foods || [])) {
+      if (f.date < cutKey) continue;
+      const e = (byName[f.name] ||= { n: 0, last: f });
+      e.n++;
+      if (f.date >= e.last.date) e.last = f;
+    }
+    return Object.values(byName).sort((a, b) => b.n - a.n).slice(0, 8);
+  }, [data.foods]);
 
   // live search: suggestions appear as you type (or backspace), no button needed.
   // Old results stay on screen while new ones load; a failed attempt retries itself
@@ -210,7 +232,7 @@ function AddFoodModal({ meal, date, data, setData, onSave, onClose }) {
     setBusy(true); setScanErr("");
     try {
       const f = await offBarcode(code);
-      if (!f) setScanErr("No product found for that barcode — try Search or Manual instead.");
+      if (!f) setScanErr("No product found for that barcode — try Search instead.");
       else setPicked(f);
     } catch { setScanErr("Lookup failed — check your connection."); }
     setBusy(false);
@@ -222,7 +244,7 @@ function AddFoodModal({ meal, date, data, setData, onSave, onClose }) {
     if (!Detector) {
       // iOS Safari (and some others) have no built-in scanner — load the polyfill on demand
       try { Detector = (await import("barcode-detector/ponyfill")).BarcodeDetector; }
-      catch { setScanErr("Couldn't load the scanner — check your connection, or enter the number below."); return; }
+      catch { setScanErr("Couldn't load the scanner — check your connection, or use Search instead."); return; }
     }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
@@ -250,7 +272,7 @@ function AddFoodModal({ meal, date, data, setData, onSave, onClose }) {
         if (streamRef.current) requestAnimationFrame(tick);
       };
       requestAnimationFrame(tick);
-    } catch { setScanErr("Couldn't access the camera — check permissions, or enter the barcode number below."); }
+    } catch { setScanErr("Couldn't access the camera — check permissions, or use Search instead."); }
   };
   const stopScan = () => {
     streamRef.current?.getTracks()?.forEach(t => t.stop());
@@ -328,17 +350,23 @@ function AddFoodModal({ meal, date, data, setData, onSave, onClose }) {
             )}
             {busy && <div style={{ color: T.sub, fontSize: 13, marginBottom: 8 }}>Looking up…</div>}
             {scanErr && <div style={{ color: T.down, fontSize: 13, marginBottom: 8 }}>{scanErr}</div>}
-            <div style={{ fontSize: 12, color: T.sub, marginBottom: 6 }}>Or type the barcode number:</div>
-            <div style={{ display: "flex", gap: 8 }}>
-              <input value={manualCode} onChange={e => setManualCode(e.target.value)} inputMode="numeric" placeholder="e.g. 0123456789012" />
-              <button onClick={() => manualCode.trim() && lookupBarcode(manualCode.trim())} style={{ ...btnGhost, color: T.green, fontWeight: 700, padding: "0 14px" }}>Look up</button>
-            </div>
           </div>
         )}
 
         {mode === "mine" && !picked && (
           <div>
-            {!customFoods.length && !recipes.length && (
+            {commonFoods.length > 0 && (<>
+              <div style={{ fontSize: 11.5, color: T.sub, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".5px", marginBottom: 6 }}>🕑 Common — last 2 weeks</div>
+              {commonFoods.map((c, i) => (
+                <button key={i} onClick={() => setPicked({ name: c.last.name, fixed: { kcal: c.last.kcal, protein: c.last.protein, carb: c.last.carb, fat: c.last.fat, fiber: c.last.fiber || 0, sodium: c.last.sodium || 0 } })}
+                  style={{ display: "block", width: "100%", textAlign: "left", background: T.input, border: `1px solid ${T.line}`, borderRadius: 10, padding: "10px 12px", marginBottom: 6 }}>
+                  <div style={{ fontSize: 14, color: T.ink, fontWeight: 600 }}>{c.last.name} <span style={{ fontSize: 11, color: T.sub, fontWeight: 500 }}>×{c.n}</span></div>
+                  <div style={{ fontSize: 12, color: T.sub }}>{c.last.kcal} cal · {Math.round(c.last.protein)}g protein · {Math.round(c.last.carb)}g carbs · {Math.round(c.last.fat)}g fat</div>
+                </button>
+              ))}
+              {(customFoods.length > 0 || recipes.length > 0) && <div style={{ fontSize: 11.5, color: T.sub, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".5px", margin: "10px 0 6px" }}>⭐ Favorites & recipes</div>}
+            </>)}
+            {!customFoods.length && !recipes.length && !commonFoods.length && (
               <div style={{ color: T.sub, fontSize: 13, marginBottom: 8 }}>
                 Nothing saved yet. Favorite foods with the checkbox in ✏️ Manual, or build recipes in the 🍲 Recipes card on the Macros tab.
               </div>
@@ -753,7 +781,7 @@ const NT_CSS = `
 /* add-food: full screen on phones, big centered dialog (background peeking) on desktop */
 .nt-full { height:100dvh; max-height:100dvh !important; border-radius:0 !important; padding-top:calc(14px + env(safe-area-inset-top)) !important; }
 @media (min-width:700px) {
-  .nt-overlay .nt-full { width:min(700px, 90vw); height:88vh; max-height:88vh !important; border-radius:16px !important; padding-top:18px !important; }
+  .nt-overlay .nt-full { width:min(520px, 90vw); height:auto; min-height:340px; max-height:78vh !important; border-radius:16px !important; padding-top:18px !important; }
 }
 .nt-cal-grid { max-width:420px; margin:0 auto; }
 `;
@@ -840,13 +868,20 @@ export function MacroTab({ data, setData, streaksOn = true, waterOn = true }) {
 
       {/* compact summary: small ring + macro bars in one row */}
       <div className="card nt-card" style={{ marginBottom: 8, padding: 12 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 14, maxWidth: 520, margin: "0 auto" }}>
-          <CalorieRing eaten={totals.kcal} goal={goals.kcal} size={92} />
-          <div style={{ flex: 1 }}>
-            <MacroBar label="Protein" color={T.green} eaten={totals.protein} goal={goals.protein} />
-            <MacroBar label="Carbs" color={CARB_BLUE} eaten={totals.carb} goal={goals.carb} />
-            <MacroBar label="Fat" color={FAT_ORANGE} eaten={totals.fat} goal={goals.fat} />
+        {/* calories row: small gauge left, the numbers written out beside it */}
+        <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 10 }}>
+          <CalorieRing eaten={totals.kcal} goal={goals.kcal} size={66} />
+          <div>
+            <div style={{ fontSize: 21, fontWeight: 800, color: totals.kcal > goals.kcal ? T.down : T.ink, lineHeight: 1.1 }}>
+              {Math.abs(Math.round(goals.kcal - totals.kcal)).toLocaleString()} <span style={{ fontSize: 13, fontWeight: 600, color: T.sub }}>{totals.kcal > goals.kcal ? "calories over" : "calories left"}</span>
+            </div>
+            <div style={{ fontSize: 12, color: T.sub, marginTop: 2 }}>{Math.round(totals.kcal).toLocaleString()} eaten of {goals.kcal.toLocaleString()} goal</div>
           </div>
+        </div>
+        <div>
+          <MacroBar label="Protein" color={T.green} eaten={totals.protein} goal={goals.protein} />
+          <MacroBar label="Carbs" color={CARB_BLUE} eaten={totals.carb} goal={goals.carb} />
+          <MacroBar label="Fat" color={FAT_ORANGE} eaten={totals.fat} goal={goals.fat} />
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6 }}>
           <button className="nt-press" onClick={() => setShowGoals(true)} style={{ background: "none", border: "none", color: T.green, fontSize: 12.5, fontWeight: 700, padding: 0 }}>🎯 Goals</button>
@@ -949,11 +984,15 @@ export function MacroTab({ data, setData, streaksOn = true, waterOn = true }) {
 
 /* ---------- nutrition calendar + day-by-day log (own tab and group profiles) ---------- */
 export function MacroCalendar({ data, title = "🥗 Nutrition calendar" }) {
-  const [month, setMonth] = useState(() => todayStr().slice(0, 7)); // "YYYY-MM"
-  const [selDay, setSelDay] = useState(todayStr());
-  const [shadeBy, setShadeBy] = useState(() => localStorage.getItem("lt-cal-shade") || "kcal");
-  useEffect(() => { localStorage.setItem("lt-cal-shade", shadeBy); }, [shadeBy]);
+  const [sel, setSel] = useState(todayStr());
+  const [view, setView] = useState(() => {
+    const v = localStorage.getItem("lt-ncal-view");
+    return NCAL_VIEWS[v] ? v : "1M";
+  });
+  useEffect(() => { localStorage.setItem("lt-ncal-view", view); }, [view]);
   const foods = data.foods || [];
+  const goals = { ...DEFAULT_GOALS, ...(data.nutritionGoals || {}) };
+  const plan = data.nutritionGoals?.calc?.plan || "maintain";
   const totalsByDate = useMemo(() => {
     const m = {};
     for (const f of foods) {
@@ -963,69 +1002,122 @@ export function MacroCalendar({ data, title = "🥗 Nutrition calendar" }) {
     return m;
   }, [foods]);
 
-  const [y, mo] = month.split("-").map(Number);
-  const first = new Date(y, mo - 1, 1);
-  const daysIn = new Date(y, mo, 0).getDate();
-  const lead = (first.getDay() + 6) % 7; // weeks start Monday, matching the lifting calendar
-  const cells = [...Array(lead).fill(null), ...Array.from({ length: daysIn }, (_, i) => `${month}-${String(i + 1).padStart(2, "0")}`)];
-  const shiftMonth = (n) => { const d = new Date(y, mo - 1 + n, 1); setMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`); };
+  /* a day is "good" on calories relative to the plan: under while cutting,
+     over while bulking, within ±10% while maintaining. protein: goal hit. */
+  const calGood = (t) => plan === "cut" ? t.kcal <= goals.kcal
+    : plan === "bulk" ? t.kcal >= goals.kcal
+    : Math.abs(t.kcal - goals.kcal) <= goals.kcal * 0.1;
+  const protGood = (t) => t.protein >= goals.protein;
+  const shade = (t, future) => {
+    if (future) return "transparent";
+    if (!t) return T.input;
+    const hits = (calGood(t) ? 1 : 0) + (protGood(t) ? 1 : 0);
+    if (hits === 2) return "rgba(0,200,5,.70)";       // both on target
+    if (hits === 1) return "rgba(227,190,85,.45)";    // one of the two
+    return "rgba(255,80,0,.35)";                      // logged, both off
+  };
 
-  const dayFoods = foods.filter(f => f.date === selDay);
-  const selT = totalsByDate[selDay];
+  const { cols, monthMarks } = useMemo(() => {
+    const WEEKS = NCAL_VIEWS[view];
+    const end = new Date(todayStr() + "T00:00");
+    const start2 = new Date(mondayOf(todayStr()) + "T00:00");
+    start2.setDate(start2.getDate() - 7 * (WEEKS - 1));
+    const cols = []; const monthMarks = [];
+    let d = new Date(start2), lastMonth = -1;
+    for (let w = 0; w < WEEKS; w++) {
+      const days = [];
+      for (let i = 0; i < 7; i++) {
+        const key = d.toISOString().slice(0, 10);
+        days.push({ key, t: totalsByDate[key], future: d > end });
+        if (d.getMonth() !== lastMonth && d.getDate() <= 7) { monthMarks.push({ col: w, label: d.toLocaleString("en-US", { month: "short" }) }); lastMonth = d.getMonth(); }
+        d.setDate(d.getDate() + 1);
+      }
+      cols.push(days);
+    }
+    return { cols, monthMarks };
+  }, [totalsByDate, view]);
+
+  const weeks = NCAL_VIEWS[view];
+  const gap = weeks > 26 ? 2 : 4;
+  const pick = (d) => { if (!d.future) setSel(d.key); };
+  const outlineFor = (d) =>
+    sel === d.key ? `2px solid ${T.ink}` : d.key === todayStr() ? `1.5px solid ${T.sub}` : "none";
+
+  /* 1M: a real calendar — 7 columns, day numbers, exactly the last 30 days */
+  const monthGrid = () => {
+    const days = cols.flat();
+    const cutoff = new Date(todayStr() + "T00:00"); cutoff.setDate(cutoff.getDate() - 29);
+    const cutKey = cutoff.toISOString().slice(0, 10);
+    return (
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6, maxWidth: 380, margin: "0 auto" }}>
+        {["M","T","W","T","F","S","S"].map((w, i) => (
+          <div key={i} style={{ textAlign: "center", fontSize: 10.5, color: T.sub, fontWeight: 600 }}>{w}</div>
+        ))}
+        {days.map(d => {
+          const hidden = d.future || d.key < cutKey;
+          return (
+            <div key={d.key} onClick={() => pick(d)} onMouseEnter={() => pick(d)}
+              title={d.t ? `${Math.round(d.t.kcal)} cal · ${Math.round(d.t.protein)}g protein` : "nothing logged"}
+              style={{ aspectRatio: "1", borderRadius: 8, background: shade(d.t, d.future),
+                visibility: hidden ? "hidden" : "visible", cursor: "pointer",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 12.5, fontWeight: 600, color: d.t ? "#fff" : T.sub,
+                outline: outlineFor(d), outlineOffset: -1 }}>
+              {Number(d.key.slice(8))}
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  /* 3M/6M/1Y: GitHub-style week columns */
+  const weekGrid = () => (
+    <div style={{ maxWidth: weeks === 13 ? 400 : weeks === 26 ? 700 : "none", margin: "0 auto" }}>
+      <div style={{ position: "relative", height: 14 }}>
+        {monthMarks.map((m, i) => (
+          <span key={i} style={{ position: "absolute", left: `${m.col / weeks * 100}%`, fontSize: 10, color: T.sub }}>{m.label}</span>
+        ))}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: `repeat(${weeks}, 1fr)`, gap }}>
+        {cols.map((week, wi) => (
+          <div key={wi} style={{ display: "flex", flexDirection: "column", gap }}>
+            {week.map(d => (
+              <div key={d.key} onClick={() => pick(d)} onMouseEnter={() => pick(d)}
+                title={d.t ? `${Math.round(d.t.kcal)} cal · ${Math.round(d.t.protein)}g protein` : ""}
+                style={{ aspectRatio: "1", borderRadius: weeks > 26 ? 2 : 4, background: shade(d.t, d.future),
+                  cursor: d.future ? "default" : "pointer", outline: outlineFor(d), outlineOffset: -1 }} />
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  const dayFoods = foods.filter(f => f.date === sel);
+  const selT = totalsByDate[sel];
 
   return (
     <div className="card" style={{ marginBottom: 8, padding: 12 }}>
       <NTStyle />
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-        <div style={{ fontSize: 15, fontWeight: 700, color: T.ink }}>{title}</div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <button className="nt-press" onClick={() => shiftMonth(-1)} style={{ ...btnGhost, color: T.ink, padding: "3px 10px", fontSize: 13 }}>‹</button>
-          <span style={{ fontSize: 12.5, color: T.sub, fontWeight: 700, minWidth: 66, textAlign: "center" }}>{first.toLocaleDateString("en-US", { month: "short", year: "numeric" })}</span>
-          <button className="nt-press" onClick={() => shiftMonth(1)} style={{ ...btnGhost, color: T.ink, padding: "3px 10px", fontSize: 13 }}>›</button>
-        </div>
-      </div>
-      {/* shade the calendar by calories or protein — tap to switch */}
-      <div style={{ display: "flex", gap: 5, marginBottom: 8, maxWidth: 420, margin: "0 auto 8px" }}>
-        {[["kcal", "Shade by calories"], ["protein", "Shade by protein"]].map(([id, l]) => (
-          <button key={id} className="nt-press" onClick={() => setShadeBy(id)} style={{
-            flex: 1, padding: "6px 0", borderRadius: 8, fontWeight: 700, fontSize: 11.5,
-            border: `1px solid ${shadeBy === id ? T.green : T.line}`,
-            background: shadeBy === id ? T.mint : T.input, color: shadeBy === id ? T.green : T.sub,
-          }}>{l}</button>
+      <div style={{ fontSize: 15, fontWeight: 700, color: T.ink, marginBottom: 6 }}>{title}</div>
+      {/* view switcher — same style as the workout calendar */}
+      <div style={{ display: "flex", gap: 2, marginBottom: 8, justifyContent: "center" }}>
+        {Object.keys(NCAL_VIEWS).map(v => (
+          <button key={v} onClick={() => setView(v)} style={{
+            background: "none", padding: "4px 10px", fontSize: 12, fontWeight: 700, letterSpacing: ".5px", borderRadius: 0,
+            color: view === v ? T.green : T.sub, border: "none", borderBottom: view === v ? `2px solid ${T.green}` : "2px solid transparent",
+          }}>{v}</button>
         ))}
       </div>
-      <div className="nt-cal-grid">
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 5, marginBottom: 5 }}>
-        {["M", "T", "W", "T", "F", "S", "S"].map((d, i) => <div key={i} style={{ textAlign: "center", fontSize: 10, color: T.sub, fontWeight: 700 }}>{d}</div>)}
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 5 }}>
-        {cells.map((d, i) => {
-          if (!d) return <div key={i} />;
-          const t = totalsByDate[d];
-          const future = d > todayStr();
-          const isToday = d === todayStr();
-          const isSel = d === selDay;
-          const depth = t ? Math.min(.5, .13 + (shadeBy === "protein" ? t.protein / 320 : t.kcal / 5500)) : 0;
-          return (
-            <button key={d} className="nt-press" onClick={() => setSelDay(d)}
-              title={t ? `${Math.round(t.kcal)} cal · ${Math.round(t.protein)}g protein` : "nothing logged"}
-              style={{
-                aspectRatio: "1", borderRadius: 10, fontSize: 11.5, fontWeight: 700, padding: 0,
-                border: isSel ? `1.5px solid ${T.green}` : isToday ? `1.5px dashed ${T.sub}` : "1.5px solid transparent",
-                // logged days glow green (deeper = bigger day); unlogged past days a clearly
-                // different grey; future days nearly invisible
-                background: t ? `rgba(0,200,5,${depth})` : future ? "#0A0B0B" : "#1A1D1C",
-                color: t ? T.green : future ? "#3A3E3D" : T.sub,
-                boxShadow: t ? `0 0 ${8 * depth}px rgba(0,200,5,${depth * .8})` : "none",
-              }}>{Number(d.slice(8))}</button>
-          );
-        })}
-      </div>
+      {view === "1M" ? monthGrid() : weekGrid()}
+      <div style={{ fontSize: 10.5, color: T.sub, textAlign: "center", marginTop: 8 }}>
+        🟩 calories + protein on target · 🟨 one of the two · 🟧 logged but off · grey = nothing logged
       </div>
       {/* tapped-day details — full food log for that day */}
       <div style={{ marginTop: 10, borderTop: `1px solid ${T.line}`, paddingTop: 8 }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: T.ink }}>
-          {fmtShort(selDay)}{selDay === todayStr() ? " (today)" : ""}
+          {fmtShort(sel)}{sel === todayStr() ? " (today)" : ""}
           {selT
             ? <span style={{ color: T.sub, fontWeight: 500 }}> — <b style={{ color: T.green }}>{Math.round(selT.kcal)} cal</b> · {Math.round(selT.protein)}g protein</span>
             : <span style={{ color: T.sub, fontWeight: 500 }}> — nothing logged</span>}
