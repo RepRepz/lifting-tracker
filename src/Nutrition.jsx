@@ -857,31 +857,36 @@ function DiaryRow({ f, onDelete, onMenu }) {
     g.current.mode = null;
   };
   return (
-    <div style={{ position: "relative", overflow: "hidden", maxHeight: removing ? 0 : 70, opacity: removing ? 0 : 1, transition: "max-height .2s ease, opacity .2s ease" }}>
+    <div style={{ position: "relative", overflow: "hidden", borderRadius: 12, marginTop: 7,
+      maxHeight: removing ? 0 : 70, opacity: removing ? 0 : 1,
+      transition: "max-height .2s ease, opacity .2s ease, margin .2s ease" }}>
       {/* red zone revealed on swipe-left */}
-      <div style={{ position: "absolute", inset: 0, background: T.dangerBg, display: "flex", alignItems: "center", justifyContent: "flex-end", paddingRight: 16, color: T.danger, fontWeight: 700, fontSize: 13 }}>🗑 Delete</div>
+      <div style={{ position: "absolute", inset: 0, background: "#3A130A", display: "flex", alignItems: "center", justifyContent: "flex-end", paddingRight: 18, color: T.danger, fontWeight: 700, fontSize: 13, borderRadius: 12 }}>Delete</div>
       <div ref={setNodeRef}
         onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
         onContextMenu={(e) => { e.preventDefault(); onMenu(f, e.clientX, e.clientY); }}
-        style={{ position: "relative", background: T.card, transform: `translateX(${dx}px)`, transition: dx === 0 ? "transform .2s ease" : "none",
-          padding: "6px 0 4px", display: "flex", alignItems: "center", gap: 8, opacity: isDragging ? 0.35 : 1 }}>
+        style={{ position: "relative", background: "#17191B", border: `1px solid ${isDragging ? T.green : "#22262A"}`, borderRadius: 12,
+          transform: `translateX(${dx}px)`, transition: dx === 0 ? "transform .2s ease" : "none",
+          padding: "9px 10px 9px 5px", display: "flex", alignItems: "center", gap: 5, opacity: isDragging ? 0.4 : 1 }}>
         <span {...attributes} {...listeners} title="Drag to another meal"
-          style={{ cursor: "grab", color: T.sub, fontSize: 16, lineHeight: 1, padding: "0 2px", touchAction: "none", flexShrink: 0 }}>⠿</span>
+          style={{ cursor: "grab", color: "#4A4E52", fontSize: 15, lineHeight: 1, padding: "0 4px", touchAction: "none", flexShrink: 0 }}>⠿</span>
         <div style={{ minWidth: 0, flex: 1 }}>
-          <div style={{ fontSize: 13, color: T.ink, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.recurringId ? "🔁 " : ""}{f.name}{f.grams ? <span style={{ color: T.sub, fontWeight: 400 }}> · {f.grams}g</span> : ""}</div>
-          <div style={{ fontSize: 11, color: T.sub }}>
-            <b style={{ color: T.ink }}>{f.kcal} cal</b>
-            {" · "}<span style={{ color: T.green }}>{f.protein}g protein</span>
-            {" · "}<span style={{ color: CARB_BLUE }}>{f.carb}g carbs</span>
-            {" · "}<span style={{ color: FAT_ORANGE }}>{f.fat}g fat</span>
+          <div style={{ fontSize: 13.5, color: T.ink, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.recurringId ? "🔁 " : ""}{f.name}{f.grams ? <span style={{ color: T.sub, fontWeight: 400 }}> · {f.grams}g</span> : ""}</div>
+          <div style={{ fontSize: 11.5, color: T.sub, marginTop: 3, display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <span style={{ color: T.ink, fontWeight: 700 }}>{f.kcal} cal</span>
+            <span><MacroDot c={T.green} />{f.protein}</span>
+            <span><MacroDot c={CARB_BLUE} />{f.carb}</span>
+            <span><MacroDot c={FAT_ORANGE} />{f.fat}</span>
           </div>
         </div>
         <button className="nt-press" onClick={(e) => onMenu(f, e.clientX, e.clientY)} title="More"
-          style={{ background: "none", border: "none", color: T.sub, fontSize: 17, padding: "0 6px", flexShrink: 0 }}>⋯</button>
+          style={{ background: "none", border: "none", color: T.sub, fontSize: 18, padding: "0 4px", flexShrink: 0, lineHeight: 1 }}>⋯</button>
       </div>
     </div>
   );
 }
+const MEAL_ICON = { Uncategorized: "🗂", Breakfast: "🍳", Lunch: "🥗", Dinner: "🍽️", Snacks: "🍎" };
+const MacroDot = ({ c }) => <span style={{ width: 6, height: 6, borderRadius: 99, background: c, display: "inline-block", marginRight: 4, verticalAlign: "middle" }} />;
 
 function MenuItem({ label, onClick, danger }) {
   return (
@@ -892,21 +897,18 @@ function MenuItem({ label, onClick, danger }) {
   );
 }
 
-/* A meal section that food can be dropped into. */
-function MealDrop({ meal, children, hasBorder, header, empty }) {
+/* Each meal is its own elevated card that food can be dropped into. */
+function MealDrop({ meal, children, header, empty }) {
   const { setNodeRef, isOver } = useDroppable({ id: `meal:${meal}` });
   return (
-    <div ref={setNodeRef} style={{ borderTop: hasBorder ? `1px solid ${T.line}` : "none",
-      padding: "10px 8px", margin: "2px -8px", borderRadius: 12,
-      background: isOver ? "rgba(0,200,5,.14)" : "transparent", transition: "background .15s ease",
-      outline: isOver ? `2px dashed ${T.green}` : "2px solid transparent", outlineOffset: -2 }}>
+    <div ref={setNodeRef} className="card nt-card" style={{ marginBottom: 8, padding: "12px 14px",
+      background: isOver ? "rgba(0,200,5,.09)" : T.card, borderColor: isOver ? T.green : undefined,
+      transition: "background .15s ease, border-color .15s ease" }}>
       {header}
       {children}
       {empty && (
-        <div style={{ marginTop: 6, border: `1.5px dashed ${isOver ? T.green : T.line}`, borderRadius: 10,
-          padding: "12px 0", textAlign: "center", fontSize: 12, color: isOver ? T.green : T.sub, transition: "all .15s ease" }}>
-          {isOver ? "Drop here" : "Drag a food here, or tap +"}
-        </div>
+        <div style={{ marginTop: 8, border: `1.5px dashed ${isOver ? T.green : "#22262A"}`, borderRadius: 12,
+          height: 42, transition: "border-color .15s ease" }} />
       )}
     </div>
   );
@@ -1036,8 +1038,8 @@ export function MacroTab({ data, setData, streaksOn = true, waterOn = true }) {
             })}
           </div>
         </div>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4, borderTop: `1px solid ${T.line}`, paddingTop: 10 }}>
-          <button className="nt-press" onClick={() => setShowGoals(true)} style={{ background: "none", border: "none", color: T.green, fontSize: 13, fontWeight: 700, padding: 0 }}>🎯 Edit goals</button>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 14 }}>
+          <button className="nt-press" onClick={() => setShowGoals(true)} style={{ background: T.input, border: "none", color: T.green, fontSize: 13, fontWeight: 700, padding: "7px 14px", borderRadius: 99 }}>🎯 Edit goals</button>
           <button className="nt-press" onClick={() => setExpanded(x => !x)} style={{ background: "none", border: "none", color: T.sub, fontSize: 12.5, padding: 0 }}>{expanded ? "Less ▴" : "More ▾"}</button>
         </div>
         {expanded && (
@@ -1048,35 +1050,37 @@ export function MacroTab({ data, setData, streaksOn = true, waterOn = true }) {
         )}
       </div>
 
-      {/* diary: drag a food by its ⠿ handle onto any meal; swipe-left or right-click to delete */}
-      <div className="card nt-card" style={{ marginBottom: 8, padding: "6px 12px", animationDelay: ".05s" }}>
-        <div style={{ fontSize: 11, color: T.sub, marginBottom: 4 }}>Drag <b style={{ color: T.ink }}>⠿</b> between meals · tap <b style={{ color: T.ink }}>⋯</b> (or right-click) to edit, move or delete · swipe left to delete</div>
-        <DndContext sensors={sensors} onDragStart={({ active }) => setDragId(active.id)} onDragEnd={onDragEnd} onDragCancel={() => setDragId(null)}>
-          {["Uncategorized", ...MEALS].map((meal, mi) => {
-            const rows = byMeal[meal];
-            if (meal === "Uncategorized" && !rows.length) return null; // only appears when something's in it
-            const mealCal = rows.reduce((s, f) => s + num(f.kcal), 0);
-            const header = (
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div style={{ fontSize: 14, fontWeight: 700, color: meal === "Uncategorized" ? T.sub : T.ink }}>{meal === "Uncategorized" ? "🗂 Uncategorized — drag ⠿ into a meal" : meal}{mealCal > 0 && <span style={{ fontSize: 11.5, color: T.sub, fontWeight: 500 }}> · {Math.round(mealCal)} cal</span>}</div>
-                {meal !== "Uncategorized" && <button className="nt-press" onClick={() => setAddMeal(meal)} style={{ background: T.mint, color: T.green, border: "none", borderRadius: 8, padding: "4px 12px", fontWeight: 800, fontSize: 13 }}>+</button>}
+      {/* diary: each meal is its own card; drag ⠿ between them, ⋯ / right-click / swipe to manage */}
+      <DndContext sensors={sensors} onDragStart={({ active }) => setDragId(active.id)} onDragEnd={onDragEnd} onDragCancel={() => setDragId(null)}>
+        {["Uncategorized", ...MEALS].map((meal) => {
+          const rows = byMeal[meal];
+          if (meal === "Uncategorized" && !rows.length) return null; // only appears when something's in it
+          const mealCal = rows.reduce((s, f) => s + num(f.kcal), 0);
+          const header = (
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                <span style={{ fontSize: 17 }}>{MEAL_ICON[meal]}</span>
+                <span style={{ fontSize: 15, fontWeight: 800, color: T.ink }}>{meal === "Uncategorized" ? "To sort" : meal}</span>
+                {mealCal > 0 && <span style={{ fontSize: 12, color: T.sub, fontWeight: 600 }}>{Math.round(mealCal)} cal</span>}
               </div>
-            );
-            return (
-              <MealDrop key={meal} meal={meal} hasBorder={mi > 1 || (mi === 1 && byMeal.Uncategorized.length > 0)} header={header} empty={meal !== "Uncategorized" && !rows.length}>
-                {rows.map(f => <DiaryRow key={f.id} f={f} onDelete={removeFood} onMenu={(food, x, y) => setMenu({ f: food, x, y })} />)}
-              </MealDrop>
-            );
-          })}
-          <DragOverlay dropAnimation={null}>
-            {dragFood && (
-              <div style={{ background: T.card, border: `1px solid ${T.green}`, borderRadius: 8, padding: "6px 12px", fontSize: 13, fontWeight: 600, color: T.ink, boxShadow: "0 6px 20px rgba(0,0,0,.5)" }}>
-                {dragFood.name} <span style={{ color: T.sub, fontWeight: 400 }}>· {dragFood.kcal} cal</span>
-              </div>
-            )}
-          </DragOverlay>
-        </DndContext>
-      </div>
+              {meal !== "Uncategorized" && <button className="nt-press" onClick={() => setAddMeal(meal)} title={`Add to ${meal}`}
+                style={{ background: T.mint, color: T.green, border: "none", width: 30, height: 30, borderRadius: 99, fontWeight: 800, fontSize: 18, lineHeight: 1, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>+</button>}
+            </div>
+          );
+          return (
+            <MealDrop key={meal} meal={meal} header={header} empty={meal !== "Uncategorized" && !rows.length}>
+              {rows.map(f => <DiaryRow key={f.id} f={f} onDelete={removeFood} onMenu={(food, x, y) => setMenu({ f: food, x, y })} />)}
+            </MealDrop>
+          );
+        })}
+        <DragOverlay dropAnimation={null}>
+          {dragFood && (
+            <div style={{ background: "#17191B", border: `1px solid ${T.green}`, borderRadius: 12, padding: "9px 14px", fontSize: 13.5, fontWeight: 600, color: T.ink, boxShadow: "0 12px 30px rgba(0,0,0,.6)" }}>
+              {dragFood.name} <span style={{ color: T.sub, fontWeight: 400 }}>· {dragFood.kcal} cal</span>
+            </div>
+          )}
+        </DragOverlay>
+      </DndContext>
 
       {/* right-click / ⋯ context menu */}
       {menu && (
