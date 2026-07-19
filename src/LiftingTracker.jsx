@@ -360,7 +360,7 @@ export default function LiftingTracker({ user }) {
         .nav-top { display:none; }
         .nav-bottom {
           position:fixed; bottom:0; left:0; right:0; z-index:20;
-          display:grid; grid-template-columns:repeat(7, 1fr);
+          display:grid; /* columns set inline from tab count */
           background:${T.bg}; border-top:1px solid ${T.line};
           padding-bottom:env(safe-area-inset-bottom);
         }
@@ -438,14 +438,15 @@ export default function LiftingTracker({ user }) {
       </main>
 
       {/* phone tab bar (bottom, thumb-reachable). Hidden on desktop — see .nav-bottom */}
-      <nav className="nav-bottom">
+      <nav className="nav-bottom" style={{ gridTemplateColumns:`repeat(${tabs.length}, 1fr)` }}>
         {tabs.map(([id,label,icon]) => (
           <button key={id} onClick={()=>setTab(id)} style={{
             padding:"7px 0 8px", background:"none", display:"flex", flexDirection:"column", alignItems:"center", gap:1,
-            color: tab===id?T.green:T.sub, fontWeight: tab===id?700:500, fontSize:10.5, borderRadius:0, minWidth:0,
+            color: tab===id?T.green:T.sub, fontWeight: tab===id?700:500,
+            fontSize: tabs.length>=8?9:tabs.length===7?9.5:10.5, borderRadius:0, minWidth:0,
             borderTop: tab===id?`3px solid ${T.green}`:"3px solid transparent",
           }}>
-            <span className={"navicon" + (tab===id?" on":"")} style={{fontSize:18}}>{icon}</span>
+            <span className={"navicon" + (tab===id?" on":"")} style={{fontSize: tabs.length>=8?16:18}}>{icon}</span>
             <span style={{maxWidth:"100%", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{label}</span>
           </button>
         ))}

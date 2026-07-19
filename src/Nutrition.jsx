@@ -114,12 +114,12 @@ const CARB_BLUE = "#2E8CFF";
 const FAT_ORANGE = "#FFB300";
 
 /* ---------- shared bits ---------- */
-/* Open gauge (270° arc, gradient + soft glow), centered on calories LEFT — the number
-   people actually decide with — instead of calories eaten. */
-function CalorieRing({ eaten, goal, size = 130 }) {
+/* Open 270° gauge with the calories-LEFT number reading inside it — the value people
+   actually decide with. No stray percentage. */
+function CalorieRing({ eaten, goal, size = 150 }) {
   const pct = goal ? Math.min(1, eaten / goal) : 0;
   const over = eaten > goal;
-  const r = size * 0.40, mid = size / 2, sw = size * 0.085;
+  const r = size * 0.40, mid = size / 2, sw = size * 0.08;
   const sweep = 270, startA = 135; // gap at the bottom
   const arc = (deg) => {
     const a = ((startA + deg) % 360) * Math.PI / 180;
@@ -133,7 +133,7 @@ function CalorieRing({ eaten, goal, size = 130 }) {
   const left = Math.round(goal - eaten);
   const gid = useRef("g" + Math.random().toString(36).slice(2)).current;
   return (
-    <div style={{ position: "relative", width: size, height: size, margin: "0 auto", flexShrink: 0 }}>
+    <div style={{ position: "relative", width: size, height: size, flexShrink: 0 }}>
       <svg width={size} height={size}>
         <defs>
           <linearGradient id={gid} x1="0%" y1="100%" x2="100%" y2="0%">
@@ -141,7 +141,7 @@ function CalorieRing({ eaten, goal, size = 130 }) {
             <stop offset="100%" stopColor={over ? "#FF8A50" : "#00E606"} />
           </linearGradient>
           <filter id={gid + "f"} x="-40%" y="-40%" width="180%" height="180%">
-            <feGaussianBlur stdDeviation={sw * 0.45} result="b" />
+            <feGaussianBlur stdDeviation={sw * 0.4} result="b" />
             <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
           </filter>
         </defs>
@@ -149,8 +149,9 @@ function CalorieRing({ eaten, goal, size = 130 }) {
         <path d={path(pct * sweep)} stroke={`url(#${gid})`} strokeWidth={sw} fill="none" strokeLinecap="round"
           filter={`url(#${gid}f)`} style={{ transition: "d .5s ease" }} />
       </svg>
-      <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <div style={{ fontSize: size * 0.22, fontWeight: 800, color: over ? T.down : T.green }}>{Math.round(pct * 100)}%</div>
+      <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ fontSize: size * 0.24, fontWeight: 800, color: over ? T.down : T.ink, lineHeight: 1 }}>{Math.abs(left).toLocaleString()}</div>
+        <div style={{ fontSize: size * 0.088, color: T.sub, marginTop: 3, fontWeight: 600 }}>{over ? "cal over" : "cal left"}</div>
       </div>
     </div>
   );
@@ -784,6 +785,16 @@ const NT_CSS = `
   .nt-overlay .nt-full { width:min(520px, 90vw); height:auto; min-height:340px; max-height:78vh !important; border-radius:16px !important; padding-top:18px !important; }
 }
 .nt-cal-grid { max-width:420px; margin:0 auto; }
+/* keep the whole Macros column a comfortable app width on desktop (no edge-to-edge stretch) */
+.nt-col { max-width:600px; margin:0 auto; }
+/* summary hero: stacked+centered on phones, gauge beside macros on wider screens */
+.nt-summary-top { display:flex; flex-direction:column; align-items:center; gap:16px; }
+.nt-summary-top > svg, .nt-summary-top > div:first-child { margin:0 auto; }
+.nt-macro-stats { width:100%; max-width:340px; }
+@media (min-width:560px) {
+  .nt-summary-top { flex-direction:row; align-items:center; gap:28px; }
+  .nt-macro-stats { flex:1; max-width:none; }
+}
 `;
 const NTStyle = () => <style>{NT_CSS}</style>;
 export function MacroTab({ data, setData, streaksOn = true, waterOn = true }) {
@@ -844,7 +855,7 @@ export function MacroTab({ data, setData, streaksOn = true, waterOn = true }) {
   const shiftDay = (n) => setSel(s => addDays(s, n));
 
   return (
-    <div>
+    <div className="nt-col">
       <style>{NT_CSS}</style>
       {/* slim header: add-food top left, small date picker + finish-check top right */}
       <div className="nt-card" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8, padding: "2px 2px 6px" }}>
@@ -866,31 +877,41 @@ export function MacroTab({ data, setData, streaksOn = true, waterOn = true }) {
         </div>
       </div>
 
-      {/* compact summary: small ring + macro bars in one row */}
-      <div className="card nt-card" style={{ marginBottom: 8, padding: 12 }}>
-        {/* calories row: small gauge left, the numbers written out beside it */}
-        <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 10 }}>
-          <CalorieRing eaten={totals.kcal} goal={goals.kcal} size={66} />
-          <div>
-            <div style={{ fontSize: 21, fontWeight: 800, color: totals.kcal > goals.kcal ? T.down : T.ink, lineHeight: 1.1 }}>
-              {Math.abs(Math.round(goals.kcal - totals.kcal)).toLocaleString()} <span style={{ fontSize: 13, fontWeight: 600, color: T.sub }}>{totals.kcal > goals.kcal ? "calories over" : "calories left"}</span>
-            </div>
-            <div style={{ fontSize: 12, color: T.sub, marginTop: 2 }}>{Math.round(totals.kcal).toLocaleString()} eaten of {goals.kcal.toLocaleString()} goal</div>
+      {/* summary hero: big calorie gauge, then three macro stat blocks */}
+      <div className="card nt-card nt-summary" style={{ marginBottom: 8, padding: 18 }}>
+        <div className="nt-summary-top">
+          <CalorieRing eaten={totals.kcal} goal={goals.kcal} size={148} />
+          <div className="nt-macro-stats">
+            {[
+              ["Protein", T.green, totals.protein, goals.protein],
+              ["Carbs", CARB_BLUE, totals.carb, goals.carb],
+              ["Fat", FAT_ORANGE, totals.fat, goals.fat],
+            ].map(([label, color, eaten, goal]) => {
+              const pct = goal ? Math.min(1, eaten / goal) : 0;
+              return (
+                <div key={label} style={{ marginBottom: 12 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
+                    <span style={{ fontSize: 13.5, color: T.ink, fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ width: 9, height: 9, borderRadius: 99, background: color, display: "inline-block" }} />{label}
+                    </span>
+                    <span style={{ fontSize: 13, color: T.sub, fontWeight: 600 }}><b style={{ color: T.ink }}>{Math.round(eaten)}</b> / {Math.round(goal)}g</span>
+                  </div>
+                  <div style={{ height: 8, borderRadius: 5, background: T.input, overflow: "hidden" }}>
+                    <div style={{ height: "100%", width: `${pct * 100}%`, background: color, borderRadius: 5, transition: "width .3s ease" }} />
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
-        <div>
-          <MacroBar label="Protein" color={T.green} eaten={totals.protein} goal={goals.protein} />
-          <MacroBar label="Carbs" color={CARB_BLUE} eaten={totals.carb} goal={goals.carb} />
-          <MacroBar label="Fat" color={FAT_ORANGE} eaten={totals.fat} goal={goals.fat} />
-        </div>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6 }}>
-          <button className="nt-press" onClick={() => setShowGoals(true)} style={{ background: "none", border: "none", color: T.green, fontSize: 12.5, fontWeight: 700, padding: 0 }}>🎯 Goals</button>
-          <button className="nt-press" onClick={() => setExpanded(x => !x)} style={{ background: "none", border: "none", color: T.sub, fontSize: 12, padding: 0 }}>{expanded ? "Less ▴" : "More ▾"}</button>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4, borderTop: `1px solid ${T.line}`, paddingTop: 10 }}>
+          <button className="nt-press" onClick={() => setShowGoals(true)} style={{ background: "none", border: "none", color: T.green, fontSize: 13, fontWeight: 700, padding: 0 }}>🎯 Edit goals</button>
+          <button className="nt-press" onClick={() => setExpanded(x => !x)} style={{ background: "none", border: "none", color: T.sub, fontSize: 12.5, padding: 0 }}>{expanded ? "Less ▴" : "More ▾"}</button>
         </div>
         {expanded && (
-          <div style={{ fontSize: 12.5, color: T.sub, marginTop: 6, borderTop: `1px solid ${T.line}`, paddingTop: 8, animation: "ntUp .25s ease both" }}>
+          <div style={{ fontSize: 12.5, color: T.sub, marginTop: 8, animation: "ntUp .25s ease both" }}>
             Fiber: {Math.round(totals.fiber)}g · Sodium: {Math.round(totals.sodium)}mg
-            <br />Remaining: {Math.max(0, goals.kcal - Math.round(totals.kcal))} cal · {Math.max(0, goals.protein - Math.round(totals.protein))}g protein · {Math.max(0, goals.carb - Math.round(totals.carb))}g carbs · {Math.max(0, goals.fat - Math.round(totals.fat))}g fat
+            <br />Remaining today: {Math.max(0, goals.kcal - Math.round(totals.kcal))} cal · {Math.max(0, goals.protein - Math.round(totals.protein))}g protein · {Math.max(0, goals.carb - Math.round(totals.carb))}g carbs · {Math.max(0, goals.fat - Math.round(totals.fat))}g fat
           </div>
         )}
       </div>

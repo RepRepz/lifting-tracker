@@ -2,3 +2,8 @@ node_modules
 dist
 *.local
 .DS_Store
+
+harness.html
+src/harness.jsx
+shot.mjs
+shot-*.png
