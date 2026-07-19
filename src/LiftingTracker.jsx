@@ -215,6 +215,20 @@ export default function LiftingTracker({ user }) {
   });
   useEffect(() => { localStorage.setItem("lt-last-tab", tab); }, [tab]);
   const [showSettings, setShowSettings] = useState(false);
+  const [navHidden, setNavHidden] = useState(false); // bottom bar slides away on scroll-down
+  useEffect(() => {
+    let last = window.scrollY;
+    const onScroll = () => {
+      const y = window.scrollY;
+      if (y < 12) { setNavHidden(false); last = y; return; }   // always show near the top
+      const dy = y - last;
+      if (Math.abs(dy) < 8) return;                             // ignore tiny jitters
+      setNavHidden(dy > 0);                                     // down = hide, up = show
+      last = y;
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
   const [units, setUnits] = useState(() => localStorage.getItem("lt-units") || "lb");
   const [hunit, setHunit] = useState(() => localStorage.getItem("lt-hunit") || "ftin"); // height: "ftin" | "cm"
   const [routinesOn, setRoutinesOn] = useState(() => localStorage.getItem("lt-routines-on") === "1"); // optional templates feature
@@ -371,7 +385,10 @@ export default function LiftingTracker({ user }) {
           display:grid; /* columns set inline (min of 4 → two rows of four) */
           gap:3px; padding:5px 6px calc(5px + env(safe-area-inset-bottom));
           background:${T.bg}; border-top:1px solid ${T.line};
+          transition:transform .3s cubic-bezier(.4,0,.2,1);
         }
+        /* slide the bar down out of view while scrolling down; back up on scroll-up */
+        .nav-bottom.nav-hidden { transform:translateY(130%); }
         /* tab button — soft green pill on the active one, Robinhood style */
         .navbtn {
           display:flex; flex-direction:column; align-items:center; gap:2px; min-width:0;
@@ -466,7 +483,7 @@ export default function LiftingTracker({ user }) {
       </main>
 
       {/* phone tab bar (bottom, thumb-reachable) — up to two rows of four. Hidden on desktop. */}
-      <nav className="nav-bottom" style={{ gridTemplateColumns:`repeat(${Math.min(4, tabs.length)}, 1fr)` }}>
+      <nav className={"nav-bottom" + (navHidden ? " nav-hidden" : "")} style={{ gridTemplateColumns:`repeat(${Math.min(4, tabs.length)}, 1fr)` }}>
         {tabs.map(([id,label,icon]) => (
           <button key={id} onClick={()=>setTab(id)} className={"navbtn" + (tab===id?" on":"")}>
             <span className={"navicon" + (tab===id?" on":"")}>{icon}</span>
