@@ -9,7 +9,7 @@ const ANIM = !(typeof window !== "undefined" && window.matchMedia?.("(prefers-re
 
 /* ---------- shared tooltip (Highcharts-style floating card) ---------- */
 function NiceTip({ active, payload, label, unit }) {
-  if (!active || !payload?.length || payload[0].value == null) return null;
+  if (!active || !payload?.length || payload[0].value == null || payload[0].payload?._ghost) return null;
   const p = payload[0];
   return (
     <div style={{
@@ -28,11 +28,28 @@ function NiceTip({ active, payload, label, unit }) {
 
 /* ---------- gradient area line (exercise trends) ---------- */
 export function TrendChart({ pts, unit = "", dots = false }) {
-  const display = pts.length === 1 ? [pts[0], { ...pts[0], label: pts[0].label + " " }] : pts;
+  // A single data point can't draw a line/area, so we append an invisible twin
+  // just to give the segment width. The twin is flagged _ghost so it never draws
+  // its own dot or tooltip — otherwise you'd see two dots on the same day.
+  const display = pts.length === 1
+    ? [pts[0], { ...pts[0], label: pts[0].label + " ", _ghost: true }]
+    : pts;
   const first = display[0].value, last = display[display.length - 1].value;
   const up = last >= first;
   const stroke = up ? T.green : T.down;
   const gid = up ? "gradUp" : "gradDown";
+  const renderDot = (props) => {
+    const { cx, cy, index, payload } = props;
+    if (payload?._ghost || cx == null) return <g key={`d${index}`} />;
+    const r = dots ? 4.5 : 3;
+    return <circle key={`d${index}`} cx={cx} cy={cy} r={r} fill={stroke}
+      stroke={dots ? "#000" : "none"} strokeWidth={dots ? 1.5 : 0} />;
+  };
+  const renderActiveDot = (props) => {
+    const { cx, cy, index, payload } = props;
+    if (payload?._ghost || cx == null) return <g key={`a${index}`} />;
+    return <circle key={`a${index}`} cx={cx} cy={cy} r={5.5} fill={stroke} stroke="#000" strokeWidth={2} />;
+  };
   return (
     <ResponsiveContainer width="100%" height={210}>
       <AreaChart data={display} margin={{ top: 8, right: 12, bottom: 0, left: -14 }}>
@@ -47,8 +64,7 @@ export function TrendChart({ pts, unit = "", dots = false }) {
         <Tooltip content={<NiceTip unit={unit} />} cursor={{ stroke: "#4A4E50", strokeDasharray: "3 3" }} />
         <ReferenceLine y={first} stroke="#4A4E50" strokeDasharray="2 6" />
         <Area type="monotone" dataKey="value" stroke={stroke} strokeWidth={2.5} fill={`url(#${gid})`}
-          dot={dots ? { r: 4.5, fill: stroke, stroke: "#000", strokeWidth: 1.5 } : { r: 3, fill: stroke, strokeWidth: 0 }}
-          activeDot={{ r: 5.5, fill: stroke, stroke: "#000", strokeWidth: 2 }}
+          dot={renderDot} activeDot={renderActiveDot}
           isAnimationActive={ANIM} animationDuration={700} animationEasing="ease-out" />
       </AreaChart>
     </ResponsiveContainer>

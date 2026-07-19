@@ -1462,11 +1462,19 @@ function Dashboard({ data, exMap, setData, own = true }) {
        moves, best est. 1RM that day for weighted ones */
     const byDate = {};
     for (const e of entries) {
-      if (isBWex) byDate[e.date] = (byDate[e.date]||0) + e.reps;
-      else byDate[e.date] = Math.max(byDate[e.date]||0, dispW(e1rm(e.weight||0, e.reps), units));
+      const b = byDate[e.date] || (byDate[e.date] = { reps:0, sets:0, bestSet:0, best1rm:0 });
+      b.sets++; b.reps += e.reps; b.bestSet = Math.max(b.bestSet, e.reps);
+      if (!isBWex) b.best1rm = Math.max(b.best1rm, dispW(e1rm(e.weight||0, e.reps), units));
     }
     let pts = Object.entries(byDate).sort((a,b)=>a[0].localeCompare(b[0]))
-      .map(([d,v])=>({ date:d, label:fmtDate(d), value:Math.round(v*10)/10 }));
+      .map(([d,b])=>{
+        const setTxt = `${b.sets} set${b.sets>1?"s":""}`;
+        if (isBWex) return { date:d, label:fmtDate(d),
+          value: b.reps, sub: `${setTxt} · best set ${b.bestSet} reps` };
+        return { date:d, label:fmtDate(d),
+          value: Math.round(b.best1rm*10)/10,
+          sub: `${b.reps} total reps · ${setTxt}` };
+      });
     const days = RANGE_DAYS[range];
     if (days!==Infinity && pts.length) {
       const latest = new Date(pts[pts.length-1].date+"T00:00");
