@@ -13,15 +13,22 @@ const mondayOf = (dateStr) => { const d = new Date(dateStr + "T00:00"); const do
 /* Open Food Facts — free, no API key. Search by name or fetch by barcode.
    Uses the newer Search-a-licious engine sorted by scan popularity, which returns far
    more relevant results than the classic search; falls back to the old endpoint. */
+// fetch with a hard timeout so a slow/hung free API can't leave search spinning forever
+async function fetchT(url, ms = 6000) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  try { return await fetch(url, { signal: ctrl.signal }); }
+  finally { clearTimeout(t); }
+}
 async function offSearch(q) {
   try {
-    const r = await fetch(`https://search.openfoodfacts.org/search?q=${encodeURIComponent(q)}&page_size=15&sort_by=-unique_scans_n`);
+    const r = await fetchT(`https://search.openfoodfacts.org/search?q=${encodeURIComponent(q)}&page_size=15&sort_by=-unique_scans_n`);
     if (!r.ok) throw new Error("sal failed");
     const j = await r.json();
     const out = (j.hits || []).filter(p => p.product_name && p.nutriments).map(offToFood);
     if (out.length) return rankResults(out, q);
   } catch {}
-  const r2 = await fetch(`https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(q)}&search_simple=1&action=process&json=1&page_size=15&sort_by=unique_scans_n`);
+  const r2 = await fetchT(`https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(q)}&search_simple=1&action=process&json=1&page_size=15&sort_by=unique_scans_n`);
   if (!r2.ok) throw new Error("search failed");
   const j2 = await r2.json();
   return rankResults((j2.products || []).filter(p => p.product_name && p.nutriments).map(offToFood), q);
@@ -30,7 +37,7 @@ async function offSearch(q) {
    barcode database is weak on. DEMO_KEY is rate-limited but fine at family scale;
    failures are silently ignored so it can only ever ADD results. */
 async function usdaSearch(q) {
-  const r = await fetch(`https://api.nal.usda.gov/fdc/v1/foods/search?api_key=DEMO_KEY&query=${encodeURIComponent(q)}&pageSize=8&dataType=Foundation,SR%20Legacy`);
+  const r = await fetchT(`https://api.nal.usda.gov/fdc/v1/foods/search?api_key=DEMO_KEY&query=${encodeURIComponent(q)}&pageSize=8&dataType=Foundation,SR%20Legacy`);
   if (!r.ok) throw new Error("usda failed");
   const j = await r.json();
   const get = (f, id) => num(f.foodNutrients?.find(n => n.nutrientId === id)?.value);
@@ -393,8 +400,9 @@ function AddFoodModal({ meal, date, data, setData, onSave, onClose }) {
               </>
             )}
             {busy && !localMatches.length && <div style={{ color: T.sub, fontSize: 13, marginBottom: 6 }}>Searching…</div>}
-            {err && <div style={{ color: T.down, fontSize: 13 }}>{err}</div>}
-            {results?.length === 0 && !busy && !localMatches.length && <div style={{ color: T.sub, fontSize: 13 }}>No results — try a simpler term, or use Manual.</div>}
+            {/* only nag about the databases when nothing at all turned up; a soft grey note, not a red error */}
+            {err && !localMatches.length && !results?.length && <div style={{ color: T.sub, fontSize: 12.5 }}>Food database is slow right now — keep typing, or use ✏️ Manual.</div>}
+            {results?.length === 0 && !busy && !localMatches.length && !err && <div style={{ color: T.sub, fontSize: 13 }}>No results — try a simpler term, or use Manual.</div>}
             {results?.map((f, i) => (
               <button key={i} onClick={() => setPicked(f)} style={{ display: "block", width: "100%", textAlign: "left", background: T.input, border: `1px solid ${T.line}`, borderRadius: 10, padding: "10px 12px", marginBottom: 6 }}>
                 <div style={{ fontSize: 14, color: T.ink, fontWeight: 600 }}>{f.name}{f.src === "USDA" && <span style={{ fontSize: 10, color: T.green, background: T.mint, borderRadius: 6, padding: "1px 6px", marginLeft: 6, fontWeight: 700, verticalAlign: "middle" }}>USDA</span>}</div>
@@ -1312,24 +1320,29 @@ export function MacroCalendar({ data, title = "🥗 Nutrition calendar" }) {
   };
 
   /* 3M/6M/1Y: GitHub-style week columns */
+  // fixed, comfortably-sized cells per view; scrolls sideways when it can't all fit
+  const cell = weeks <= 13 ? 30 : weeks <= 26 ? 22 : 17;
+  const cgap = weeks > 26 ? 4 : 5;
   const weekGrid = () => (
-    <div style={{ maxWidth: weeks === 13 ? 400 : weeks === 26 ? 700 : "none", margin: "0 auto" }}>
-      <div style={{ position: "relative", height: 14 }}>
-        {monthMarks.map((m, i) => (
-          <span key={i} style={{ position: "absolute", left: `${m.col / weeks * 100}%`, fontSize: 10, color: T.sub }}>{m.label}</span>
-        ))}
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: `repeat(${weeks}, 1fr)`, gap }}>
-        {cols.map((week, wi) => (
-          <div key={wi} style={{ display: "flex", flexDirection: "column", gap }}>
-            {week.map(d => (
-              <div key={d.key} onClick={() => pick(d)} onMouseEnter={() => pick(d)}
-                title={d.t ? `${Math.round(d.t.kcal)} cal · ${Math.round(d.t.protein)}g protein` : ""}
-                style={{ aspectRatio: "1", borderRadius: weeks > 26 ? 2 : 4, background: shade(d.t, d.future),
-                  cursor: d.future ? "default" : "pointer", outline: outlineFor(d), outlineOffset: -1 }} />
-            ))}
-          </div>
-        ))}
+    <div style={{ overflowX: "auto", paddingBottom: 6 }}>
+      <div style={{ width: "max-content", margin: "0 auto" }}>
+        <div style={{ position: "relative", height: 14 }}>
+          {monthMarks.map((m, i) => (
+            <span key={i} style={{ position: "absolute", left: `${m.col / weeks * 100}%`, fontSize: 10.5, color: T.sub }}>{m.label}</span>
+          ))}
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: `repeat(${weeks}, ${cell}px)`, gap: cgap }}>
+          {cols.map((week, wi) => (
+            <div key={wi} style={{ display: "flex", flexDirection: "column", gap: cgap }}>
+              {week.map(d => (
+                <div key={d.key} onClick={() => pick(d)} onMouseEnter={() => pick(d)}
+                  title={d.t ? `${Math.round(d.t.kcal)} cal · ${Math.round(d.t.protein)}g protein` : ""}
+                  style={{ width: cell, height: cell, borderRadius: weeks > 26 ? 3 : 5, background: shade(d.t, d.future),
+                    cursor: d.future ? "default" : "pointer", outline: outlineFor(d), outlineOffset: -1 }} />
+              ))}
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );

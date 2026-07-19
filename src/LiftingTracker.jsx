@@ -310,11 +310,13 @@ export default function LiftingTracker({ user }) {
 
   if (!loaded) return <div style={{fontFamily:"system-ui",padding:40,color:T.sub}}>Loading your tracker…</div>;
 
+  // order chosen so the phone bottom bar reads as two clean rows of four:
+  //   row 1: Dash · Log · Records · Library     row 2: Macros · Groups · Cardio · Body
   const tabs = [
-    ...(liftingOn ? [["dash","Dash","📊"],["log","Log","📝"],["records","Records","🏆"]] : []),
-    ["friends","Groups","👥"],
+    ...(liftingOn ? [["dash","Dash","📊"],["log","Log","📝"],["records","Records","🏆"],["ex","Library","📚"]] : []),
     ...(nutritionOn ? [["macros","Macros","🥗"]] : []),
-    ...(liftingOn ? [["body","Body","⚖️"],["cardio","Cardio","🏃"],["ex","Library","📚"]] : []),
+    ["friends","Groups","👥"],
+    ...(liftingOn ? [["cardio","Cardio","🏃"],["body","Body","⚖️"]] : []),
   ];
 
   return (
@@ -357,8 +359,8 @@ export default function LiftingTracker({ user }) {
         .tabview > .card:nth-child(5) { animation-delay:.20s; }
         .tabview > .card:nth-child(n+6) { animation-delay:.24s; }
         @media(hover:hover){ .card { transition:border-color .2s ease; } .card:hover { border-color:#2E3234; } }
-        .navicon { transition:transform .18s ease; }
-        .navicon.on { transform:translateY(-2px) scale(1.14); }
+        .navicon { transition:transform .2s cubic-bezier(.34,1.56,.64,1); font-size:19px; }
+        .navicon.on { transform:translateY(-1px) scale(1.16); }
         @media(prefers-reduced-motion:reduce){ *{transition:none!important;animation:none!important} }
 
         /* ---- responsive: phone (<900px) vs desktop (>=900px) ---- */
@@ -366,19 +368,41 @@ export default function LiftingTracker({ user }) {
         .nav-top { display:none; }
         .nav-bottom {
           position:fixed; bottom:0; left:0; right:0; z-index:20;
-          display:grid; /* columns set inline from tab count */
+          display:grid; /* columns set inline (min of 4 → two rows of four) */
+          gap:3px; padding:5px 6px calc(5px + env(safe-area-inset-bottom));
           background:${T.bg}; border-top:1px solid ${T.line};
-          padding-bottom:env(safe-area-inset-bottom);
         }
+        /* tab button — soft green pill on the active one, Robinhood style */
+        .navbtn {
+          display:flex; flex-direction:column; align-items:center; gap:2px; min-width:0;
+          padding:7px 0 6px; border:none; border-radius:12px; background:transparent;
+          color:${T.sub}; font-weight:500; font-size:10px; cursor:pointer;
+          transition:background .2s ease, color .2s ease;
+        }
+        .navbtn .navlbl { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .navbtn.on { background:rgba(0,200,5,.12); color:${T.green}; font-weight:700; }
+        @media(hover:hover){ .navbtn:hover:not(.on){ background:rgba(255,255,255,.05); color:${T.ink}; } }
+        .navbtn:active { transform:scale(.94); }
         .app-main { max-width:860px; margin:0 auto; padding:16px 14px; }
-        .app-root { padding-bottom:calc(68px + env(safe-area-inset-bottom)); }
+        .app-root { padding-bottom:calc(124px + env(safe-area-inset-bottom)); }
+        /* floating "back" on member profiles — above the bottom nav on phones */
+        .profile-back-fab { position:fixed; right:16px; z-index:40; bottom:calc(136px + env(safe-area-inset-bottom)); }
 
         @media (min-width:900px) {
           /* desktop: tabs move into the TOP app bar, bottom bar disappears.
              Content stays a clean CENTERED single column (no stretching). */
-          .nav-top { display:flex; gap:2px; }
+          .nav-top { display:flex; gap:4px; }
           .nav-bottom { display:none; }
           .app-root { padding-bottom:36px; }
+          .navtop-btn {
+            display:flex; flex-direction:column; align-items:center; gap:3px;
+            padding:7px 14px; border:none; border-radius:11px; background:transparent;
+            color:${T.sub}; font-weight:500; font-size:12px; cursor:pointer;
+            transition:background .18s ease, color .18s ease;
+          }
+          .navtop-btn.on { background:rgba(0,200,5,.13); color:${T.green}; font-weight:700; }
+          .navtop-btn:hover:not(.on){ background:rgba(255,255,255,.06); color:${T.ink}; }
+          .profile-back-fab { bottom:28px; }
           .app-main { max-width:880px; padding:24px 20px; }
           /* the Macros tab uses a two-column layout, so it gets a wider canvas */
           .app-main-wide { max-width:1200px; }
@@ -398,12 +422,8 @@ export default function LiftingTracker({ user }) {
           {/* tabs: inline & centered in the app bar on desktop; hidden on phone (bottom bar used) */}
           <nav className="nav-top" style={{ flex:1, justifyContent:"center" }}>
             {tabs.map(([id,label,icon]) => (
-              <button key={id} onClick={()=>setTab(id)} style={{
-                padding:"6px 12px 8px", background:"none", display:"flex", flexDirection:"column", alignItems:"center", gap:2,
-                color: tab===id?T.green:T.sub, fontWeight: tab===id?700:500, fontSize:12, borderRadius:0,
-                borderBottom: tab===id?`3px solid ${T.green}`:"3px solid transparent",
-              }}>
-                <span className={"navicon" + (tab===id?" on":"")} style={{fontSize:18}}>{icon}</span>
+              <button key={id} onClick={()=>setTab(id)} className={"navtop-btn" + (tab===id?" on":"")}>
+                <span className={"navicon" + (tab===id?" on":"")} style={{fontSize:17}}>{icon}</span>
                 <span style={{whiteSpace:"nowrap"}}>{label}</span>
               </button>
             ))}
@@ -445,17 +465,12 @@ export default function LiftingTracker({ user }) {
         </div>
       </main>
 
-      {/* phone tab bar (bottom, thumb-reachable). Hidden on desktop — see .nav-bottom */}
-      <nav className="nav-bottom" style={{ gridTemplateColumns:`repeat(${tabs.length}, 1fr)` }}>
+      {/* phone tab bar (bottom, thumb-reachable) — up to two rows of four. Hidden on desktop. */}
+      <nav className="nav-bottom" style={{ gridTemplateColumns:`repeat(${Math.min(4, tabs.length)}, 1fr)` }}>
         {tabs.map(([id,label,icon]) => (
-          <button key={id} onClick={()=>setTab(id)} style={{
-            padding:"7px 0 8px", background:"none", display:"flex", flexDirection:"column", alignItems:"center", gap:1,
-            color: tab===id?T.green:T.sub, fontWeight: tab===id?700:500,
-            fontSize: tabs.length>=8?9:tabs.length===7?9.5:10.5, borderRadius:0, minWidth:0,
-            borderTop: tab===id?`3px solid ${T.green}`:"3px solid transparent",
-          }}>
-            <span className={"navicon" + (tab===id?" on":"")} style={{fontSize: tabs.length>=8?16:18}}>{icon}</span>
-            <span style={{maxWidth:"100%", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{label}</span>
+          <button key={id} onClick={()=>setTab(id)} className={"navbtn" + (tab===id?" on":"")}>
+            <span className={"navicon" + (tab===id?" on":"")}>{icon}</span>
+            <span className="navlbl">{label}</span>
           </button>
         ))}
       </nav>
@@ -2951,6 +2966,11 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
     const recentCardio = pdata ? [...pdata.cardio].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,10) : [];
     return (<>
       <button onClick={()=>setProfile(null)} style={{ background:"none", color:T.green, fontWeight:700, fontSize:14, marginBottom:10 }}>← Back to group</button>
+      {/* always-reachable floating back button, so you don't have to scroll up */}
+      <button className="profile-back-fab" onClick={()=>setProfile(null)} title="Back to group" style={{
+        background:T.green, color:"#000", fontWeight:800, fontSize:14, padding:"11px 18px", borderRadius:99,
+        border:"none", boxShadow:"0 8px 24px rgba(0,0,0,.5)",
+      }}>← Back</button>
       <div className="card" style={{display:"flex", justifyContent:"space-between", alignItems:"center"}}>
         <div className="h" style={{fontSize:19, color:T.tealDk}}>💪 {profile.username}</div>
         <span className="chip" style={{background:T.mint, color:T.green}}>read-only</span>
