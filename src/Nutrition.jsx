@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
-import { DndContext, PointerSensor, TouchSensor, useSensor, useSensors, useDraggable, useDroppable, DragOverlay } from "@dnd-kit/core";
+import { DndContext, MouseSensor, TouchSensor, useSensor, useSensors, useDraggable, useDroppable, DragOverlay } from "@dnd-kit/core";
 import { T } from "./theme.js";
 
 /* ---------- helpers ---------- */
@@ -858,54 +858,32 @@ const NT_CSS = `
 `;
 const NTStyle = () => <style>{NT_CSS}</style>;
 
-/* One food row in the diary:
-   - drag it by the ⠿ handle onto any meal (dnd-kit)
-   - swipe it left on touch to delete
-   - right-click (or the ⋯ button) opens a menu with copy/duplicate/delete
-   Kept at module scope so it isn't remounted every render (which would kill drags/gestures). */
+/* One food row in the diary — the WHOLE row is the drag handle:
+   - press-and-drag anywhere on it (a brief hold on touch) to move it to another meal
+   - the ⋯ button (or right-click) opens a menu with edit/move/copy/duplicate/delete
+   Text selection is disabled so dragging on mobile never highlights the label.
+   Kept at module scope so it isn't remounted every render (which would kill drags). */
 function DiaryRow({ f, onDelete, onMenu }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: f.id });
-  const [dx, setDx] = useState(0);
-  const [removing, setRemoving] = useState(false);
-  const g = useRef({ x: 0, y: 0, mode: null });
-  const onTouchStart = (e) => { const t = e.touches[0]; g.current = { x: t.clientX, y: t.clientY, mode: null }; };
-  const onTouchMove = (e) => {
-    const t = e.touches[0];
-    const ddx = t.clientX - g.current.x, ddy = t.clientY - g.current.y;
-    if (g.current.mode == null && (Math.abs(ddx) > 6 || Math.abs(ddy) > 6)) g.current.mode = Math.abs(ddx) > Math.abs(ddy) ? "h" : "v";
-    if (g.current.mode === "h") setDx(Math.max(-130, Math.min(0, ddx)));
-  };
-  const onTouchEnd = () => {
-    if (dx < -70) { setRemoving(true); setTimeout(() => onDelete(f), 180); }
-    else setDx(0);
-    g.current.mode = null;
-  };
+  const noSelect = { userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none" };
   return (
-    <div style={{ position: "relative", overflow: "hidden", borderRadius: 12, marginTop: 7,
-      maxHeight: removing ? 0 : 70, opacity: removing ? 0 : 1,
-      transition: "max-height .2s ease, opacity .2s ease, margin .2s ease" }}>
-      {/* red zone revealed on swipe-left */}
-      <div style={{ position: "absolute", inset: 0, background: "#3A130A", display: "flex", alignItems: "center", justifyContent: "flex-end", paddingRight: 18, color: T.danger, fontWeight: 700, fontSize: 13, borderRadius: 12 }}>Delete</div>
-      <div ref={setNodeRef}
-        onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
-        onContextMenu={(e) => { e.preventDefault(); onMenu(f, e.clientX, e.clientY); }}
-        style={{ position: "relative", background: "#17191B", border: `1px solid ${isDragging ? T.green : "#22262A"}`, borderRadius: 12,
-          transform: `translateX(${dx}px)`, transition: dx === 0 ? "transform .2s ease" : "none",
-          padding: "9px 10px 9px 5px", display: "flex", alignItems: "center", gap: 5, opacity: isDragging ? 0.4 : 1 }}>
-        <span {...attributes} {...listeners} title="Drag to another meal"
-          style={{ cursor: "grab", color: "#4A4E52", fontSize: 15, lineHeight: 1, padding: "0 4px", touchAction: "none", flexShrink: 0 }}>⠿</span>
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <div style={{ fontSize: 13.5, color: T.ink, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.recurringId ? "🔁 " : ""}{f.name}{f.grams ? <span style={{ color: T.sub, fontWeight: 400 }}> · {f.grams}g</span> : ""}</div>
-          <div style={{ fontSize: 11.5, color: T.sub, marginTop: 3, display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <span style={{ color: T.ink, fontWeight: 700 }}>{f.kcal} cal</span>
-            <span><MacroDot c={T.green} />{f.protein}</span>
-            <span><MacroDot c={CARB_BLUE} />{f.carb}</span>
-            <span><MacroDot c={FAT_ORANGE} />{f.fat}</span>
-          </div>
+    <div ref={setNodeRef} {...attributes} {...listeners}
+      onContextMenu={(e) => { e.preventDefault(); onMenu(f, e.clientX, e.clientY); }}
+      style={{ position: "relative", background: "#17191B", border: `1px solid ${isDragging ? T.green : "#22262A"}`, borderRadius: 12,
+        marginTop: 7, padding: "10px 10px 10px 9px", display: "flex", alignItems: "center", gap: 8,
+        opacity: isDragging ? 0.4 : 1, cursor: "grab", touchAction: "manipulation", outline: "none", ...noSelect }}>
+      <span style={{ color: "#4A4E52", fontSize: 15, lineHeight: 1, flexShrink: 0, ...noSelect }}>⠿</span>
+      <div style={{ minWidth: 0, flex: 1, ...noSelect }}>
+        <div style={{ fontSize: 13.5, color: T.ink, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.recurringId ? "🔁 " : ""}{f.name}{f.grams ? <span style={{ color: T.sub, fontWeight: 400 }}> · {f.grams}g</span> : ""}</div>
+        <div style={{ fontSize: 11.5, color: T.sub, marginTop: 3, display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <span style={{ color: T.ink, fontWeight: 700 }}>{f.kcal} cal</span>
+          <span><MacroDot c={T.green} />{f.protein}</span>
+          <span><MacroDot c={CARB_BLUE} />{f.carb}</span>
+          <span><MacroDot c={FAT_ORANGE} />{f.fat}</span>
         </div>
-        <button className="nt-press" onClick={(e) => { e.stopPropagation(); onMenu(f, e.clientX, e.clientY); }} title="More"
-          style={{ background: "none", border: "none", color: T.sub, fontSize: 18, padding: "2px 6px", flexShrink: 0, lineHeight: 1 }}>⋯</button>
       </div>
+      <button className="nt-press" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onMenu(f, e.clientX, e.clientY); }} title="More"
+        style={{ background: "none", border: "none", color: T.sub, fontSize: 20, padding: "4px 8px", flexShrink: 0, lineHeight: 1, ...noSelect }}>⋯</button>
     </div>
   );
 }
@@ -956,9 +934,11 @@ export function MacroTab({ data, setData, streaksOn = true, waterOn = true }) {
     }, 0);
     return () => { clearTimeout(id); window.removeEventListener("click", close); window.removeEventListener("scroll", close, true); };
   }, [menu]);
+  // mouse drags immediately on desktop; touch needs a brief hold (so the page can still
+  // scroll and taps still work), and it won't select/highlight the text under your finger
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 160, tolerance: 8 } }),
+    useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 8 } }),
   );
   const foods = data.foods || [];
   const goals = { ...DEFAULT_GOALS, ...(data.nutritionGoals || {}) };
