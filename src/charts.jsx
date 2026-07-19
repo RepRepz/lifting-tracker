@@ -28,12 +28,9 @@ function NiceTip({ active, payload, label, unit }) {
 
 /* ---------- gradient area line (exercise trends) ---------- */
 export function TrendChart({ pts, unit = "", dots = false }) {
-  // A single data point can't draw a line/area, so we append an invisible twin
-  // just to give the segment width. The twin is flagged _ghost so it never draws
-  // its own dot or tooltip — otherwise you'd see two dots on the same day.
-  const display = pts.length === 1
-    ? [pts[0], { ...pts[0], label: pts[0].label + " ", _ghost: true }]
-    : pts;
+  // One logged day = just a single dot, no line. A line/area only appears once
+  // there are 2+ days to connect.
+  const display = pts;
   const first = display[0].value, last = display[display.length - 1].value;
   const up = last >= first;
   const stroke = up ? T.green : T.down;
@@ -41,9 +38,10 @@ export function TrendChart({ pts, unit = "", dots = false }) {
   const renderDot = (props) => {
     const { cx, cy, index, payload } = props;
     if (payload?._ghost || cx == null) return <g key={`d${index}`} />;
-    const r = dots ? 4.5 : 3;
+    const solo = display.length === 1;
+    const r = solo ? 5 : dots ? 4.5 : 3;
     return <circle key={`d${index}`} cx={cx} cy={cy} r={r} fill={stroke}
-      stroke={dots ? "#000" : "none"} strokeWidth={dots ? 1.5 : 0} />;
+      stroke={dots || solo ? "#000" : "none"} strokeWidth={dots || solo ? 1.5 : 0} />;
   };
   const renderActiveDot = (props) => {
     const { cx, cy, index, payload } = props;
