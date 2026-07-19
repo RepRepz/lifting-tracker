@@ -854,8 +854,13 @@ const NT_CSS = `
   .nt-overlay .nt-full { width:min(520px, 90vw); height:auto; min-height:340px; max-height:78vh !important; border-radius:16px !important; padding-top:18px !important; }
 }
 .nt-cal-grid { max-width:420px; margin:0 auto; }
-/* keep the whole Macros column a comfortable app width on desktop (no edge-to-edge stretch) */
-.nt-col { max-width:600px; margin:0 auto; }
+/* phones: one comfortable centered column. desktop: two columns so much more fits at once */
+.nt-col { max-width:620px; margin:0 auto; }
+.nt-left, .nt-right { min-width:0; }
+@media (min-width:1000px) {
+  .nt-col { max-width:1200px; }
+  .nt-grid { display:grid; grid-template-columns:minmax(0,1.02fr) minmax(0,0.98fr); gap:16px; align-items:start; }
+}
 /* summary hero: stacked+centered on phones, gauge beside macros on wider screens */
 .nt-summary-top { display:flex; flex-direction:column; align-items:center; gap:16px; }
 .nt-summary-top > svg, .nt-summary-top > div:first-child { margin:0 auto; }
@@ -1058,6 +1063,8 @@ export function MacroTab({ data, setData, streaksOn = true, waterOn = true }) {
         </div>
       </div>
 
+      <div className="nt-grid">
+      <div className="nt-left">
       {/* summary hero: big calorie gauge, then three macro stat blocks */}
       <div className="card nt-card nt-summary" style={{ marginBottom: 8, padding: 18 }}>
         <div className="nt-summary-top">
@@ -1124,6 +1131,7 @@ export function MacroTab({ data, setData, streaksOn = true, waterOn = true }) {
         })}
         </div>
       </DndContext>
+      </div>{/* end nt-left */}
 
       {/* right-click / ⋯ context menu */}
       {menu && (
@@ -1147,6 +1155,7 @@ export function MacroTab({ data, setData, streaksOn = true, waterOn = true }) {
       )}
       {editFood && <EditFoodModal food={editFood} onSave={updateFood} onClose={() => setEditFood(null)} />}
 
+      <div className="nt-right">
       {waterOn && <div className="nt-card" style={{ animationDelay: ".1s" }}><WaterCard data={data} setData={setData} date={sel} /></div>}
       <div className="nt-card" style={{ animationDelay: ".15s" }}><FastingCard data={data} setData={setData} /></div>
 
@@ -1173,6 +1182,8 @@ export function MacroTab({ data, setData, streaksOn = true, waterOn = true }) {
         </div>
         <button className="nt-press" onClick={() => setShowRecipe(true)} style={{ ...btnGhost, color: T.green, fontWeight: 700, padding: "7px 14px", fontSize: 13 }}>+ New</button>
       </div>
+      </div>{/* end nt-right */}
+      </div>{/* end nt-grid */}
 
       {addMeal && <AddFoodModal meal={addMeal} date={sel} data={data} setData={setData} onSave={addFood} onClose={() => setAddMeal(null)} />}
       {showGoals && <GoalsModal data={data} setData={setData} goals={goals} firstTime={firstTime} onSave={saveGoals} onClose={() => setShowGoals(false)} />}

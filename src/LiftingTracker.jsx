@@ -380,6 +380,8 @@ export default function LiftingTracker({ user }) {
           .nav-bottom { display:none; }
           .app-root { padding-bottom:36px; }
           .app-main { max-width:880px; padding:24px 20px; }
+          /* the Macros tab uses a two-column layout, so it gets a wider canvas */
+          .app-main-wide { max-width:1200px; }
         }
 
         /* drag-to-reorder */
@@ -430,7 +432,7 @@ export default function LiftingTracker({ user }) {
         </div>
       )}
 
-      <main className="app-main">
+      <main className={"app-main" + (tab==="macros" ? " app-main-wide" : "")}>
         <div className="tabview" key={tab}>
           {tab==="dash" && liftingOn && <Dashboard data={data} exMap={exMap} setData={setData} />}
           {tab==="log" && liftingOn && <LogTab data={data} exMap={exMap} setData={setData} routinesOn={routinesOn} />}
