@@ -233,15 +233,11 @@ export default function LiftingTracker({ user }) {
   const [units, setUnits] = useState(() => localStorage.getItem("lt-units") || "lb");
   const [hunit, setHunit] = useState(() => localStorage.getItem("lt-hunit") || "ftin"); // height: "ftin" | "cm"
   const [routinesOn, setRoutinesOn] = useState(() => localStorage.getItem("lt-routines-on") === "1"); // optional templates feature
-  const [liftingOn, setLiftingOn] = useState(() => localStorage.getItem("lt-lifting-on") !== "0"); // default on
-  // Macros is still in testing: hidden for everyone by default, on only for the "dimi" account
-  // (respecting an explicit choice if one was already made on this device).
+  // Lifting is always on for everyone. Macros is a dev-only feature: on ONLY for the
+  // "dimi" account (the dev/test account), and there's no way for others to enable it.
   const isDimi = (user.user_metadata?.username || "").toLowerCase() === "dimi";
-  const [nutritionOn, setNutritionOn] = useState(() => {
-    const s = localStorage.getItem("lt-nutrition-on");
-    if (s !== null) return s === "1";
-    return isDimi;
-  });
+  const liftingOn = true;
+  const nutritionOn = isDimi;
   const [streaksOn, setStreaksOn] = useState(() => localStorage.getItem("lt-streaks-on") !== "0"); // default on
   const [waterOn, setWaterOn] = useState(() => localStorage.getItem("lt-water-on") !== "0"); // default on
   useEffect(() => { localStorage.setItem("lt-streaks-on", streaksOn ? "1" : "0"); }, [streaksOn]);
@@ -250,14 +246,9 @@ export default function LiftingTracker({ user }) {
   useEffect(() => { localStorage.setItem("lt-units", units); }, [units]);
   useEffect(() => { localStorage.setItem("lt-hunit", hunit); }, [hunit]);
   useEffect(() => { localStorage.setItem("lt-routines-on", routinesOn ? "1" : "0"); }, [routinesOn]);
-  useEffect(() => { localStorage.setItem("lt-lifting-on", liftingOn ? "1" : "0"); }, [liftingOn]);
-  useEffect(() => { localStorage.setItem("lt-nutrition-on", nutritionOn ? "1" : "0"); }, [nutritionOn]);
   useEffect(() => {
-    const liftTabs = new Set(["dash","log","records","body","cardio","ex"]);
-    if ((liftTabs.has(tab) && !liftingOn) || (tab === "macros" && !nutritionOn)) {
-      setTab(liftingOn ? "dash" : (nutritionOn ? "macros" : "friends"));
-    }
-  }, [liftingOn, nutritionOn, tab]);
+    if (tab === "macros" && !nutritionOn) setTab("dash"); // non-dev accounts never land on Macros
+  }, [nutritionOn, tab]);
   const [loaded, setLoaded] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
   const [syncState, setSyncState] = useState("synced"); // "synced" | "offline"
@@ -466,11 +457,9 @@ export default function LiftingTracker({ user }) {
           startTab={startTab} setStartTab={setStartTab} tabs={tabs}
           units={units} setUnits={setUnits} hunit={hunit} setHunit={setHunit}
           routinesOn={routinesOn} setRoutinesOn={setRoutinesOn}
-          liftingOn={liftingOn} setLiftingOn={setLiftingOn}
-          nutritionOn={nutritionOn} setNutritionOn={setNutritionOn} isDimi={isDimi}
           streaksOn={streaksOn} setStreaksOn={setStreaksOn}
           waterOn={waterOn} setWaterOn={setWaterOn}
-          onClose={()=>setShowSettings(false)} />
+          isDimi={isDimi} onClose={()=>setShowSettings(false)} />
       )}
 
       {syncState === "offline" && (
@@ -2588,7 +2577,7 @@ function SectionHead({ icon, label }) {
   );
 }
 
-function SettingsModal({ user, username, data, startTab, setStartTab, tabs, units, setUnits, hunit, setHunit, routinesOn, setRoutinesOn, liftingOn, setLiftingOn, nutritionOn, setNutritionOn, streaksOn, setStreaksOn, waterOn, setWaterOn, isDimi, onClose }) {
+function SettingsModal({ user, username, data, startTab, setStartTab, tabs, units, setUnits, hunit, setHunit, routinesOn, setRoutinesOn, streaksOn, setStreaksOn, waterOn, setWaterOn, isDimi, onClose }) {
   const memberSince = user.created_at ? new Date(user.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}) : "—";
   const totalSets = (data.log||[]).length;
 
@@ -2664,25 +2653,15 @@ function SettingsModal({ user, username, data, startTab, setStartTab, tabs, unit
         </div>
 
         <SectionHead icon="🧩" label="Pick your features" />
-        {/* lifting features on/off */}
-        <FeatureToggle label="Lifting tracker" on={liftingOn} setOn={setLiftingOn}
-          desc="Shows Dash, Log, Records, Body, Cardio and Library. Off by default only for people who just want macro tracking. Turning it off just hides these tabs — your data stays." />
-
-        {/* nutrition / macro tracking on/off — only the tester (dimi) sees this toggle for now */}
-        {isDimi && <FeatureToggle label="Macro tracking" on={nutritionOn} setOn={setNutritionOn}
-          desc="Adds a Macros tab: log food by search, barcode scan, or manual entry, and see calorie/protein/carb/fat rings for the day. Turning it off just hides it — your food log stays." />}
-
         {/* workout routines / templates (optional) */}
         <FeatureToggle label="Workout routines" on={routinesOn} setOn={setRoutinesOn}
           desc="Adds a Routines section to the Log tab: build templates like “Push Day,” then tap Start to log them exercise-by-exercise. Off by default. Turning it off just hides it — your saved routines stay." />
 
-        {/* water tracker on/off */}
-        <FeatureToggle label="Water tracker" on={waterOn} setOn={setWaterOn}
-          desc="Shows the 💧 water card on the Macros tab. Turn it off if you don't want to count cups — your logged water stays saved." />
-
-        {/* streaks on/off */}
-        <FeatureToggle label="Streaks & fire" on={streaksOn} setOn={setStreaksOn}
-          desc="Shows 🔥 streak counters on the Macros tab and in your group. Turn off if streaks stress you out — nothing is lost, they keep counting quietly." />
+        {/* water + streaks are Macros-tab features — only the dev account (dimi) has Macros */}
+        {isDimi && <FeatureToggle label="Water tracker" on={waterOn} setOn={setWaterOn}
+          desc="Shows the 💧 water card on the Macros tab. Turn it off if you don't want to count cups — your logged water stays saved." />}
+        {isDimi && <FeatureToggle label="Streaks & fire" on={streaksOn} setOn={setStreaksOn}
+          desc="Shows 🔥 streak counters on the Macros tab and in your group. Turn off if streaks stress you out — nothing is lost, they keep counting quietly." />}
 
         <SectionHead icon="🔐" label="Keys to the castle" />
         <ChangePasswordCard />
@@ -3320,5 +3299,7 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
     {err && <div className="card" style={{color:T.danger, fontSize:13.5}}>{err}</div>}
   </>);
 }
+
+
 
 
