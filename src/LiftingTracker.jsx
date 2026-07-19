@@ -233,7 +233,14 @@ export default function LiftingTracker({ user }) {
   const [hunit, setHunit] = useState(() => localStorage.getItem("lt-hunit") || "ftin"); // height: "ftin" | "cm"
   const [routinesOn, setRoutinesOn] = useState(() => localStorage.getItem("lt-routines-on") === "1"); // optional templates feature
   const [liftingOn, setLiftingOn] = useState(() => localStorage.getItem("lt-lifting-on") !== "0"); // default on
-  const [nutritionOn, setNutritionOn] = useState(() => localStorage.getItem("lt-nutrition-on") !== "0"); // default on
+  // Macros is still in testing: hidden for everyone by default, on only for the "dimi" account
+  // (respecting an explicit choice if one was already made on this device).
+  const isDimi = (user.user_metadata?.username || "").toLowerCase() === "dimi";
+  const [nutritionOn, setNutritionOn] = useState(() => {
+    const s = localStorage.getItem("lt-nutrition-on");
+    if (s !== null) return s === "1";
+    return isDimi;
+  });
   const [streaksOn, setStreaksOn] = useState(() => localStorage.getItem("lt-streaks-on") !== "0"); // default on
   const [waterOn, setWaterOn] = useState(() => localStorage.getItem("lt-water-on") !== "0"); // default on
   useEffect(() => { localStorage.setItem("lt-streaks-on", streaksOn ? "1" : "0"); }, [streaksOn]);
@@ -382,11 +389,12 @@ export default function LiftingTracker({ user }) {
         .nav-top { display:none; }
         .nav-bottom {
           position:fixed; bottom:0; left:0; right:0; z-index:20;
-          display:grid; /* columns set inline (min of 4 → two rows of four) */
-          gap:3px; padding:5px 6px calc(5px + env(safe-area-inset-bottom));
+          display:flex; flex-wrap:wrap; justify-content:center; row-gap:2px;
+          padding:5px 4px calc(5px + env(safe-area-inset-bottom));
           background:${T.bg}; border-top:1px solid ${T.line};
           transition:transform .3s cubic-bezier(.4,0,.2,1);
         }
+        .nav-bottom .navbtn { flex:0 0 25%; } /* 4 per row; a short last row centers itself */
         /* slide the bar down out of view while scrolling down; back up on scroll-up */
         .nav-bottom.nav-hidden { transform:translateY(130%); }
         /* tab button — soft green pill on the active one, Robinhood style */
@@ -457,7 +465,7 @@ export default function LiftingTracker({ user }) {
           units={units} setUnits={setUnits} hunit={hunit} setHunit={setHunit}
           routinesOn={routinesOn} setRoutinesOn={setRoutinesOn}
           liftingOn={liftingOn} setLiftingOn={setLiftingOn}
-          nutritionOn={nutritionOn} setNutritionOn={setNutritionOn}
+          nutritionOn={nutritionOn} setNutritionOn={setNutritionOn} isDimi={isDimi}
           streaksOn={streaksOn} setStreaksOn={setStreaksOn}
           waterOn={waterOn} setWaterOn={setWaterOn}
           onClose={()=>setShowSettings(false)} />
@@ -483,7 +491,7 @@ export default function LiftingTracker({ user }) {
       </main>
 
       {/* phone tab bar (bottom, thumb-reachable) — up to two rows of four. Hidden on desktop. */}
-      <nav className={"nav-bottom" + (navHidden ? " nav-hidden" : "")} style={{ gridTemplateColumns:`repeat(${Math.min(4, tabs.length)}, 1fr)` }}>
+      <nav className={"nav-bottom" + (navHidden ? " nav-hidden" : "")}>
         {tabs.map(([id,label,icon]) => (
           <button key={id} onClick={()=>setTab(id)} className={"navbtn" + (tab===id?" on":"")}>
             <span className={"navicon" + (tab===id?" on":"")}>{icon}</span>
@@ -2530,7 +2538,7 @@ function SectionHead({ icon, label }) {
   );
 }
 
-function SettingsModal({ user, username, data, startTab, setStartTab, tabs, units, setUnits, hunit, setHunit, routinesOn, setRoutinesOn, liftingOn, setLiftingOn, nutritionOn, setNutritionOn, streaksOn, setStreaksOn, waterOn, setWaterOn, onClose }) {
+function SettingsModal({ user, username, data, startTab, setStartTab, tabs, units, setUnits, hunit, setHunit, routinesOn, setRoutinesOn, liftingOn, setLiftingOn, nutritionOn, setNutritionOn, streaksOn, setStreaksOn, waterOn, setWaterOn, isDimi, onClose }) {
   const memberSince = user.created_at ? new Date(user.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}) : "—";
   const totalSets = (data.log||[]).length;
 
@@ -2610,9 +2618,9 @@ function SettingsModal({ user, username, data, startTab, setStartTab, tabs, unit
         <FeatureToggle label="Lifting tracker" on={liftingOn} setOn={setLiftingOn}
           desc="Shows Dash, Log, Records, Body, Cardio and Library. Off by default only for people who just want macro tracking. Turning it off just hides these tabs — your data stays." />
 
-        {/* nutrition / macro tracking on/off */}
-        <FeatureToggle label="Macro tracking" on={nutritionOn} setOn={setNutritionOn}
-          desc="Adds a Macros tab: log food by search, barcode scan, or manual entry, and see calorie/protein/carb/fat rings for the day. Turning it off just hides it — your food log stays." />
+        {/* nutrition / macro tracking on/off — only the tester (dimi) sees this toggle for now */}
+        {isDimi && <FeatureToggle label="Macro tracking" on={nutritionOn} setOn={setNutritionOn}
+          desc="Adds a Macros tab: log food by search, barcode scan, or manual entry, and see calorie/protein/carb/fat rings for the day. Turning it off just hides it — your food log stays." />}
 
         {/* workout routines / templates (optional) */}
         <FeatureToggle label="Workout routines" on={routinesOn} setOn={setRoutinesOn}
