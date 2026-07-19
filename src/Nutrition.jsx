@@ -208,6 +208,17 @@ function AddFoodModal({ meal, date, data, setData, onSave, onClose }) {
     return Object.values(byName).sort((a, b) => b.n - a.n).slice(0, 8);
   }, [data.foods]);
 
+  // most recent distinct foods logged in THIS meal (breakfast/lunch/…), newest first —
+  // shown up top so you can re-add your usual for this time of day in one tap
+  const mealRecents = useMemo(() => {
+    if (meal === "Uncategorized") return [];
+    const seen = new Set(); const out = [];
+    const sorted = [...(data.foods || [])].filter(f => f.meal === meal).sort((a, b) => b.date.localeCompare(a.date) || (b.id > a.id ? 1 : -1));
+    for (const f of sorted) { if (seen.has(f.name)) continue; seen.add(f.name); out.push(f); if (out.length >= 8) break; }
+    return out;
+  }, [data.foods, meal]);
+  const quickPick = (f) => setPicked({ name: f.name, fixed: { kcal: f.kcal, protein: f.protein, carb: f.carb, fat: f.fat, fiber: f.fiber || 0, sodium: f.sodium || 0 } });
+
   // live search: suggestions appear as you type (or backspace), no button needed.
   // Old results stay on screen while new ones load; a failed attempt retries itself
   // once before showing any error, and stale responses are discarded.
@@ -329,6 +340,19 @@ function AddFoodModal({ meal, date, data, setData, onSave, onClose }) {
         {mode === "search" && !picked && (
           <>
             <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Start typing… e.g. chicken breast" style={{ marginBottom: 10 }} />
+            {/* recent foods for this meal — shown until you start typing */}
+            {!q.trim() && mealRecents.length > 0 && (
+              <>
+                <div style={{ fontSize: 11.5, color: T.sub, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".5px", marginBottom: 6 }}>🕑 Recent in {meal}</div>
+                {mealRecents.map((f, i) => (
+                  <button key={i} onClick={() => quickPick(f)} style={{ display: "block", width: "100%", textAlign: "left", background: T.input, border: `1px solid ${T.line}`, borderRadius: 10, padding: "10px 12px", marginBottom: 6 }}>
+                    <div style={{ fontSize: 14, color: T.ink, fontWeight: 600 }}>{f.name}{f.grams ? <span style={{ color: T.sub, fontWeight: 400 }}> · {f.grams}g</span> : ""}</div>
+                    <div style={{ fontSize: 12, color: T.sub }}>{f.kcal} cal · {Math.round(f.protein)}g protein · {Math.round(f.carb)}g carbs · {Math.round(f.fat)}g fat</div>
+                  </button>
+                ))}
+                <div style={{ fontSize: 11.5, color: T.sub, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".5px", margin: "10px 0 6px" }}>Or search a new food</div>
+              </>
+            )}
             {busy && <div style={{ color: T.sub, fontSize: 13, marginBottom: 6 }}>Searching…</div>}
             {err && <div style={{ color: T.down, fontSize: 13 }}>{err}</div>}
             {results?.length === 0 && !busy && <div style={{ color: T.sub, fontSize: 13 }}>No results — try a simpler term, or use Manual.</div>}
@@ -879,8 +903,8 @@ function DiaryRow({ f, onDelete, onMenu }) {
             <span><MacroDot c={FAT_ORANGE} />{f.fat}</span>
           </div>
         </div>
-        <button className="nt-press" onClick={(e) => onMenu(f, e.clientX, e.clientY)} title="More"
-          style={{ background: "none", border: "none", color: T.sub, fontSize: 18, padding: "0 4px", flexShrink: 0, lineHeight: 1 }}>⋯</button>
+        <button className="nt-press" onClick={(e) => { e.stopPropagation(); onMenu(f, e.clientX, e.clientY); }} title="More"
+          style={{ background: "none", border: "none", color: T.sub, fontSize: 18, padding: "2px 6px", flexShrink: 0, lineHeight: 1 }}>⋯</button>
       </div>
     </div>
   );
@@ -924,9 +948,13 @@ export function MacroTab({ data, setData, streaksOn = true, waterOn = true }) {
   useEffect(() => {
     if (!menu) return;
     const close = () => setMenu(null);
-    window.addEventListener("click", close);
-    window.addEventListener("scroll", close, true);
-    return () => { window.removeEventListener("click", close); window.removeEventListener("scroll", close, true); };
+    // defer one tick: otherwise the very click that opened the menu closes it again,
+    // because React attaches this listener synchronously before the click finishes bubbling
+    const id = setTimeout(() => {
+      window.addEventListener("click", close);
+      window.addEventListener("scroll", close, true);
+    }, 0);
+    return () => { clearTimeout(id); window.removeEventListener("click", close); window.removeEventListener("scroll", close, true); };
   }, [menu]);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
