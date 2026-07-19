@@ -228,6 +228,23 @@ function AddFoodModal({ meal, date, data, setData, onSave, onClose }) {
   }, [data.foods, meal]);
   const quickPick = (f) => setPicked({ name: f.name, fixed: { kcal: f.kcal, protein: f.protein, carb: f.carb, fat: f.fat, fiber: f.fiber || 0, sodium: f.sodium || 0 } });
 
+  // everything you've ever logged / favorited / made into a recipe — searched LOCALLY so
+  // matches from your own foods appear instantly while the online databases load
+  const localFoods = useMemo(() => {
+    const map = {};
+    for (const f of (data.foods || [])) { const k = f.name.toLowerCase(); const e = map[k]; if (!e || f.date >= e.date) map[k] = f; }
+    for (const c of (data.customFoods || [])) { const k = c.name.toLowerCase(); if (!map[k]) map[k] = { name: c.name, ...c.fixed, _tag: "favorite" }; }
+    for (const r of (data.recipes || [])) { const k = r.name.toLowerCase(); if (!map[k]) map[k] = { name: r.name, ...r.perServing, _tag: "recipe" }; }
+    return Object.values(map);
+  }, [data.foods, data.customFoods, data.recipes]);
+  const localMatches = useMemo(() => {
+    const s = q.trim().toLowerCase();
+    if (s.length < 1) return [];
+    return localFoods.filter(f => f.name.toLowerCase().includes(s))
+      .sort((a, b) => (a.name.toLowerCase().startsWith(s) ? 0 : 1) - (b.name.toLowerCase().startsWith(s) ? 0 : 1) || a.name.length - b.name.length)
+      .slice(0, 6);
+  }, [localFoods, q]);
+
   // live search: suggestions appear as you type (or backspace), no button needed.
   // Old results stay on screen while new ones load; a failed attempt retries itself
   // once before showing any error, and stale responses are discarded.
@@ -246,7 +263,7 @@ function AddFoodModal({ meal, date, data, setData, onSave, onClose }) {
       if (r) { setResults(r); setErr(""); }
       else setErr("Couldn't reach the food databases — still trying as you type.");
       setBusy(false);
-    }, 300);
+    }, 150);
     return () => clearTimeout(t);
   }, [q, mode]);
 
@@ -362,9 +379,22 @@ function AddFoodModal({ meal, date, data, setData, onSave, onClose }) {
         {mode === "search" && !picked && (
           <>
             <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Start typing… e.g. chicken breast" style={{ marginBottom: 10 }} />
-            {busy && <div style={{ color: T.sub, fontSize: 13, marginBottom: 6 }}>Searching…</div>}
+            {/* your own foods appear instantly (no network) while the databases load below */}
+            {q.trim() && localMatches.length > 0 && (
+              <>
+                <div style={{ fontSize: 11, color: T.sub, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".5px", marginBottom: 6 }}>Your foods</div>
+                {localMatches.map((f, i) => (
+                  <button key={"l" + i} onClick={() => quickPick(f)} style={{ display: "block", width: "100%", textAlign: "left", background: T.input, border: `1px solid ${T.green}`, borderRadius: 10, padding: "10px 12px", marginBottom: 6 }}>
+                    <div style={{ fontSize: 14, color: T.ink, fontWeight: 600 }}>{f.name}{f.grams ? <span style={{ color: T.sub, fontWeight: 400 }}> · {f.grams}g</span> : ""}{f._tag && <span style={{ fontSize: 10, color: T.green, background: T.mint, borderRadius: 6, padding: "1px 6px", marginLeft: 6, fontWeight: 700, verticalAlign: "middle" }}>{f._tag}</span>}</div>
+                    <div style={{ fontSize: 12, color: T.sub }}>{f.kcal} cal · {Math.round(f.protein)}g protein · {Math.round(f.carb)}g carbs · {Math.round(f.fat)}g fat</div>
+                  </button>
+                ))}
+                <div style={{ fontSize: 11, color: T.sub, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".5px", margin: "10px 0 6px" }}>Food database{busy ? " · searching…" : ""}</div>
+              </>
+            )}
+            {busy && !localMatches.length && <div style={{ color: T.sub, fontSize: 13, marginBottom: 6 }}>Searching…</div>}
             {err && <div style={{ color: T.down, fontSize: 13 }}>{err}</div>}
-            {results?.length === 0 && !busy && <div style={{ color: T.sub, fontSize: 13 }}>No results — try a simpler term, or use Manual.</div>}
+            {results?.length === 0 && !busy && !localMatches.length && <div style={{ color: T.sub, fontSize: 13 }}>No results — try a simpler term, or use Manual.</div>}
             {results?.map((f, i) => (
               <button key={i} onClick={() => setPicked(f)} style={{ display: "block", width: "100%", textAlign: "left", background: T.input, border: `1px solid ${T.line}`, borderRadius: 10, padding: "10px 12px", marginBottom: 6 }}>
                 <div style={{ fontSize: 14, color: T.ink, fontWeight: 600 }}>{f.name}{f.src === "USDA" && <span style={{ fontSize: 10, color: T.green, background: T.mint, borderRadius: 6, padding: "1px 6px", marginLeft: 6, fontWeight: 700, verticalAlign: "middle" }}>USDA</span>}</div>
