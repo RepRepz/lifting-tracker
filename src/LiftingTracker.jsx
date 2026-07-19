@@ -134,13 +134,19 @@ function platesPerSide(total, bar, plates) {
   return { plates: out, leftover: side };
 }
 
-/* default cardio activities — Sport = calories estimated, Machine = read them off the display */
+/* default cardio activities — Sport = calories estimated, Machine = read them off the display,
+   Steps = enter a step count (calories estimated from steps × bodyweight) */
 const SEED_CARDIO = [
   ["Walking","Sport"],["Running","Sport"],["Swimming","Sport"],["Cycling","Sport"],
   ["Hiking","Sport"],["Jump Rope","Sport"],["Basketball","Sport"],
   ["Treadmill","Machine"],["Elliptical","Machine"],["Stair Master","Machine"],
   ["Rowing Machine","Machine"],["Exercise Bike","Machine"],
+  ["Walk (Steps)","Steps"],
 ].map(([name, type]) => ({ name, type }));
+/* ~0.00057 cal burned per step per kg bodyweight (≈45 cal/1000 steps at 80kg). */
+const stepsCal = (steps, kg) => steps ? Math.round(steps * 0.00057 * kg) : null;
+/* rough distance from steps: average stride ≈ 0.75 m */
+const stepsMiles = (steps) => steps ? +(steps * 0.75 / 1609.34).toFixed(2) : null;
 
 const defaultData = {
   // `muscle` (primary) is kept alongside `muscles`/`muscles2` so older cached app versions still work
@@ -151,7 +157,7 @@ const defaultData = {
   customFoods: [], recipes: [], recurringSkips: [], water: [], waterPrefs: {}, fasting: {}, dayDone: [],
   profile: {}, // heightIn (inches) lives here once set
   pins: [],    // pinned dashboard charts (exercise names)
-  libraryV: 4, // bumped when the seed library changes, so existing users get the update once
+  libraryV: 5, // bumped when the seed library changes, so existing users get the update once
 };
 
 /* One-time upgrade of previously saved data: pull in newly added seed exercises and
@@ -2022,19 +2028,28 @@ function CardioTab({ data, setData, latestBW }) {
   const [duration, setDuration] = useState("");
   const [intensity, setIntensity] = useState("");
   const [machineCal, setMachineCal] = useState("");
+  const [steps, setSteps] = useState("");
   const [newAct, setNewAct] = useState(""); const [newType, setNewType] = useState("Sport");
 
   const actMap = Object.fromEntries(data.cardioActivities.map(a=>[a.name,a.type]));
   const isMachine = actMap[activity]==="Machine";
+  const isSteps = actMap[activity]==="Steps";
   const kg = latestBW * 0.453592;
 
-  const estCal = (!isMachine && duration && intensity) ? Math.round(MET[intensity]*kg*(duration/60)) : null;
+  const estCal = isSteps ? stepsCal(parseInt(steps)||0, kg)
+    : (!isMachine && duration && intensity) ? Math.round(MET[intensity]*kg*(duration/60)) : null;
+  const canSave = activity && (isSteps ? steps : duration);
 
   const add = () => {
-    if (!activity || !duration) return;
+    if (!canSave) return;
     const calories = isMachine ? (machineCal?parseInt(machineCal):null) : estCal;
-    setData(d=>({ ...d, cardio:[...d.cardio, { id:Date.now(), date, activity, duration:parseInt(duration), intensity: isMachine?null:intensity, calories }] }));
-    setDuration(""); setMachineCal("");
+    setData(d=>({ ...d, cardio:[...d.cardio, {
+      id:Date.now(), date, activity,
+      duration: duration ? parseInt(duration) : 0,
+      steps: isSteps ? (parseInt(steps)||0) : null,
+      intensity: (isMachine||isSteps) ? null : intensity, calories,
+    }] }));
+    setDuration(""); setMachineCal(""); setSteps("");
   };
 
   const [cardQ, setCardQ] = useState("");
@@ -2060,6 +2075,18 @@ function CardioTab({ data, setData, latestBW }) {
   }, [data.cardio]);
   const weekMax = Math.max(...weeks.map(w=>w.min), 1);
 
+  const stepStats = useMemo(() => {
+    const wk = weekStart(todayStr());
+    let today = 0, week = 0, total = 0, any = false;
+    for (const c of data.cardio) {
+      if (!c.steps) continue;
+      any = true; total += c.steps;
+      if (weekStart(c.date) === wk) week += c.steps;
+      if (c.date === todayStr()) today += c.steps;
+    }
+    return { any, today, week, total };
+  }, [data.cardio]);
+
   const [editAct, setEditAct] = useState(null); // { orig, name, type }
   const actValid = editAct && editAct.name.trim() &&
     !data.cardioActivities.some(a => a.name === editAct.name.trim() && a.name !== editAct.orig);
@@ -2073,17 +2100,19 @@ function CardioTab({ data, setData, latestBW }) {
     setEditAct(null);
   };
 
-  const [edit, setEdit] = useState(null); // { id, date, activity, duration, intensity, machineCal }
+  const [edit, setEdit] = useState(null); // { id, date, activity, duration, intensity, machineCal, steps }
   const editIsMachine = edit ? actMap[edit.activity]==="Machine" : false;
+  const editIsSteps = edit ? actMap[edit.activity]==="Steps" : false;
   const saveEdit = () => {
-    if (!edit.activity || !edit.duration) return;
-    const dur = parseInt(edit.duration);
-    const calories = editIsMachine
-      ? (edit.machineCal ? parseInt(edit.machineCal) : null)
+    if (!edit.activity || (editIsSteps ? !edit.steps : !edit.duration)) return;
+    const dur = edit.duration ? parseInt(edit.duration) : 0;
+    const stp = editIsSteps ? (parseInt(edit.steps)||0) : null;
+    const calories = editIsSteps ? stepsCal(stp, kg)
+      : editIsMachine ? (edit.machineCal ? parseInt(edit.machineCal) : null)
       : (edit.intensity ? Math.round(MET[edit.intensity]*kg*(dur/60)) : null);
     setData(d=>({ ...d, cardio: d.cardio.map(x => x.id===edit.id ? {
-      ...x, date:edit.date, activity:edit.activity, duration:dur,
-      intensity: editIsMachine ? null : (edit.intensity || null), calories,
+      ...x, date:edit.date, activity:edit.activity, duration:dur, steps:stp,
+      intensity: (editIsMachine||editIsSteps) ? null : (edit.intensity || null), calories,
     } : x) }));
     setEdit(null);
   };
@@ -2105,18 +2134,33 @@ function CardioTab({ data, setData, latestBW }) {
         </label>
       </div>
       <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:12}}>
-        <label style={lbl}>Duration (min)<input type="number" inputMode="numeric" value={duration} onChange={e=>setDuration(e.target.value)} /></label>
-        {isMachine
-          ? <label style={lbl}>Machine calories<input type="number" inputMode="numeric" value={machineCal} onChange={e=>setMachineCal(e.target.value)} placeholder="from the display" /></label>
-          : <label style={lbl}>Intensity
-              <select value={intensity} onChange={e=>setIntensity(e.target.value)}>
-                <option value="">—</option>{Object.keys(MET).map(k=><option key={k}>{k}</option>)}
-              </select>
-            </label>}
+        {isSteps
+          ? <>
+              <label style={lbl}>Steps<input type="number" inputMode="numeric" value={steps} onChange={e=>setSteps(e.target.value)} placeholder="e.g. 8500" /></label>
+              <label style={lbl}>Duration (min, optional)<input type="number" inputMode="numeric" value={duration} onChange={e=>setDuration(e.target.value)} /></label>
+            </>
+          : <>
+              <label style={lbl}>Duration (min)<input type="number" inputMode="numeric" value={duration} onChange={e=>setDuration(e.target.value)} /></label>
+              {isMachine
+                ? <label style={lbl}>Machine calories<input type="number" inputMode="numeric" value={machineCal} onChange={e=>setMachineCal(e.target.value)} placeholder="from the display" /></label>
+                : <label style={lbl}>Intensity
+                    <select value={intensity} onChange={e=>setIntensity(e.target.value)}>
+                      <option value="">—</option>{Object.keys(MET).map(k=><option key={k}>{k}</option>)}
+                    </select>
+                  </label>}
+            </>}
       </div>
-      {estCal!=null && <div style={{background:T.cream, borderRadius:10, padding:"8px 12px", marginBottom:10, fontSize:14}}>Estimated: <b>{estCal} cal</b></div>}
-      <button onClick={add} disabled={!activity||!duration} style={{width:"100%", padding:"12px", background:T.green, color:"#000", fontWeight:700, fontSize:16, opacity:(activity&&duration)?1:0.45}}>Save session</button>
+      {estCal!=null && <div style={{background:T.cream, borderRadius:10, padding:"8px 12px", marginBottom:10, fontSize:14}}>Estimated: <b>{estCal} cal</b>{isSteps && steps && <span style={{color:T.sub}}> · about {stepsMiles(parseInt(steps)||0)} mi</span>}</div>}
+      <button onClick={add} disabled={!canSave} style={{width:"100%", padding:"12px", background:T.green, color:"#000", fontWeight:700, fontSize:16, opacity:canSave?1:0.45}}>Save session</button>
     </div>
+
+    {stepStats.any && (
+      <div className="card" style={{display:"flex", justifyContent:"space-around", textAlign:"center", gap:8}}>
+        <div><div style={{fontSize:20, fontWeight:800, color:T.green}}>{stepStats.today.toLocaleString()}</div><div style={{fontSize:11.5, color:T.sub}}>👣 today</div></div>
+        <div><div style={{fontSize:20, fontWeight:800, color:T.ink}}>{stepStats.week.toLocaleString()}</div><div style={{fontSize:11.5, color:T.sub}}>this week</div></div>
+        <div><div style={{fontSize:20, fontWeight:800, color:T.ink}}>{stepStats.total.toLocaleString()}</div><div style={{fontSize:11.5, color:T.sub}}>all-time</div></div>
+      </div>
+    )}
 
     {data.cardio.length > 0 && (
       <div className="card">
@@ -2141,10 +2185,10 @@ function CardioTab({ data, setData, latestBW }) {
 
     <div className="card">
       <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:6}}>Your activities</div>
-      <div style={{fontSize:12.5, color:T.sub, marginBottom:8}}>Add your own (Basketball, Elliptical, whatever you do). Sport = we estimate calories. Machine = you type them in.</div>
+      <div style={{fontSize:12.5, color:T.sub, marginBottom:8}}>Add your own (Basketball, Elliptical, whatever you do). Sport = we estimate calories. Machine = you type them in. Steps = enter a step count (calories estimated from your bodyweight).</div>
       <div style={{display:"flex", gap:8, marginBottom:10}}>
         <input value={newAct} onChange={e=>setNewAct(e.target.value)} placeholder="Activity name" />
-        <select value={newType} onChange={e=>setNewType(e.target.value)} style={{width:120}}><option>Sport</option><option>Machine</option></select>
+        <select value={newType} onChange={e=>setNewType(e.target.value)} style={{width:120}}><option>Sport</option><option>Machine</option><option>Steps</option></select>
         <button onClick={()=>{ if(!newAct.trim())return; setData(d=>({...d, cardioActivities:[...d.cardioActivities.filter(a=>a.name!==newAct.trim()), {name:newAct.trim(), type:newType}]})); setNewAct(""); }}
           style={{background:T.green, color:"#000", padding:"0 16px", fontWeight:700}}>Add</button>
       </div>
@@ -2160,7 +2204,7 @@ function CardioTab({ data, setData, latestBW }) {
           <div style={{fontSize:12.5, color:T.sub, marginBottom:8}}>Editing <b>{editAct.orig}</b> — renaming updates all your past sessions too.</div>
           <div style={{display:"flex", gap:8, marginBottom:10}}>
             <input value={editAct.name} onChange={ev=>setEditAct(s=>({...s, name:ev.target.value}))} />
-            <select value={editAct.type} onChange={ev=>setEditAct(s=>({...s, type:ev.target.value}))} style={{width:120}}><option>Sport</option><option>Machine</option></select>
+            <select value={editAct.type} onChange={ev=>setEditAct(s=>({...s, type:ev.target.value}))} style={{width:120}}><option>Sport</option><option>Machine</option><option>Steps</option></select>
           </div>
           <div style={{display:"flex", gap:8}}>
             <button onClick={saveAct} disabled={!actValid} style={{...saveSm, opacity:actValid?1:0.45}}>Save changes</button>
@@ -2180,9 +2224,9 @@ function CardioTab({ data, setData, latestBW }) {
         autoCapitalize="none" autoCorrect="off" spellCheck={false} style={{marginBottom:10}} />
       <table><thead><tr><th>Date</th><th>Activity</th><th>Min</th><th>Intensity</th><th>Cal</th><th></th></tr></thead>
         <tbody>{rows.map(e=>(<Fragment key={e.id}>
-          <tr><td>{fmtDate(e.date)}</td><td>{e.activity}</td><td>{e.duration}</td><td>{e.intensity||"machine"}</td><td>{e.calories??"—"}</td>
+          <tr><td>{fmtDate(e.date)}</td><td>{e.activity}</td><td>{e.duration||"—"}</td><td>{e.steps ? `${e.steps.toLocaleString()} steps` : (e.intensity||"machine")}</td><td>{e.calories??"—"}</td>
             <td style={{whiteSpace:"nowrap"}}>
-              <PencilBtn onClick={()=>setEdit({ id:e.id, date:e.date, activity:e.activity, duration:e.duration, intensity:e.intensity||"", machineCal:e.calories ?? "" })} />
+              <PencilBtn onClick={()=>setEdit({ id:e.id, date:e.date, activity:e.activity, duration:e.duration, intensity:e.intensity||"", machineCal:e.calories ?? "", steps:e.steps ?? "" })} />
               <ConfirmX onConfirm={()=>setData(d=>({...d, cardio:d.cardio.filter(x=>x.id!==e.id)}))} />
             </td></tr>
           {edit?.id === e.id && (
@@ -2198,18 +2242,25 @@ function CardioTab({ data, setData, latestBW }) {
                   </label>
                 </div>
                 <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:10}}>
-                  <label style={lbl}>Duration (min)<input type="number" inputMode="numeric" value={edit.duration} onChange={ev=>setEdit(s=>({...s, duration:ev.target.value}))} /></label>
-                  {editIsMachine
-                    ? <label style={lbl}>Machine calories<input type="number" inputMode="numeric" value={edit.machineCal} onChange={ev=>setEdit(s=>({...s, machineCal:ev.target.value}))} /></label>
-                    : <label style={lbl}>Intensity
-                        <select value={edit.intensity} onChange={ev=>setEdit(s=>({...s, intensity:ev.target.value}))}>
-                          <option value="">—</option>{Object.keys(MET).map(k=><option key={k}>{k}</option>)}
-                        </select>
-                      </label>}
+                  {editIsSteps
+                    ? <>
+                        <label style={lbl}>Steps<input type="number" inputMode="numeric" value={edit.steps} onChange={ev=>setEdit(s=>({...s, steps:ev.target.value}))} /></label>
+                        <label style={lbl}>Duration (min, optional)<input type="number" inputMode="numeric" value={edit.duration} onChange={ev=>setEdit(s=>({...s, duration:ev.target.value}))} /></label>
+                      </>
+                    : <>
+                        <label style={lbl}>Duration (min)<input type="number" inputMode="numeric" value={edit.duration} onChange={ev=>setEdit(s=>({...s, duration:ev.target.value}))} /></label>
+                        {editIsMachine
+                          ? <label style={lbl}>Machine calories<input type="number" inputMode="numeric" value={edit.machineCal} onChange={ev=>setEdit(s=>({...s, machineCal:ev.target.value}))} /></label>
+                          : <label style={lbl}>Intensity
+                              <select value={edit.intensity} onChange={ev=>setEdit(s=>({...s, intensity:ev.target.value}))}>
+                                <option value="">—</option>{Object.keys(MET).map(k=><option key={k}>{k}</option>)}
+                              </select>
+                            </label>}
+                      </>}
                 </div>
                 {!editIsMachine && <div style={{fontSize:12, color:T.sub, marginBottom:10}}>Calories re-estimate automatically when you save.</div>}
                 <div style={{display:"flex", gap:8}}>
-                  <button onClick={saveEdit} disabled={!edit.activity||!edit.duration} style={{...saveSm, opacity:(edit.activity&&edit.duration)?1:0.45}}>Save changes</button>
+                  <button onClick={saveEdit} disabled={!edit.activity||(editIsSteps?!edit.steps:!edit.duration)} style={{...saveSm, opacity:(edit.activity&&(editIsSteps?edit.steps:edit.duration))?1:0.45}}>Save changes</button>
                   <button onClick={()=>setEdit(null)} style={cancelSm}>Cancel</button>
                 </div>
               </div>
