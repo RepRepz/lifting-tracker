@@ -2532,70 +2532,50 @@ function FeatureToggle({ label, desc, on, setOn }) {
   );
 }
 
-/* ===== JOURNAL: free-form daily notes (mood, sleep, text) to spot patterns ===== */
-const JOURNAL_MOODS = [["💪","Strong"],["🙂","Good"],["😐","Meh"],["😴","Tired"],["🤕","Sore"],["🤒","Sick"]];
+/* ===== JOURNAL: dead-simple daily notes, one per day ===== */
 function JournalTab({ data, setData }) {
   const [sel, setSel] = useState(todayStr());
   const journal = data.journal || {};
-  const entry = journal[sel] || { mood:"", sleep:"", text:"" };
+  const text = (journal[sel] && journal[sel].text) || "";
   const shift = (n) => { const d = new Date(sel+"T00:00"); d.setDate(d.getDate()+n); setSel(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`); };
-  const update = (patch) => setData(d => {
+  const setText = (v) => setData(d => {
     const j = { ...(d.journal||{}) };
-    const next = { ...(j[sel]||{ mood:"", sleep:"", text:"" }), ...patch };
-    if (!String(next.text||"").trim() && !next.mood && !String(next.sleep||"").trim()) delete j[sel];
-    else j[sel] = next;
+    if (v.trim()) j[sel] = { text: v }; else delete j[sel];
     return { ...d, journal: j };
   });
   const recent = useMemo(() => Object.entries(journal)
-    .filter(([,e]) => String(e.text||"").trim() || e.mood || String(e.sleep||"").trim())
-    .sort((a,b) => b[0].localeCompare(a[0])).slice(0, 30), [journal]);
+    .filter(([,e]) => String(e && e.text || "").trim())
+    .sort((a,b) => b[0].localeCompare(a[0])).slice(0, 60), [journal]);
+  const prettyDay = (dstr) => new Date(dstr+"T00:00").toLocaleDateString("en-US", { weekday:"short", month:"short", day:"numeric" });
 
   return (<>
-    <div className="card">
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
-        <button onClick={()=>shift(-1)} style={{ background:T.input, color:T.ink, border:`1px solid ${T.line}`, borderRadius:8, padding:"6px 12px" }}>‹</button>
-        <button onClick={()=>setSel(todayStr())} style={{ background:"none", border:"none", fontSize:16, fontWeight:800, color: sel===todayStr()?T.tealDk:T.green }}>
-          {sel===todayStr() ? "Today" : fmtDate(sel)}
-        </button>
-        <button onClick={()=>shift(1)} disabled={sel>=todayStr()} style={{ background:T.input, color: sel>=todayStr()?T.line:T.ink, border:`1px solid ${T.line}`, borderRadius:8, padding:"6px 12px" }}>›</button>
+    <div className="card" style={{ padding:18 }}>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
+        <button onClick={()=>shift(-1)} style={{ background:T.input, color:T.ink, border:`1px solid ${T.line}`, borderRadius:10, padding:"7px 13px", fontSize:15 }}>‹</button>
+        <div style={{ textAlign:"center", cursor:"pointer" }} onClick={()=>setSel(todayStr())}>
+          <div style={{ fontSize:18, fontWeight:800, color:T.tealDk }}>{sel===todayStr() ? "Today" : prettyDay(sel)}</div>
+          {sel!==todayStr() && <div style={{ fontSize:11.5, color:T.green, fontWeight:700 }}>tap for today</div>}
+        </div>
+        <button onClick={()=>shift(1)} disabled={sel>=todayStr()} style={{ background:T.input, color: sel>=todayStr()?T.line:T.ink, border:`1px solid ${T.line}`, borderRadius:10, padding:"7px 13px", fontSize:15 }}>›</button>
       </div>
 
-      <div style={{ fontSize:12.5, color:T.sub, marginBottom:6 }}>How did today feel?</div>
-      <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:14 }}>
-        {JOURNAL_MOODS.map(([emo,label])=>{
-          const on = entry.mood === emo;
-          return (
-            <button key={emo} onClick={()=>update({ mood: on ? "" : emo })} style={{
-              display:"flex", alignItems:"center", gap:5, padding:"7px 12px", borderRadius:99, fontSize:13, fontWeight:700,
-              border:`1px solid ${on ? T.green : T.line}`, background: on ? T.mint : T.input, color: on ? T.green : T.sub,
-            }}>{emo} {label}</button>
-          );
-        })}
+      <textarea autoFocus={sel===todayStr()} value={text} onChange={e=>setText(e.target.value)}
+        placeholder="How was the session? Soreness, energy, PRs, what to try next time…"
+        rows={7} style={{ width:"100%", border:`1px solid ${T.line}`, borderRadius:12, padding:"14px 15px", background:T.input, color:T.ink, fontFamily:"inherit", fontSize:15.5, lineHeight:1.5, resize:"vertical" }} />
+      <div style={{ fontSize:11.5, color:T.sub, marginTop:8, textAlign:"right" }}>{text.trim() ? "✓ Saved automatically" : "Saves as you type"}</div>
+    </div>
+
+    {recent.length > 0 && (
+      <div className="card">
+        <div className="h" style={{ fontSize:17, color:T.tealDk, marginBottom:6 }}>📓 Past entries</div>
+        {recent.map(([d,e])=>(
+          <button key={d} onClick={()=>setSel(d)} style={{ display:"flex", gap:12, width:"100%", textAlign:"left", background: d===sel?T.mint:"none", border:"none", borderTop:`1px solid ${T.line}`, padding:"11px 4px", cursor:"pointer", alignItems:"baseline" }}>
+            <span style={{ fontSize:12.5, fontWeight:800, color: d===sel?T.green:T.ink, whiteSpace:"nowrap", flexShrink:0, minWidth:96 }}>{prettyDay(d)}{d===todayStr()?" ·":""}</span>
+            <span style={{ fontSize:13, color:T.sub, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{e.text}</span>
+          </button>
+        ))}
       </div>
-
-      <label style={{ fontSize:12.5, color:T.sub, display:"block" }}>Sleep (hours) <span style={{opacity:.6}}>— optional</span></label>
-      <input type="number" inputMode="decimal" value={entry.sleep} onChange={e=>update({ sleep:e.target.value })}
-        placeholder="e.g. 7.5" style={{ display:"block", marginBottom:14, maxWidth:160 }} />
-
-      <label style={{ fontSize:12.5, color:T.sub }}>Notes</label>
-      <textarea value={entry.text} onChange={e=>update({ text:e.target.value })}
-        placeholder="Soreness, energy, injuries, gym was packed, new PR feeling, diet slips… anything you'll want to look back on."
-        rows={6} style={{ width:"100%", marginTop:4, border:`1px solid ${T.line}`, borderRadius:10, padding:"10px 12px", background:T.input, color:T.ink, fontFamily:"inherit", fontSize:15, resize:"vertical" }} />
-    </div>
-
-    <div className="card">
-      <div className="h" style={{ fontSize:17, color:T.tealDk, marginBottom:8 }}>📓 Past entries</div>
-      {!recent.length && <div style={{ color:T.sub, fontSize:14 }}>Nothing yet — jot down how today went and it'll show here.</div>}
-      {recent.map(([d,e])=>(
-        <button key={d} onClick={()=>setSel(d)} style={{ display:"block", width:"100%", textAlign:"left", background: d===sel?T.mint:"none", border:"none", borderTop:`1px solid ${T.line}`, padding:"10px 4px", cursor:"pointer" }}>
-          <div style={{ fontSize:13.5, fontWeight:700, color: d===sel?T.green:T.ink }}>
-            {e.mood ? e.mood+" " : ""}{fmtDate(d)}{d===todayStr()?" (today)":""}
-            {String(e.sleep||"").trim() && <span style={{ fontSize:11.5, color:T.sub, fontWeight:500 }}> · 😴 {e.sleep}h</span>}
-          </div>
-          {String(e.text||"").trim() && <div style={{ fontSize:12.5, color:T.sub, marginTop:2, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{e.text}</div>}
-        </button>
-      ))}
-    </div>
+    )}
   </>);
 }
 
@@ -3341,4 +3321,4 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
   </>);
 }
 
-export { JournalTab as __JournalTest };
+
