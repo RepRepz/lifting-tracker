@@ -410,7 +410,10 @@ export default function LiftingTracker({ user }) {
         .nav-bottom {
           position:fixed; bottom:0; left:0; right:0; z-index:20;
           display:flex; flex-wrap:wrap; justify-content:center; row-gap:2px;
-          padding:5px 4px calc(5px + env(safe-area-inset-bottom));
+          /* cap the inset: iOS over-reports safe-area-inset-bottom on a short/unscrolled
+             page (e.g. the Groups list at startup), which made this bar balloon until you
+             scrolled. min() clamps it to the real home-indicator height so every tab matches. */
+          padding:5px 4px calc(5px + min(env(safe-area-inset-bottom), 34px));
           background:${T.bg}; border-top:1px solid ${T.line};
           transition:transform .3s cubic-bezier(.4,0,.2,1);
         }
@@ -429,9 +432,9 @@ export default function LiftingTracker({ user }) {
         @media(hover:hover){ .navbtn:hover:not(.on){ background:rgba(255,255,255,.05); color:${T.ink}; } }
         .navbtn:active { transform:scale(.94); }
         .app-main { max-width:860px; margin:0 auto; padding:16px 14px; }
-        .app-root { padding-bottom:calc(124px + env(safe-area-inset-bottom)); }
+        .app-root { padding-bottom:calc(124px + min(env(safe-area-inset-bottom), 34px)); }
         /* floating "back" on member profiles — above the bottom nav on phones */
-        .profile-back-fab { position:fixed; right:16px; z-index:40; bottom:calc(136px + env(safe-area-inset-bottom)); }
+        .profile-back-fab { position:fixed; right:16px; z-index:40; bottom:calc(136px + min(env(safe-area-inset-bottom), 34px)); }
 
         @media (min-width:900px) {
           /* desktop: tabs move into the TOP app bar, bottom bar disappears.
