@@ -383,6 +383,15 @@ export default function LiftingTracker({ user }) {
         .navicon.on { transform:translateY(-1px) scale(1.16); }
         @media(prefers-reduced-motion:reduce){ *{transition:none!important;animation:none!important} }
 
+        /* ---- weigh-in note: expand/collapse ---- */
+        .note-reveal { animation:noteIn .32s cubic-bezier(.22,1,.36,1); overflow:hidden; }
+        @keyframes noteIn { from { opacity:0; transform:translateY(-6px); max-height:0; } to { opacity:1; transform:translateY(0); max-height:400px; } }
+        .note-btn { transition:color .15s ease, background .15s ease, transform .12s ease; }
+        .note-btn:active { transform:scale(.9); }
+        @media(hover:hover){ .note-btn:hover{ color:${T.green}!important; } }
+        .note-caret { display:inline-block; transition:transform .28s cubic-bezier(.22,1,.36,1); }
+        .note-caret.open { transform:rotate(90deg); }
+
         /* ---- responsive: phone (<900px) vs desktop (>=900px) ---- */
         /* mobile-first: tabs live in a fixed BOTTOM bar for thumb reach */
         .nav-top { display:none; }
@@ -1100,6 +1109,12 @@ function PencilBtn({ onClick }) {
 const saveSm = { background:T.green, color:"#000", fontWeight:700, padding:"9px 18px", fontSize:13.5 };
 const cancelSm = { background:"none", border:`1px solid ${T.line}`, color:T.sub, padding:"9px 14px", fontSize:13.5 };
 const editBox = { background:T.cream, border:`1px solid ${T.creamLine}`, borderRadius:10, padding:12 };
+const noteInput = { display:"block", width:"100%", marginTop:5, resize:"vertical", minHeight:44,
+  background:T.input, color:T.ink, border:`1px solid ${T.line}`, borderRadius:10, padding:"9px 11px",
+  fontSize:14, fontFamily:"inherit", lineHeight:1.4, boxSizing:"border-box" };
+const noteBox = { display:"flex", gap:9, alignItems:"flex-start",
+  background:"rgba(0,200,5,.06)", border:`1px solid ${T.creamLine}`,
+  borderLeft:`3px solid ${T.green}`, borderRadius:10, padding:"10px 12px" };
 
 /* Two-tap delete: first tap arms it ("Sure?"), second tap confirms; disarms itself. */
 function ConfirmX({ onConfirm, label }) {
@@ -1974,6 +1989,8 @@ function BodyTab({ data, setData, hunit }) {
   const [date, setDate] = useState(todayStr());
   const [weight, setWeight] = useState("");
   const [creatine, setCreatine] = useState("No");
+  const [note, setNote] = useState("");
+  const [noteOpen, setNoteOpen] = useState(null); // date of the weigh-in whose note is expanded
   const rows = useMemo(()=>[...data.bodyweight].sort((a,b)=>a.date.localeCompare(b.date)),[data.bodyweight]);
 
   const current = rows.length ? rows[rows.length-1] : null;
@@ -2005,16 +2022,16 @@ function BodyTab({ data, setData, hunit }) {
 
   const add = () => {
     if (!weight) return;
-    setData(d=>({ ...d, bodyweight:[...d.bodyweight.filter(r=>r.date!==date), { date, weight:toLb(parseFloat(weight), units), creatine }] }));
-    setWeight("");
+    setData(d=>({ ...d, bodyweight:[...d.bodyweight.filter(r=>r.date!==date), { date, weight:toLb(parseFloat(weight), units), creatine, note:note.trim() }] }));
+    setWeight(""); setNote("");
   };
 
-  const [edit, setEdit] = useState(null); // { orig (original date), date, weight, creatine }
+  const [edit, setEdit] = useState(null); // { orig (original date), date, weight, creatine, note }
   const saveEdit = () => {
     if (!edit.weight) return;
     // drop the old row plus any row already on the new date, then add the edited one
     setData(d=>({ ...d, bodyweight:[...d.bodyweight.filter(r=>r.date!==edit.orig && r.date!==edit.date),
-      { date:edit.date, weight:toLb(parseFloat(edit.weight), units), creatine:edit.creatine }] }));
+      { date:edit.date, weight:toLb(parseFloat(edit.weight), units), creatine:edit.creatine, note:(edit.note||"").trim() }] }));
     setEdit(null);
   };
 
@@ -2026,6 +2043,11 @@ function BodyTab({ data, setData, hunit }) {
         <label style={lbl}>Weight ({uLabel(units)})<input type="number" inputMode="decimal" value={weight} onChange={e=>setWeight(e.target.value)} /></label>
         <label style={lbl}>Creatine today?<select value={creatine} onChange={e=>setCreatine(e.target.value)}><option>No</option><option>Yes</option></select></label>
       </div>
+      <label style={{...lbl, marginBottom:12}}>Note <span style={{color:T.sub, fontWeight:500}}>(optional)</span>
+        <textarea value={note} onChange={e=>setNote(e.target.value)} rows={2}
+          placeholder="How'd you feel? e.g. felt full, big water day, slept great, sore…"
+          style={noteInput} />
+      </label>
       <button onClick={add} disabled={!weight} style={{width:"100%", padding:"12px", background:T.green, color:"#000", fontWeight:700, fontSize:16, opacity:weight?1:0.45}}>Save weigh-in</button>
     </div>
 
@@ -2073,12 +2095,30 @@ function BodyTab({ data, setData, hunit }) {
     <div className="card">
       <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:8}}>All weigh-ins</div>
       <table><thead><tr><th>Date</th><th>Weight ({uLabel(units)})</th><th>Creatine</th><th></th></tr></thead>
-        <tbody>{[...rows].reverse().map(r=>(<Fragment key={r.date}>
-          <tr><td>{fmtDate(r.date)}</td><td>{dispW(r.weight,units)}</td><td>{r.creatine}</td>
-            <td style={{whiteSpace:"nowrap"}}>
-              <PencilBtn onClick={()=>setEdit({ orig:r.date, date:r.date, weight:dispW(r.weight,units), creatine:r.creatine||"No" })} />
+        <tbody>{[...rows].reverse().map(r=>{
+          const hasNote = !!(r.note && r.note.trim());
+          const open = noteOpen === r.date;
+          return (<Fragment key={r.date}>
+          <tr><td style={{whiteSpace:"nowrap"}}>{fmtDate(r.date)}</td><td>{dispW(r.weight,units)}</td><td>{r.creatine}</td>
+            <td style={{whiteSpace:"nowrap", textAlign:"right"}}>
+              {hasNote && (
+                <button className="note-btn" onClick={()=>setNoteOpen(open?null:r.date)}
+                  title={open?"Hide note":"Show note"}
+                  style={{ background:"none", color:open?T.green:T.sub, fontSize:12.5, fontWeight:700, padding:"2px 7px" }}>
+                  <span className={"note-caret"+(open?" open":"")}>▸</span> Note
+                </button>
+              )}
+              <PencilBtn onClick={()=>setEdit({ orig:r.date, date:r.date, weight:dispW(r.weight,units), creatine:r.creatine||"No", note:r.note||"" })} />
               <ConfirmX onConfirm={()=>setData(d=>({...d, bodyweight:d.bodyweight.filter(x=>x.date!==r.date)}))} />
             </td></tr>
+          {hasNote && open && (
+            <tr><td colSpan={4} style={{padding:"2px 4px 8px"}}>
+              <div className="note-reveal" style={noteBox}>
+                <span style={{fontSize:15, lineHeight:1, flexShrink:0}}>📝</span>
+                <span style={{fontSize:13.5, color:T.ink, lineHeight:1.45, whiteSpace:"pre-wrap"}}>{r.note}</span>
+              </div>
+            </td></tr>
+          )}
           {edit?.orig === r.date && (
             <tr><td colSpan={4} style={{padding:"6px 4px"}}>
               <div style={editBox}>
@@ -2087,6 +2127,10 @@ function BodyTab({ data, setData, hunit }) {
                   <label style={lbl}>Weight ({uLabel(units)})<input type="number" inputMode="decimal" value={edit.weight} onChange={ev=>setEdit(s=>({...s, weight:ev.target.value}))} /></label>
                   <label style={lbl}>Creatine<select value={edit.creatine} onChange={ev=>setEdit(s=>({...s, creatine:ev.target.value}))}><option>No</option><option>Yes</option></select></label>
                 </div>
+                <label style={{...lbl, marginBottom:10}}>Note <span style={{color:T.sub, fontWeight:500}}>(optional)</span>
+                  <textarea value={edit.note||""} rows={2} onChange={ev=>setEdit(s=>({...s, note:ev.target.value}))}
+                    placeholder="How'd you feel?" style={noteInput} />
+                </label>
                 <div style={{display:"flex", gap:8}}>
                   <button onClick={saveEdit} disabled={!edit.weight} style={{...saveSm, opacity:edit.weight?1:0.45}}>Save changes</button>
                   <button onClick={()=>setEdit(null)} style={cancelSm}>Cancel</button>
@@ -2094,7 +2138,7 @@ function BodyTab({ data, setData, hunit }) {
               </div>
             </td></tr>
           )}
-        </Fragment>))}</tbody></table>
+        </Fragment>);})}</tbody></table>
     </div>
   </>);
 }
