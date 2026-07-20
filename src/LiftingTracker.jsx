@@ -1561,7 +1561,7 @@ function Dashboard({ data, exMap, setData, own = true }) {
             {!chartOpts.includes(p) && <option key={p}>{p}</option>}
             {chartOpts.map(x=><option key={x}>{x}</option>)}
           </select>
-          {isBW && range!=="1D" && (
+          {isBW && (
             <div style={{display:"inline-flex", flexShrink:0, background:T.input, border:`1px solid ${T.line}`, borderRadius:99, padding:2}}
               title="Total reps per day, or your best single set">
               {[["total","Total"],["best","Best"]].map(([m,lbl])=>{
