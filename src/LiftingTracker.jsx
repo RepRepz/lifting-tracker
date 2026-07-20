@@ -852,7 +852,11 @@ function LogTab({ data, exMap, setData, routinesOn }) {
     <div className="card">
       <div className="h" style={{fontSize:19, color:T.tealDk, marginBottom:10}}>Log a set</div>
       <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:10}}>
-        <label style={lbl}>Date<input type="date" value={date} max={todayStr()} onChange={e=>setDate(e.target.value)} /></label>
+        <label style={lbl}>Date<input type="date" value={date} max={todayStr()} onChange={e=>setDate(e.target.value)} />
+          {date === gymDayStr() && gymDayStr() !== todayStr() && (
+            <span style={{fontSize:11, color:T.sub, marginTop:3}}>🌙 counted as yesterday</span>
+          )}
+        </label>
         <label style={lbl}>Set #<input type="number" min="1" value={setNum} onChange={e=>setSetNum(parseInt(e.target.value)||1)} /></label>
       </div>
       <label style={lbl}>Exercise
