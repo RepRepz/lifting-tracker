@@ -45,7 +45,7 @@ const SEED_EXERCISES = [
   ["T-Bar Row",["Back"],["Biceps"]],["Inverted Row",["Back"],["Biceps"]],
   ["Barbell Shrug",["Back"]],["Dumbbell Shrug",["Back"]],["Back Extension",["Back"],["Legs"]],
   // biceps
-  ["Barbell Curl",["Biceps"]],["Dumbbell Curl",["Biceps"]],["Hammer Curl",["Biceps"]],
+  ["Barbell Curl",["Biceps"]],["Dumbbell Curl",["Biceps"]],["Incline Dumbbell Curl",["Biceps"]],["Hammer Curl",["Biceps"]],
   ["Preacher Curl",["Biceps"]],["Cable Curl",["Biceps"]],["Concentration Curl",["Biceps"]],
   // legs
   ["Back Squat",["Legs"]],["Front Squat",["Legs"]],["Machine Squat",["Legs"]],["Hack Squat",["Legs"]],
