@@ -392,6 +392,18 @@ export default function LiftingTracker({ user }) {
         .note-caret { display:inline-block; transition:transform .28s cubic-bezier(.22,1,.36,1); }
         .note-caret.open { transform:rotate(90deg); }
 
+        /* ---- monthly group recap popup ---- */
+        @keyframes recapPop { 0%{opacity:0; transform:translateY(24px) scale(.94);} 60%{opacity:1; transform:translateY(0) scale(1.015);} 100%{opacity:1; transform:translateY(0) scale(1);} }
+        @keyframes recapRow { from{opacity:0; transform:translateY(10px);} to{opacity:1; transform:none;} }
+        @keyframes recapSheen { 0%{background-position:-160% 0;} 100%{background-position:260% 0;} }
+        @keyframes recapBar { from{transform:scaleX(0);} to{transform:scaleX(1);} }
+        @keyframes confFall { 0%{opacity:0; transform:translateY(-14px) rotate(0);} 12%{opacity:1;} 100%{opacity:0; transform:translateY(120px) rotate(320deg);} }
+        .recap-card { animation:recapPop .42s cubic-bezier(.22,1,.36,1) both; }
+        .recap-title { background:linear-gradient(100deg,#8fe3a0 0%,${T.green} 30%,#F4D58D 50%,#E9C46A 60%,${T.green} 80%,#8fe3a0 100%); background-size:220% 100%; -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; color:transparent; animation:recapSheen 3.2s linear infinite; }
+        .recap-row { animation:recapRow .4s cubic-bezier(.22,1,.36,1) both; }
+        .recap-bar-fill { transform-origin:left; animation:recapBar .7s cubic-bezier(.22,1,.36,1) both; }
+        .conf { position:absolute; top:0; width:7px; height:11px; border-radius:2px; animation:confFall linear both; }
+
         /* ---- responsive: phone (<900px) vs desktop (>=900px) ---- */
         /* mobile-first: tabs live in a fixed BOTTOM bar for thumb reach */
         .nav-top { display:none; }
@@ -1806,7 +1818,7 @@ const BMI_CATS = [
   { max: Infinity, label: "Obese",   color: T.down },
 ];
 /* ---------- goal weight (MyFitnessPal-style: bar from start -> goal, pace ETA) ---------- */
-function GoalCard({ data, setData, current, rows }) {
+function GoalCard({ data, setData, current, rows, readOnly = false, who = "They" }) {
   const units = useUnit();
   const goal = data.profile?.goalWeight || null;         // lb
   const start = data.profile?.goalStartWeight || null;   // lb, weight when the goal was set
@@ -1823,7 +1835,12 @@ function GoalCard({ data, setData, current, rows }) {
 
   if (!current) return null; // needs at least one weigh-in
 
-  if (!goal || editing) return (
+  // read-only (someone else's profile): show their goal, or a subtle "no goal" line
+  if (readOnly) {
+    if (!goal) return (
+      <div className="card" style={{color:T.sub, fontSize:13.5}}>🎯 {who} set a goal weight yet.</div>
+    );
+  } else if (!goal || editing) return (
     <div className="card">
       <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:4}}>🎯 Goal weight</div>
       <div style={{fontSize:12.5, color:T.sub, marginBottom:10}}>Set a target and every weigh-in moves the progress bar — cutting or bulking both work.</div>
@@ -1865,10 +1882,12 @@ function GoalCard({ data, setData, current, rows }) {
     <div className="card" style={reached ? {borderColor:T.green} : undefined}>
       <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14}}>
         <div className="h" style={{fontSize:17, color:T.tealDk}}>🎯 Goal weight</div>
-        <div style={{display:"flex", gap:4, alignItems:"center"}}>
-          <PencilBtn onClick={()=>{setEditing(true); setInp(String(dispW(goal, units)));}} />
-          <ConfirmX onConfirm={clear} />
-        </div>
+        {!readOnly && (
+          <div style={{display:"flex", gap:4, alignItems:"center"}}>
+            <PencilBtn onClick={()=>{setEditing(true); setInp(String(dispW(goal, units)));}} />
+            <ConfirmX onConfirm={clear} />
+          </div>
+        )}
       </div>
 
       {/* hero */}
@@ -2861,6 +2880,127 @@ function SecurityCard({ username }) {
 const BIG_LIFTS = ["Bench Press","Back Squat","Deadlift","Overhead Press"];
 const LIFT_SHORT = { "Bench Press":"Bench", "Back Squat":"Squat", "Deadlift":"Dead", "Overhead Press":"OHP" };
 
+/* End-of-month recap: pops up once per group each month with everyone's
+   average weigh-in for the month that just finished (+ their goal). */
+function MonthlyRecapModal({ recap, groupName, emoji, onClose }) {
+  const units = useUnit();
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  // you first, then heaviest movers-toward-goal feel natural — but keep it simple & friendly: you first, then alphabetical
+  const rows = [...recap.rows].sort((a, b) =>
+    a.isYou ? -1 : b.isYou ? 1 : a.username.localeCompare(b.username));
+
+  const CONF = ["#00C805", "#E9C46A", "#F4D58D", "#FFFFFF", "#8fe3a0"];
+  const confetti = Array.from({ length: 16 }, (_, i) => ({
+    left: `${(i * 6.3 + 4) % 100}%`,
+    bg: CONF[i % CONF.length],
+    delay: `${(i % 6) * 0.15}s`,
+    dur: `${1.5 + (i % 5) * 0.35}s`,
+  }));
+
+  return (
+    <div onClick={onClose} style={{
+      position:"fixed", inset:0, zIndex:60, background:"rgba(0,0,0,.72)", backdropFilter:"blur(3px)",
+      display:"flex", alignItems:"center", justifyContent:"center", padding:16,
+      animation:"fadeSwap .2s ease-out both",
+    }}>
+      <div onClick={e=>e.stopPropagation()} className="recap-card" style={{
+        position:"relative", overflow:"hidden", width:"100%", maxWidth:440, maxHeight:"90vh", overflowY:"auto",
+        background:T.card, border:`1px solid ${T.creamLine}`, borderRadius:20,
+        padding:"0 0 18px", boxShadow:"0 24px 70px rgba(0,0,0,.6)",
+      }}>
+        {/* confetti burst */}
+        <div style={{position:"absolute", inset:"0 0 auto 0", height:150, pointerEvents:"none", overflow:"hidden"}}>
+          {confetti.map((c, i) => (
+            <span key={i} className="conf" style={{ left:c.left, background:c.bg, animationDelay:c.delay, animationDuration:c.dur }} />
+          ))}
+        </div>
+
+        {/* header with gradient strip */}
+        <div style={{
+          padding:"22px 20px 16px", textAlign:"center", position:"relative",
+          background:"linear-gradient(180deg, rgba(0,200,5,.10), rgba(233,196,106,.05) 60%, transparent)",
+          borderBottom:`1px solid ${T.line}`,
+        }}>
+          <div style={{fontSize:34, lineHeight:1, marginBottom:8}}>📊</div>
+          <div className="recap-title" style={{fontSize:25, fontWeight:800, letterSpacing:".2px"}}>{recap.monthLabel} Recap</div>
+          <div style={{fontSize:12.5, color:T.sub, marginTop:5}}>
+            {emoji ? emoji + " " : ""}{groupName} · everyone's monthly weigh-in average
+          </div>
+        </div>
+
+        {/* member rows */}
+        <div style={{padding:"12px 14px 4px", display:"flex", flexDirection:"column", gap:9}}>
+          {rows.map((r, i) => {
+            const avg = dispW(r.avgLb, units);
+            const change = r.prevLb != null ? dispW(r.avgLb - r.prevLb, units) : null;
+            const goal = r.goalLb != null ? dispW(r.goalLb, units) : null;
+            // direction relative to their goal (toward = good). No goal → neutral.
+            let chDir = "neutral";
+            if (change != null && r.goalLb != null) {
+              const wantUp = r.goalLb > r.avgLb; // still need to gain
+              chDir = change === 0 ? "neutral" : (change > 0) === wantUp ? "toward" : "away";
+            }
+            const chColor = chDir === "toward" ? T.green : chDir === "away" ? T.down : T.sub;
+            const remain = goal != null ? Math.abs(dispW(r.goalLb - r.avgLb, units)) : null;
+            const reached = goal != null && Math.abs(r.goalLb - r.avgLb) < 0.5;
+            // progress toward goal for the mini bar (0..1) — needs a reference; use 8% band as "close"
+            return (
+              <div key={r.uid} className="recap-row" style={{
+                animationDelay:`${0.12 + i * 0.07}s`,
+                background:r.isYou ? "rgba(0,200,5,.08)" : T.input,
+                border:`1px solid ${r.isYou ? "rgba(0,200,5,.35)" : T.line}`,
+                borderRadius:14, padding:"11px 13px",
+              }}>
+                <div style={{display:"flex", alignItems:"center", gap:10}}>
+                  <div style={{
+                    width:34, height:34, borderRadius:99, flexShrink:0,
+                    display:"flex", alignItems:"center", justifyContent:"center",
+                    background:r.isYou ? T.green : "rgba(255,255,255,.08)",
+                    color:r.isYou ? "#000" : T.ink, fontWeight:800, fontSize:15,
+                  }}>{r.username.slice(0,1).toUpperCase()}</div>
+                  <div style={{flex:1, minWidth:0}}>
+                    <div style={{fontSize:14.5, fontWeight:700, color:T.ink, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis"}}>
+                      {r.username}{r.isYou && <span style={{color:T.green, fontWeight:700}}> · you</span>}
+                    </div>
+                    <div style={{fontSize:11.5, color:T.sub, marginTop:1}}>monthly average</div>
+                  </div>
+                  <div style={{textAlign:"right", flexShrink:0}}>
+                    <div style={{fontSize:20, fontWeight:800, color:T.ink, lineHeight:1.1}}>{avg}<span style={{fontSize:11.5, color:T.sub, fontWeight:600}}> {uLabel(units)}</span></div>
+                    {change != null && (
+                      <div style={{fontSize:12, fontWeight:700, color:chColor, marginTop:1}}>
+                        {change > 0 ? "▲ +" : change < 0 ? "▼ " : "•  "}{change === 0 ? "0" : Math.abs(change)} vs prev
+                      </div>
+                    )}
+                  </div>
+                </div>
+                {goal != null && (
+                  <div style={{marginTop:9, display:"flex", alignItems:"center", gap:8}}>
+                    <span className="chip" style={{background:reached ? T.green : T.mint, color:reached ? "#000" : T.green, fontSize:11.5, whiteSpace:"nowrap"}}>
+                      🎯 {reached ? "Goal reached!" : `Goal ${goal} ${uLabel(units)}`}
+                    </span>
+                    {!reached && <span style={{fontSize:11.5, color:T.sub}}>{remain} {uLabel(units)} to go</span>}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        <div style={{padding:"10px 16px 0"}}>
+          <button onClick={onClose} style={{width:"100%", padding:"13px", background:T.green, color:"#000", fontWeight:800, fontSize:15.5, borderRadius:12}}>
+            Let's go 💪
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function FriendsTab({ user, nutritionOn, streaksOn }) {
   const units = useUnit();
   const [groups, setGroups] = useState(null);        // null = loading
@@ -2877,6 +3017,7 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [customEmoji, setCustomEmoji] = useState("");
   const [feedN, setFeedN] = useState(null); // null = auto (3, or the whole latest day if bigger)
+  const [recap, setRecap] = useState(null); // end-of-month recap popup: { pmKey, monthLabel, rows } | null
   const myName = user.user_metadata?.username || "you";
   const isOwner = active?.created_by === user.id;
 
@@ -2931,7 +3072,7 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
   useEffect(() => {
     if (!active) return;
     (async () => {
-      setMembers(null); setStates({}); setReactions({}); setEmojiOpen(false); setFeedN(null);
+      setMembers(null); setStates({}); setReactions({}); setEmojiOpen(false); setFeedN(null); setRecap(null);
       try {
         const ms = await listMembers(active.id);
         setMembers(ms);
@@ -2960,6 +3101,33 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
       if (mine) await removeReaction(active.id, key, user.id);
       else await addReaction(active.id, key, myName);
     } catch { /* offline or table missing — optimistic UI stays, refresh reconciles */ }
+  };
+
+  /* end-of-month recap: once per group each month, everyone's avg weigh-in for the month that just ended */
+  useEffect(() => {
+    if (!active || !members || !members.length) return;
+    const now = new Date();
+    const km = (y, m) => `${y}-${String(m + 1).padStart(2, "0")}`;      // month key for a JS (year, 0-based month)
+    const pmKey = km(now.getFullYear(), now.getMonth() - 1);            // month that just finished
+    const bmDate = new Date(now.getFullYear(), now.getMonth() - 2, 1);  // one before that (for the ▲▼ change)
+    const bmKey = km(bmDate.getFullYear(), bmDate.getMonth());
+    let seen = false;
+    try { seen = !!localStorage.getItem(`recap-${active.id}-${pmKey}`); } catch { /* private mode */ }
+    if (seen) return;
+    const avgFor = (bw, key) => { const rs = (bw || []).filter(r => monthKey(r.date) === key); return rs.length ? rs.reduce((s, r) => s + r.weight, 0) / rs.length : null; };
+    const rows = members.map(m => {
+      const st = states[m.user_id]; if (!st) return null;
+      const avgLb = avgFor(st.bodyweight, pmKey);
+      if (avgLb == null) return null; // no weigh-in that month → skip them
+      return { uid: m.user_id, username: m.username, avgLb, prevLb: avgFor(st.bodyweight, bmKey), goalLb: st.profile?.goalWeight || null, isYou: m.user_id === user.id };
+    }).filter(Boolean);
+    if (!rows.length) return;
+    setRecap({ pmKey, monthLabel: monthLabel(pmKey), rows });
+  }, [active?.id, members, states, user.id]);
+
+  const closeRecap = () => {
+    if (recap && active) { try { localStorage.setItem(`recap-${active.id}-${recap.pmKey}`, "1"); } catch { /* ignore */ } }
+    setRecap(null);
   };
 
   const doCreate = async () => {
@@ -3133,6 +3301,8 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
           <MacroCalendar data={pdata} title={`🥗 ${profile.username}'s nutrition`} />
         )}
         <RecordsTab data={pdata} exMap={pexMap} />
+        <GoalCard data={pdata} setData={()=>{}} current={bw.length ? bw[bw.length-1] : null} rows={bw}
+          readOnly who={`${profile.username} hasn't`} />
         <div className="card" style={{display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, textAlign:"center"}}>
           <div><div style={kpiN}>{bw.length ? dispW(bw[bw.length-1].weight, units) : "—"}</div><div style={kpiL}>Body wt ({uLabel(units)})</div></div>
           <div><div style={kpiN}>{bw.length ? (b=>{const c=dispW(bw[bw.length-1].weight-bw[0].weight, units); return (c>0?"+":"")+c;})() : "—"}</div><div style={kpiL}>Change ({uLabel(units)})</div></div>
@@ -3154,6 +3324,7 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
   /* ---- group view ---- */
   if (active) {
     return (<>
+      {recap && <MonthlyRecapModal recap={recap} groupName={active.name} emoji={active.emoji} onClose={closeRecap} />}
       <button onClick={()=>{setActive(null); setMembers(null);}} style={{ background:"none", color:T.green, fontWeight:700, fontSize:14, marginBottom:10 }}>← All groups</button>
       <div className="card">
         <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", gap:8, flexWrap:"wrap"}}>
