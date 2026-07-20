@@ -1555,12 +1555,26 @@ function Dashboard({ data, exMap, setData, own = true }) {
       const bestMode = isBW && bwMode[p]==="best";
       return (
       <div className="card" key={p}>
-        <div style={{display:"flex", gap:8, alignItems:"center", marginBottom:6}}>
+        <div style={{display:"flex", gap:8, alignItems:"center", marginBottom:6, flexWrap:"wrap"}}>
           <select value={p} onChange={e=>changePick(i, e.target.value)}
-            style={{flex:1, background:T.cream, fontWeight:600}}>
+            style={{flex:"1 1 120px", minWidth:0, background:T.cream, fontWeight:600}}>
             {!chartOpts.includes(p) && <option key={p}>{p}</option>}
             {chartOpts.map(x=><option key={x}>{x}</option>)}
           </select>
+          {isBW && range!=="1D" && (
+            <div style={{display:"inline-flex", flexShrink:0, background:T.input, border:`1px solid ${T.line}`, borderRadius:99, padding:2}}
+              title="Total reps per day, or your best single set">
+              {[["total","Total"],["best","Best"]].map(([m,lbl])=>{
+                const on = (bwMode[p]||"total")===m;
+                return (
+                  <button key={m} onClick={()=>setBwMode(s=>({...s,[p]:m}))} style={{
+                    minHeight:32, padding:"4px 12px", fontSize:12, fontWeight:700, borderRadius:99, border:"none", cursor:"pointer",
+                    background: on ? T.green : "transparent", color: on ? "#fff" : T.sub, transition:"background .15s, color .15s",
+                  }}>{lbl}</button>
+                );
+              })}
+            </div>
+          )}
           {own && (
           <button onClick={()=>togglePin(i)} title={pinned ? "Unpin — go back to most recent" : "Pin this chart"} style={{
             flexShrink:0, minHeight:38, padding:"5px 12px", fontSize:12.5, fontWeight:700, borderRadius:99,
@@ -1577,25 +1591,10 @@ function Dashboard({ data, exMap, setData, own = true }) {
             Last workout {fmtDate(lastDate)}: <b style={{color:T.green}}>{daySets.length} set{daySets.length===1?"":"s"}</b> · <b style={{color:T.green}}>{dayReps} reps</b>
           </div>
         )}
-        <div style={{display:"flex", alignItems:"center", justifyContent:"space-between", gap:8, marginBottom:4}}>
-          <div style={{fontSize:11.5, color:T.sub, fontStyle:"italic"}}>
-            {range==="1D" ? "Latest session, set by set — tap a dot for the details"
-              : !isBW ? `Tracked by est. 1RM (${uLabel(units)})`
-              : bestMode ? "Best set — top reps in a single set" : "Volume — total reps per day"}
-          </div>
-          {isBW && (
-            <div style={{display:"inline-flex", flexShrink:0, background:T.input, border:`1px solid ${T.line}`, borderRadius:99, padding:2}}>
-              {[["total","Total"],["best","Best"]].map(([m,lbl])=>{
-                const on = (bwMode[p]||"total")===m;
-                return (
-                  <button key={m} onClick={()=>setBwMode(s=>({...s,[p]:m}))} title={m==="total"?"Total reps per day (volume)":"Your best single set (are your top sets going up?)"} style={{
-                    padding:"4px 12px", fontSize:11.5, fontWeight:700, borderRadius:99, border:"none", cursor:"pointer",
-                    background: on ? T.green : "transparent", color: on ? "#fff" : T.sub, transition:"background .15s, color .15s",
-                  }}>{lbl}</button>
-                );
-              })}
-            </div>
-          )}
+        <div style={{fontSize:11.5, color:T.sub, fontStyle:"italic", marginBottom:4}}>
+          {range==="1D" ? "Latest session, set by set — tap a dot for the details"
+            : !isBW ? `Tracked by est. 1RM (${uLabel(units)})`
+            : bestMode ? "Best set — top reps in a single set" : "Volume — total reps per day"}
         </div>
         {pts.length
           ? <Suspense fallback={<ChartFallback h={210} />}><TrendChart pts={pts} dots={range==="1D"} unit={isBW ? " reps" : " "+uLabel(units)} /></Suspense>
