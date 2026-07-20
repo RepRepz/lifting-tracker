@@ -102,6 +102,10 @@ const INTENSITY_FEEL = {
 /* ---------- helpers ---------- */
 /* LOCAL date, not UTC — toISOString() would roll to tomorrow in the evening (US time) */
 const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
+// "Gym day": a late-night session (logged before 4 AM) still counts as the previous
+// calendar day by default, so lifting past midnight doesn't jump the date forward.
+// Only used to prefill the set form — everything else stays on the real calendar date.
+const gymDayStr = () => { const d = new Date(); if (d.getHours() < 4) d.setDate(d.getDate() - 1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
 const e1rm = (w, r) => w * (1 + r / 30);
 const fmtDate = (s) => { const d = new Date(s + "T00:00"); return `${d.getMonth()+1}/${d.getDate()}/${String(d.getFullYear()).slice(2)}`; };
 const monthKey = (s) => s.slice(0, 7);
@@ -658,9 +662,10 @@ function RoutinesPanel({ data, setData, onPick }) {
 function LogTab({ data, exMap, setData, routinesOn }) {
   const sorted = useMemo(()=>[...data.log].sort((a,b)=>a.date.localeCompare(b.date)||a.id-b.id),[data.log]);
   const last = sorted[sorted.length-1];
-  // date always defaults to today; exercise only carries over if the last set was logged today
-  const [date, setDate] = useState(todayStr());
-  const [exName, setExName] = useState(last?.date === todayStr() ? last.exercise : "");
+  // date defaults to the "gym day" (before 4 AM = still yesterday); exercise only
+  // carries over if the last set was logged on that same day
+  const [date, setDate] = useState(gymDayStr());
+  const [exName, setExName] = useState(last?.date === gymDayStr() ? last.exercise : "");
   const [setNum, setSetNum] = useState(1);
   // set # follows what's actually in the log for this exercise+date, so it resets on a new
   // day/exercise and heals itself when a set is deleted (no more phantom "set 4 of 3")
@@ -782,14 +787,14 @@ function LogTab({ data, exMap, setData, routinesOn }) {
 
   const startNewExercise = (name) => { setExName(name); setSetNum(1); setWeight(""); setReps(""); setJustSaved(null); };
 
-  // routine tapped: load the exercise into the form, prefill target reps, jump to today
+  // routine tapped: load the exercise into the form, prefill target reps, jump to the gym day
   const pickFromRoutine = (exercise, reps) => {
     startNewExercise(exercise);
-    const already = data.log.filter(e => e.exercise === exercise && e.date === todayStr() && e.effort !== "Warm-up").length;
+    const already = data.log.filter(e => e.exercise === exercise && e.date === gymDayStr() && e.effort !== "Warm-up").length;
     setSetNum(already + 1);
     const n = String(reps || "").match(/\d+/);
     if (n) setReps(n[0]);
-    setDate(todayStr());
+    setDate(gymDayStr());
     if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
