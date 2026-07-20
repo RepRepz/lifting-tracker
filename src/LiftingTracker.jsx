@@ -2381,7 +2381,7 @@ function MuscleChips({ prim, sec, onChange }) {
 }
 
 function ExercisesTab({ data, setData }) {
-  const [name, setName] = useState(""); const [muscles, setMuscles] = useState(["Chest"]);
+  const [name, setName] = useState(""); const [muscles, setMuscles] = useState([]);
   const [muscles2, setMuscles2] = useState([]); const [equip, setEquip] = useState("Barbell (plates)");
   const [libQ, setLibQ] = useState(""); const [libM, setLibM] = useState("All");
   const shownEx = useMemo(() => {
@@ -2434,7 +2434,8 @@ function ExercisesTab({ data, setData }) {
       </div>
       <div style={{fontSize:12, color:T.sub, marginBottom:6}}>Muscle groups: tap once = <b style={{color:T.green}}>✓ main</b> (full set credit) · tap again = <b style={{color:AMBER}}>½ secondary</b> (half credit) · third tap clears. First main pick decides where it sorts.</div>
       <MuscleChips prim={muscles} sec={muscles2} onChange={(p,s)=>{setMuscles(p);setMuscles2(s);}} />
-      <button onClick={()=>{ if(!name.trim()||!muscles.length)return; setData(d=>({...d, exercises:[...d.exercises.filter(x=>x.name!==name.trim()), {name:name.trim(), muscle:muscles[0], muscles, muscles2, ...fromEquip(equip)}]})); setName(""); setMuscles(["Chest"]); setMuscles2([]); }}
+      {name.trim() && !muscles.length && <div style={{fontSize:12, color:AMBER, marginTop:6}}>Pick at least one main muscle group to add this exercise.</div>}
+      <button onClick={()=>{ if(!name.trim()||!muscles.length)return; setData(d=>({...d, exercises:[...d.exercises.filter(x=>x.name!==name.trim()), {name:name.trim(), muscle:muscles[0], muscles, muscles2, ...fromEquip(equip)}]})); setName(""); setMuscles([]); setMuscles2([]); }}
         disabled={!name.trim()||!muscles.length}
         style={{background:T.green, color:"#000", padding:"10px 20px", fontWeight:700, marginTop:10, marginBottom:14, opacity:(!name.trim()||!muscles.length)?0.45:1}}>Add exercise</button>
       <input value={libQ} onChange={e=>setLibQ(e.target.value)} placeholder="🔍 Search your library…"
