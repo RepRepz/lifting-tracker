@@ -409,15 +409,14 @@ export default function LiftingTracker({ user }) {
         .nav-top { display:none; }
         .nav-bottom {
           position:fixed; bottom:0; left:0; right:0; z-index:20;
-          display:flex; flex-wrap:wrap; justify-content:center; row-gap:2px;
-          /* cap the inset: iOS over-reports safe-area-inset-bottom on a short/unscrolled
-             page (e.g. the Groups list at startup), which made this bar balloon until you
-             scrolled. min() clamps it to the real home-indicator height so every tab matches. */
+          /* GRID, not flex-wrap: exactly 4 columns → the 8 tabs always make two clean
+             rows. Flex-wrap used to spill one button onto a phantom 3rd row at launch
+             on iOS (Groups tab) when the viewport width wasn't settled yet; grid can't. */
+          display:grid; grid-template-columns:repeat(4, 1fr); row-gap:2px;
           padding:5px 4px calc(5px + min(env(safe-area-inset-bottom), 34px));
           background:${T.bg}; border-top:1px solid ${T.line};
           transition:transform .3s cubic-bezier(.4,0,.2,1);
         }
-        .nav-bottom .navbtn { flex:0 0 25%; } /* 4 per row; a short last row centers itself */
         /* slide the bar down out of view while scrolling down; back up on scroll-up */
         .nav-bottom.nav-hidden { transform:translateY(130%); }
         /* tab button — soft green pill on the active one, Robinhood style */
