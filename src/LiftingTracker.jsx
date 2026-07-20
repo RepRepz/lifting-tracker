@@ -411,6 +411,15 @@ export default function LiftingTracker({ user }) {
         .navicon.on { transform:translateY(-1px) scale(1.16); }
         @media(prefers-reduced-motion:reduce){ *{transition:none!important;animation:none!important} }
 
+        /* ---- custom date picker ---- */
+        .cal-pop { animation:calPop .16s cubic-bezier(.22,1,.36,1) both; transform-origin:top left; }
+        @keyframes calPop { from { opacity:0; transform:translateY(-6px) scale(.97); } to { opacity:1; transform:none; } }
+        .cal-day { transition:background .12s ease, color .12s ease, transform .1s ease; }
+        .cal-day:active:not(.cal-off) { transform:scale(.85); }
+        @media(hover:hover){ .cal-day:not(.cal-off):not(.cal-sel):hover { background:rgba(255,255,255,.09)!important; } }
+        .cal-nav { transition:background .14s ease, color .14s ease; }
+        @media(hover:hover){ .cal-nav:not(:disabled):hover { background:rgba(255,255,255,.10)!important; color:#fff!important; } }
+
         /* ---- shimmering skeleton for loading states ---- */
         .skeleton { position:relative; overflow:hidden; background:${T.input}; }
         .skeleton::after { content:""; position:absolute; inset:0; transform:translateX(-100%);
@@ -911,11 +920,12 @@ function LogTab({ data, exMap, setData, routinesOn }) {
     <div className="card">
       <div className="h" style={{fontSize:19, color:T.tealDk, marginBottom:10}}>Log a set</div>
       <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:10}}>
-        <label style={lbl}>Date<input type="date" value={date} max={todayStr()} onChange={e=>setDate(e.target.value)} />
+        <div>
+          <DateField label="Date" value={date} max={todayStr()} onChange={setDate} />
           {date === gymDayStr() && gymDayStr() !== todayStr() && (
-            <span style={{fontSize:11, color:T.sub, marginTop:3}}>🌙 counted as yesterday</span>
+            <span style={{display:"block", fontSize:11, color:T.sub, marginTop:3}}>🌙 counted as yesterday</span>
           )}
-        </label>
+        </div>
         <label style={lbl}>Set #<input type="number" min="1" value={setNum} onChange={e=>setSetNum(parseInt(e.target.value)||1)} /></label>
       </div>
       <label style={lbl}>Exercise
@@ -1078,7 +1088,7 @@ function LogTab({ data, exMap, setData, routinesOn }) {
               <tr><td colSpan={7} style={{padding:"6px 4px"}}>
                 <div style={editBox}>
                   <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:8}}>
-                    <label style={lbl}>Date<input type="date" value={edit.date} max={todayStr()} onChange={ev=>setEdit(s=>({...s, date:ev.target.value}))} /></label>
+                    <DateField label="Date" value={edit.date} max={todayStr()} onChange={v=>setEdit(s=>({...s, date:v}))} />
                     <label style={lbl}>Set #<input type="number" min="1" value={edit.set} onChange={ev=>setEdit(s=>({...s, set:ev.target.value}))} /></label>
                   </div>
                   <label style={{...lbl, marginBottom:8, display:"block"}}>Exercise
@@ -1153,6 +1163,107 @@ function PencilBtn({ onClick }) {
     <button onClick={onClick} title="Edit" style={{ background:"none", color:T.sub, fontSize:14, padding:"2px 7px" }}>
       ✎
     </button>
+  );
+}
+
+/* ---------- custom Robinhood-themed date picker ----------
+   Replaces the native <input type=date> (whose OS popup ignores our theme and looks
+   terrible on black). Same contract: value/onChange use "YYYY-MM-DD" strings; max/min
+   clamp which days are selectable. Works with mouse and touch. */
+const CAL_DOW = ["S","M","T","W","T","F","S"];
+const calNav = (disabled) => ({ background:T.input, color:disabled?T.line:T.ink, width:32, height:32,
+  borderRadius:9, fontSize:19, lineHeight:1, display:"flex", alignItems:"center", justifyContent:"center",
+  opacity:disabled?0.5:1 });
+function DateField({ label, value, onChange, max, min }) {
+  const [open, setOpen] = useState(false);
+  const [view, setView] = useState((value || todayStr()).slice(0,7)); // "YYYY-MM"
+  const wrapRef = useRef(null);
+  const pad = (n) => String(n).padStart(2,"0");
+
+  useEffect(() => { if (open) setView((value || todayStr()).slice(0,7)); }, [open]); // reopen on the selected month
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e) => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false); };
+    const onKey = (e) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("pointerdown", onDoc);
+    window.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("pointerdown", onDoc); window.removeEventListener("keydown", onKey); };
+  }, [open]);
+
+  const [vy, vm] = view.split("-").map(Number);
+  const title = new Date(vy, vm-1, 1).toLocaleString("en-US", { month:"long", year:"numeric" });
+  const firstDow = new Date(vy, vm-1, 1).getDay();
+  const nDays = new Date(vy, vm, 0).getDate();
+  const shift = (n) => { const d = new Date(vy, vm-1+n, 1); setView(`${d.getFullYear()}-${pad(d.getMonth()+1)}`); };
+  const nextDisabled = max ? view >= max.slice(0,7) : false;
+  const prevDisabled = min ? view <= min.slice(0,7) : false;
+  const fmtLong = (s) => new Date(s+"T00:00").toLocaleDateString("en-US", { month:"short", day:"numeric", year:"numeric" });
+
+  const pick = (day) => {
+    const ds = `${vy}-${pad(vm)}-${pad(day)}`;
+    if ((max && ds > max) || (min && ds < min)) return;
+    onChange(ds); setOpen(false);
+  };
+
+  const cells = [];
+  for (let i=0;i<firstDow;i++) cells.push(null);
+  for (let d=1;d<=nDays;d++) cells.push(d);
+
+  return (
+    <div ref={wrapRef} style={{ position:"relative" }}>
+      {label && <div style={{...lbl, marginBottom:4}}>{label}</div>}
+      <button type="button" onClick={()=>setOpen(o=>!o)} style={{
+        display:"flex", alignItems:"center", gap:8, width:"100%", minHeight:44,
+        background:T.input, color:value?T.ink:T.sub, border:`1px solid ${open?T.green:T.line}`,
+        borderRadius:10, padding:"9px 11px", fontSize:15, fontWeight:600,
+        boxShadow: open?"0 0 0 3px rgba(0,200,5,.18)":"none", transition:"border-color .18s ease, box-shadow .22s ease",
+      }}>
+        <span style={{fontSize:15, lineHeight:1}}>📅</span>
+        <span style={{flex:1, textAlign:"left", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{value ? fmtLong(value) : "Select date"}</span>
+        <span style={{color:T.sub, fontSize:10, transform:open?"rotate(180deg)":"none", transition:"transform .2s ease"}}>▼</span>
+      </button>
+
+      {open && (
+        <div className="cal-pop" style={{
+          position:"absolute", top:"calc(100% + 6px)", left:0, zIndex:40,
+          width:268, maxWidth:"calc(100vw - 32px)",
+          background:T.card, border:`1px solid ${T.creamLine}`, borderRadius:14, padding:12,
+          boxShadow:"0 18px 50px rgba(0,0,0,.55)",
+        }}>
+          <div style={{display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10}}>
+            <button type="button" className="cal-nav" disabled={prevDisabled} onClick={()=>shift(-1)} style={calNav(prevDisabled)}>‹</button>
+            <div style={{fontSize:14, fontWeight:800, color:T.ink}}>{title}</div>
+            <button type="button" className="cal-nav" disabled={nextDisabled} onClick={()=>shift(1)} style={calNav(nextDisabled)}>›</button>
+          </div>
+          <div style={{display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:2, marginBottom:4}}>
+            {CAL_DOW.map((w,i)=>(<div key={i} style={{textAlign:"center", fontSize:10.5, fontWeight:700, color:T.sub, padding:"2px 0"}}>{w}</div>))}
+          </div>
+          <div style={{display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:2}}>
+            {cells.map((d,i)=>{
+              if (d==null) return <div key={i} />;
+              const ds = `${vy}-${pad(vm)}-${pad(d)}`;
+              const off = (max && ds>max) || (min && ds<min);
+              const sel = ds===value, today = ds===todayStr();
+              return (
+                <button key={i} type="button" className={"cal-day"+(off?" cal-off":"")+(sel?" cal-sel":"")}
+                  disabled={off} onClick={()=>pick(d)} style={{
+                    height:34, borderRadius:99, background: sel?T.green:"transparent",
+                    color: off?T.line : sel?"#000" : today?T.green : T.ink,
+                    border: today&&!sel?`1.5px solid ${T.green}`:"1.5px solid transparent",
+                    fontWeight: sel||today?800:600, fontSize:13.5,
+                    display:"flex", alignItems:"center", justifyContent:"center",
+                    opacity: off?0.45:1, cursor: off?"default":"pointer",
+                  }}>{d}</button>
+              );
+            })}
+          </div>
+          <button type="button" onClick={()=>{ const t=todayStr(); if ((!max||t<=max)&&(!min||t>=min)) onChange(t); setOpen(false); }}
+            style={{ width:"100%", marginTop:10, padding:"9px", background:T.mint, color:T.green, fontWeight:800, fontSize:13, borderRadius:10 }}>
+            Jump to today
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 const saveSm = { background:T.green, color:"#000", fontWeight:700, padding:"9px 18px", fontSize:13.5 };
@@ -2095,7 +2206,7 @@ function BodyTab({ data, setData, hunit }) {
     <div className="card">
       <div className="h" style={{fontSize:19, color:T.tealDk, marginBottom:10}}>⚖️ Log a weigh-in</div>
       <div style={{display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginBottom:12}}>
-        <label style={lbl}>Date<input type="date" value={date} max={todayStr()} onChange={e=>setDate(e.target.value)} /></label>
+        <DateField label="Date" value={date} max={todayStr()} onChange={setDate} />
         <label style={lbl}>Weight ({uLabel(units)})<input type="number" inputMode="decimal" value={weight} onChange={e=>setWeight(e.target.value)} /></label>
         <label style={lbl}>Creatine today?<select value={creatine} onChange={e=>setCreatine(e.target.value)}><option>No</option><option>Yes</option></select></label>
       </div>
@@ -2179,7 +2290,7 @@ function BodyTab({ data, setData, hunit }) {
             <tr><td colSpan={4} style={{padding:"6px 4px"}}>
               <div style={editBox}>
                 <div style={{display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, marginBottom:10}}>
-                  <label style={lbl}>Date<input type="date" value={edit.date} max={todayStr()} onChange={ev=>setEdit(s=>({...s, date:ev.target.value}))} /></label>
+                  <DateField label="Date" value={edit.date} max={todayStr()} onChange={v=>setEdit(s=>({...s, date:v}))} />
                   <label style={lbl}>Weight ({uLabel(units)})<input type="number" inputMode="decimal" value={edit.weight} onChange={ev=>setEdit(s=>({...s, weight:ev.target.value}))} /></label>
                   <label style={lbl}>Creatine<select value={edit.creatine} onChange={ev=>setEdit(s=>({...s, creatine:ev.target.value}))}><option>No</option><option>Yes</option></select></label>
                 </div>
@@ -2304,7 +2415,7 @@ function CardioTab({ data, setData, latestBW }) {
         Machines: type in what the display says.
       </div>
       <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:10}}>
-        <label style={lbl}>Date<input type="date" value={date} max={todayStr()} onChange={e=>setDate(e.target.value)} /></label>
+        <DateField label="Date" value={date} max={todayStr()} onChange={setDate} />
         <label style={lbl}>Activity
           <select value={activity} onChange={e=>setActivity(e.target.value)}>
             <option value="">— pick —</option>
@@ -2412,7 +2523,7 @@ function CardioTab({ data, setData, latestBW }) {
             <tr><td colSpan={6} style={{padding:"6px 4px"}}>
               <div style={editBox}>
                 <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:8}}>
-                  <label style={lbl}>Date<input type="date" value={edit.date} max={todayStr()} onChange={ev=>setEdit(s=>({...s, date:ev.target.value}))} /></label>
+                  <DateField label="Date" value={edit.date} max={todayStr()} onChange={v=>setEdit(s=>({...s, date:v}))} />
                   <label style={lbl}>Activity
                     <select value={edit.activity} onChange={ev=>setEdit(s=>({...s, activity:ev.target.value}))}>
                       {data.cardioActivities.map(a=><option key={a.name}>{a.name}</option>)}
