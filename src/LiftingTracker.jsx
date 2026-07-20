@@ -2824,7 +2824,11 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
           const ms = await listMembers(g.id);
           const la = await lastActiveFor(ms.map(m => m.user_id));
           p[g.id] = ms.map(m => ({ uid: m.user_id, username: m.username, last: la[m.user_id] || null }))
-            .sort((a, b) => (b.last || "").localeCompare(a.last || ""));
+            .sort((a, b) => {
+              if (a.uid === user.id) return -1;   // you always first
+              if (b.uid === user.id) return 1;
+              return (b.last || "").localeCompare(a.last || "");
+            });
         }));
         setPreviews(p);
       } catch { /* previews are a bonus — group list works without them */ }
