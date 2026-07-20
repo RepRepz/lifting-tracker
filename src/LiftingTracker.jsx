@@ -2823,7 +2823,7 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
         await Promise.all(groups.map(async (g) => {
           const ms = await listMembers(g.id);
           const la = await lastActiveFor(ms.map(m => m.user_id));
-          p[g.id] = ms.map(m => ({ username: m.username, last: la[m.user_id] || null }))
+          p[g.id] = ms.map(m => ({ uid: m.user_id, username: m.username, last: la[m.user_id] || null }))
             .sort((a, b) => (b.last || "").localeCompare(a.last || ""));
         }));
         setPreviews(p);
@@ -2832,9 +2832,15 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
   }, [groups]);
   const agoTxt = (ts) => {
     if (!ts) return null;
-    const d = (Date.now() - new Date(ts).getTime()) / 864e5;
-    if (d < 1) return "today"; if (d < 2) return "1d"; if (d < 7) return `${Math.floor(d)}d`;
-    if (d < 30) return `${Math.floor(d/7)}w`; return `${Math.floor(d/30)}mo`;
+    const mins = (Date.now() - new Date(ts).getTime()) / 6e4;
+    if (mins < 1) return "now";
+    if (mins < 60) return `${Math.floor(mins)}m`;
+    const h = mins / 60;
+    if (h < 24) return `${Math.floor(h)}h`;      // 23h, then rolls to 1d
+    const d = h / 24;
+    if (d < 7) return `${Math.floor(d)}d`;
+    if (d < 30) return `${Math.floor(d / 7)}w`;
+    return `${Math.floor(d / 30)}mo`;
   };
 
   useEffect(() => {
@@ -3274,7 +3280,7 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
             {mem && mem.length > 0 && (
               <span style={{display:"block", fontSize:12, color:T.sub, fontWeight:500, marginTop:3,
                 whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis"}}>
-                {mem.slice(0,4).map(m=>`${m.username}${agoTxt(m.last)?` (${agoTxt(m.last)})`:""}`).join(", ")}
+                {mem.slice(0,4).map(m=>`${m.uid===user.id?"you":m.username}${agoTxt(m.last)?` (${agoTxt(m.last)})`:""}`).join(", ")}
                 {mem.length > 4 ? `, +${mem.length-4} more` : ""}
               </span>
             )}
