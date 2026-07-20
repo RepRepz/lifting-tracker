@@ -2670,6 +2670,9 @@ function FeatureToggle({ label, desc, on, setOn }) {
 /* ===== JOURNAL: dead-simple daily notes, one per day ===== */
 function JournalTab({ data, setData }) {
   const [sel, setSel] = useState(todayStr());
+  // desktop (mouse) auto-focuses the note so you can just type; on phones we DON'T,
+  // so opening the tab doesn't yank up the keyboard — you tap the box when ready.
+  const isDesktop = typeof window !== "undefined" && window.matchMedia?.("(hover:hover) and (pointer:fine)").matches;
   const journal = data.journal || {};
   const text = (journal[sel] && journal[sel].text) || "";
   const shift = (n) => { const d = new Date(sel+"T00:00"); d.setDate(d.getDate()+n); setSel(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`); };
@@ -2694,7 +2697,7 @@ function JournalTab({ data, setData }) {
         <button onClick={()=>shift(1)} disabled={sel>=todayStr()} style={{ background:T.input, color: sel>=todayStr()?T.line:T.ink, border:`1px solid ${T.line}`, borderRadius:10, padding:"7px 13px", fontSize:15 }}>›</button>
       </div>
 
-      <textarea autoFocus={sel===todayStr()} value={text} onChange={e=>setText(e.target.value)}
+      <textarea autoFocus={isDesktop && sel===todayStr()} value={text} onChange={e=>setText(e.target.value)}
         placeholder="How was the session? Soreness, energy, PRs, what to try next time…"
         rows={7} style={{ width:"100%", border:`1px solid ${T.line}`, borderRadius:12, padding:"14px 15px", background:T.input, color:T.ink, fontFamily:"inherit", fontSize:15.5, lineHeight:1.5, resize:"vertical" }} />
       <div style={{ fontSize:11.5, color:T.sub, marginTop:8, textAlign:"right" }}>{text.trim() ? "✓ Saved automatically" : "Saves as you type"}</div>
