@@ -1443,32 +1443,22 @@ function Dashboard({ data, exMap, setData, own = true }) {
 
   const chartOpts = useMemo(() => [...logged].sort((a, b) => a.localeCompare(b)), [logged]);
 
-  /* bodyweight (lb) logged on/before a date — the load we use to estimate a
-     bodyweight-exercise 1RM. Falls back to the nearest weigh-in if none is earlier. */
-  const bwLoadOn = (dstr) => {
-    const arr = data.bodyweight;
-    if (!arr?.length) return null;
-    const prior = arr.filter(b => b.date <= dstr);
-    const pick = (prior.length ? prior : arr).slice().sort((a,b)=>b.date.localeCompare(a.date))[0];
-    return pick ? pick.weight : null;
-  };
-
   const seriesFor = (exName) => {
     const ex = exMap[exName]; if (!ex) return [];
     const entries = data.log.filter(e => e.exercise===exName && !(e.effort==="Warm-up"));
     if (!entries.length) return [];
     const isBWex = ex.type==="Bodyweight";
-    /* bodyweight lifts can be viewed as total reps (volume) or est. 1RM (strength) */
-    const strength = isBWex && bwMode[exName]==="strength";
-    /* est. 1RM for one bodyweight set, in display units (reps as a fallback if never weighed in) */
-    const bw1rm = (e) => { const load = bwLoadOn(e.date); return load ? dispW(e1rm(load, e.reps), units) : e.reps; };
+    /* bodyweight lifts: "total" reps per day (volume) or "best" single set (strength/progress) */
+    const best = isBWex && bwMode[exName]==="best";
 
     /* 1D: the latest session set-by-set — one dot per set */
     if (range === "1D") {
       const lastDate = entries.reduce((a,b)=>a.date>b.date?a:b).date;
       const day = entries.filter(e=>e.date===lastDate).sort((a,b)=>(a.id||0)-(b.id||0));
-      if (isBWex && strength)
-        return day.map((e,i) => ({ date:lastDate, label:`Set ${e.set ?? i+1}`, value:Math.round(bw1rm(e)*10)/10, sub:`${e.reps} reps` }));
+      if (isBWex && best) {
+        let top = 0;
+        return day.map((e,i) => (top = Math.max(top, e.reps), { date:lastDate, label:`Set ${e.set ?? i+1}`, value:e.reps, sub:`${e.reps} reps${e.reps>=top?" · best so far":""}` }));
+      }
       if (isBWex) {
         let run = 0;
         return day.map((e,i) => (run += e.reps, { date:lastDate, label:`Set ${e.set ?? i+1}`, value:run, sub:`+${e.reps} reps (total ${run})` }));
@@ -1476,19 +1466,18 @@ function Dashboard({ data, exMap, setData, own = true }) {
       return day.map((e,i) => ({ date:lastDate, label:`Set ${e.set ?? i+1}`, value:dispW(e1rm(e.weight||0, e.reps), units), sub:`${dispW(e.weight,units)} ${uLabel(units)} × ${e.reps}` }));
     }
 
-    /* longer ranges: one point per day — total reps (volume) or best est. 1RM (strength) */
+    /* longer ranges: one point per day */
     const byDate = {};
     for (const e of entries) {
       const b = byDate[e.date] || (byDate[e.date] = { reps:0, sets:0, bestSet:0, best1rm:0 });
       b.sets++; b.reps += e.reps; b.bestSet = Math.max(b.bestSet, e.reps);
       if (!isBWex) b.best1rm = Math.max(b.best1rm, dispW(e1rm(e.weight||0, e.reps), units));
-      else if (strength) b.best1rm = Math.max(b.best1rm, bw1rm(e));
     }
     let pts = Object.entries(byDate).sort((a,b)=>a[0].localeCompare(b[0]))
       .map(([d,b])=>{
         const setTxt = `${b.sets} set${b.sets>1?"s":""}`;
-        if (isBWex && strength) return { date:d, label:fmtDate(d),
-          value: Math.round(b.best1rm*10)/10, sub: `${setTxt} · best set ${b.bestSet} reps` };
+        if (isBWex && best) return { date:d, label:fmtDate(d),
+          value: b.bestSet, sub: `${setTxt} · ${b.reps} total reps` };
         if (isBWex) return { date:d, label:fmtDate(d),
           value: b.reps, sub: `${setTxt} · best set ${b.bestSet} reps` };
         return { date:d, label:fmtDate(d),
@@ -1563,7 +1552,7 @@ function Dashboard({ data, exMap, setData, own = true }) {
       const daySets = lastDate ? sess.filter(e=>e.date===lastDate) : [];
       const dayReps = daySets.reduce((s,e)=>s+e.reps, 0);
       const isBW = exMap[p]?.type==="Bodyweight";
-      const strengthMode = isBW && bwMode[p]==="strength";
+      const bestMode = isBW && bwMode[p]==="best";
       return (
       <div className="card" key={p}>
         <div style={{display:"flex", gap:8, alignItems:"center", marginBottom:6}}>
@@ -1592,14 +1581,14 @@ function Dashboard({ data, exMap, setData, own = true }) {
           <div style={{fontSize:11.5, color:T.sub, fontStyle:"italic"}}>
             {range==="1D" ? "Latest session, set by set — tap a dot for the details"
               : !isBW ? `Tracked by est. 1RM (${uLabel(units)})`
-              : strengthMode ? `Strength — est. 1RM (${uLabel(units)})` : "Volume — total reps per day"}
+              : bestMode ? "Best set — top reps in a single set" : "Volume — total reps per day"}
           </div>
           {isBW && (
             <div style={{display:"inline-flex", flexShrink:0, background:T.input, border:`1px solid ${T.line}`, borderRadius:99, padding:2}}>
-              {[["reps","Reps"],["strength","1RM"]].map(([m,lbl])=>{
-                const on = (bwMode[p]||"reps")===m;
+              {[["total","Total"],["best","Best"]].map(([m,lbl])=>{
+                const on = (bwMode[p]||"total")===m;
                 return (
-                  <button key={m} onClick={()=>setBwMode(s=>({...s,[p]:m}))} title={m==="reps"?"Total reps per day (volume)":"Estimated 1-rep-max (strength)"} style={{
+                  <button key={m} onClick={()=>setBwMode(s=>({...s,[p]:m}))} title={m==="total"?"Total reps per day (volume)":"Your best single set (are your top sets going up?)"} style={{
                     padding:"4px 12px", fontSize:11.5, fontWeight:700, borderRadius:99, border:"none", cursor:"pointer",
                     background: on ? T.green : "transparent", color: on ? "#fff" : T.sub, transition:"background .15s, color .15s",
                   }}>{lbl}</button>
@@ -1609,7 +1598,7 @@ function Dashboard({ data, exMap, setData, own = true }) {
           )}
         </div>
         {pts.length
-          ? <Suspense fallback={<ChartFallback h={210} />}><TrendChart pts={pts} dots={range==="1D"} unit={!isBW || strengthMode ? " "+uLabel(units) : " reps"} /></Suspense>
+          ? <Suspense fallback={<ChartFallback h={210} />}><TrendChart pts={pts} dots={range==="1D"} unit={isBW ? " reps" : " "+uLabel(units)} /></Suspense>
           : <div style={{color:T.sub, fontSize:14, padding:"28px 0", textAlign:"center"}}>No sessions logged for this lift yet.</div>}
       </div>
       );
