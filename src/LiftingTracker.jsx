@@ -7,6 +7,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { MacroTab, GroupMacrosCard, MacroCalendar } from "./Nutrition.jsx";
 
 import { T, tipStyle } from "./theme.js";
+import LoadingScreen from "./LoadingScreen.jsx";
 export { T, tipStyle }; // re-export so older imports keep working
 
 /* Charts load on demand so the gym-critical tabs (Log etc.) start fast. */
@@ -326,7 +327,7 @@ export default function LiftingTracker({ user }) {
     </div>
   );
 
-  if (!loaded) return <div style={{fontFamily:"system-ui",padding:40,color:T.sub}}>Loading your tracker…</div>;
+  if (!loaded) return <LoadingScreen />;
 
   // order chosen so the phone bottom bar reads as two clean rows of four:
   //   row 1: Dash · Log · Records · Library     row 2: Macros · Groups · Cardio · Body

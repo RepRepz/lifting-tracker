@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "./lib/storage.js";
 import AuthScreen from "./AuthScreen.jsx";
 import LiftingTracker from "./LiftingTracker.jsx";
+import LoadingScreen from "./LoadingScreen.jsx";
 
 export default function App() {
   // undefined = still checking for a saved session; null = signed out
@@ -14,7 +15,7 @@ export default function App() {
   }, []);
 
   if (session === undefined) {
-    return <div style={{ fontFamily: "system-ui", padding: 40, color: "#95A8A5" }}>Loading…</div>;
+    return <LoadingScreen />;
   }
   if (!session) return <AuthScreen />;
   // key forces a clean remount (fresh data load) when a different user signs in
