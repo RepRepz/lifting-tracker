@@ -222,9 +222,11 @@ export default function LiftingTracker({ user }) {
   useEffect(() => { localStorage.setItem("lt-last-tab", tab); }, [tab]);
   const [showSettings, setShowSettings] = useState(false);
   const [navHidden, setNavHidden] = useState(false); // bottom bar slides away on scroll-down
+  const nudging = useRef(false); // true while the launch viewport-nudge runs (below) — ignore its scrolls
   useEffect(() => {
     let last = window.scrollY;
     const onScroll = () => {
+      if (nudging.current) return;                             // ignore the automated launch nudge
       const y = window.scrollY;
       if (y < 12) { setNavHidden(false); last = y; return; }   // always show near the top
       const dy = y - last;
@@ -234,6 +236,29 @@ export default function LiftingTracker({ user }) {
     };
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  /* iOS installed-app (standalone) cold-launch fix.
+     When the app opens STRAIGHT onto a short, non-scrolling tab (e.g. Groups), iOS
+     anchors the fixed bottom bar to a viewport height that hasn't settled yet, leaving
+     a phantom empty row until you swipe. Opening on any other tab first avoids it because
+     rendering/scrolling settles the viewport. So on launch we reproduce that swipe once,
+     automatically: make the page briefly scrollable, nudge-scroll, then restore — which
+     forces WebKit to recompute the viewport before the glitch is ever visible. */
+  useEffect(() => {
+    const standalone = window.matchMedia?.("(display-mode: standalone)").matches || window.navigator.standalone === true;
+    if (!standalone) return;
+    nudging.current = true;
+    const spacer = document.createElement("div");
+    Object.assign(spacer.style, { position:"absolute", top:"0", left:"0", width:"1px", height:"150vh", opacity:"0", pointerEvents:"none", zIndex:"-1" });
+    document.body.appendChild(spacer);
+    const t1 = setTimeout(() => { window.scrollTo(0, 60); }, 50);          // "swipe down"
+    const t2 = setTimeout(() => {                                           // "swipe back up"
+      window.scrollTo(0, 0);
+      spacer.remove();
+      nudging.current = false;
+    }, 240);
+    return () => { clearTimeout(t1); clearTimeout(t2); if (spacer.parentNode) spacer.remove(); nudging.current = false; };
   }, []);
   const [units, setUnits] = useState(() => localStorage.getItem("lt-units") || "lb");
   const [hunit, setHunit] = useState(() => localStorage.getItem("lt-hunit") || "ftin"); // height: "ftin" | "cm"
