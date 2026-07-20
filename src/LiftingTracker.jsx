@@ -14,7 +14,7 @@ export { T, tipStyle }; // re-export so older imports keep working
 const TrendChart = lazy(() => import("./charts.jsx").then(m => ({ default: m.TrendChart })));
 const BodyChart = lazy(() => import("./charts.jsx").then(m => ({ default: m.BodyChart })));
 const MusclePie = lazy(() => import("./charts.jsx").then(m => ({ default: m.MusclePie })));
-const ChartFallback = ({ h }) => <div style={{ height: h, display:"flex", alignItems:"center", justifyContent:"center", color:T.sub, fontSize:13 }}>loading chart…</div>;
+const ChartFallback = ({ h }) => <div className="skeleton" style={{ height: h, borderRadius:12 }} />;
 
 /* ---------- seed exercise library ----------
    Each entry: [name, [primary muscles — full credit], [secondary muscles — half credit]]
@@ -374,39 +374,49 @@ export default function LiftingTracker({ user }) {
         input,select,button { font-family:inherit; font-size:16px; }
         input,select,button { touch-action:manipulation; }
         button { -webkit-touch-callout:none; user-select:none; }
-        input,select { border:1px solid ${T.line}; border-radius:10px; padding:9px 10px; background:${T.input}; color:${T.ink}; width:100%; transition:border-color .15s ease; min-height:44px; -webkit-appearance:none; appearance:none; }
+        input,select,textarea { border:1px solid ${T.line}; border-radius:10px; padding:9px 10px; background:${T.input}; color:${T.ink}; width:100%; transition:border-color .18s ease, box-shadow .22s ease; min-height:44px; -webkit-appearance:none; appearance:none; }
         select { background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%238C8F90' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position:right 12px center; padding-right:32px; }
         input[type=date] { min-width:0; }
         input[type=date]::-webkit-date-and-time-value { text-align:left; }
-        input::placeholder { color:${T.sub}; opacity:.75; }
-        input:focus,select:focus { outline:2px solid ${T.green}; outline-offset:0; border-color:${T.green}; }
-        button { cursor:pointer; border:none; border-radius:24px; transition:transform .08s ease, background-color .15s ease, color .15s ease, border-color .15s ease, opacity .15s ease; }
-        button:active { transform:scale(.96); }
+        input::placeholder,textarea::placeholder { color:${T.sub}; opacity:.75; }
+        /* soft green focus glow instead of a hard outline jump */
+        input:focus,select:focus,textarea:focus { outline:none; border-color:${T.green}; box-shadow:0 0 0 3px rgba(0,200,5,.18); }
+        button { cursor:pointer; border:none; border-radius:24px; transition:transform .14s cubic-bezier(.34,1.56,.64,1), background-color .18s ease, color .18s ease, border-color .18s ease, opacity .18s ease, box-shadow .18s ease, filter .18s ease; }
+        button:active { transform:scale(.95); }
+        @media(hover:hover){ button:hover:not(:disabled){ filter:brightness(1.08); } }
         table { border-collapse:collapse; width:100%; } td,th { padding:9px 10px; text-align:left; font-size:13.5px; }
         th { background:none; color:${T.sub}; font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.8px; white-space:nowrap; border-bottom:1px solid ${T.line}; }
         td { border-bottom:1px solid ${T.line}; }
-        .card { background:${T.card}; border:1px solid ${T.line}; border-radius:14px; padding:16px; margin-bottom:14px; animation:rise .22s ease-out both; }
+        .card { background:${T.card}; border:1px solid ${T.line}; border-radius:14px; padding:16px; margin-bottom:14px; animation:rise .34s cubic-bezier(.22,1,.36,1) both; }
         .recharts-text { fill:${T.sub}; }
         .h { font-weight:800; letter-spacing:.2px; }
-        @keyframes rise { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
+        @keyframes rise { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:none; } }
         @keyframes pop { 0% { transform:scale(.6); opacity:0; } 70% { transform:scale(1.06); opacity:1; } 100% { transform:scale(1); opacity:1; } }
         @keyframes grow { from { transform:scaleY(0); } }
         .vbar { transform-origin:bottom; animation:grow .5s ease-out both; }
         .chip { animation:pop .25s ease-out both; }
         .chip { display:inline-block; padding:2px 10px; border-radius:99px; font-size:12px; font-weight:600; }
-        @keyframes fadeSwap { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:none; } }
+        @keyframes fadeSwap { from { opacity:0; transform:translateY(8px) scale(.994); } to { opacity:1; transform:none; } }
         @keyframes sheetUp { from { transform:translateY(100%); } to { transform:none; } }
-        .tabview { animation:fadeSwap .2s ease-out both; }
+        .tabview { animation:fadeSwap .28s cubic-bezier(.22,1,.36,1) both; }
         /* staggered card entrance — transform/opacity only, one-shot, GPU-cheap */
         .tabview > .card:nth-child(2) { animation-delay:.05s; }
         .tabview > .card:nth-child(3) { animation-delay:.10s; }
         .tabview > .card:nth-child(4) { animation-delay:.15s; }
         .tabview > .card:nth-child(5) { animation-delay:.20s; }
         .tabview > .card:nth-child(n+6) { animation-delay:.24s; }
-        @media(hover:hover){ .card { transition:border-color .2s ease; } .card:hover { border-color:#2E3234; } }
+        /* desktop depth: cards lift slightly and cast a soft shadow on hover */
+        @media(hover:hover){ .card { transition:border-color .2s ease, transform .2s ease, box-shadow .2s ease; } .card:hover { border-color:#2E3234; transform:translateY(-2px); box-shadow:0 8px 24px rgba(0,0,0,.28); } }
         .navicon { transition:transform .2s cubic-bezier(.34,1.56,.64,1); font-size:19px; }
         .navicon.on { transform:translateY(-1px) scale(1.16); }
         @media(prefers-reduced-motion:reduce){ *{transition:none!important;animation:none!important} }
+
+        /* ---- shimmering skeleton for loading states ---- */
+        .skeleton { position:relative; overflow:hidden; background:${T.input}; }
+        .skeleton::after { content:""; position:absolute; inset:0; transform:translateX(-100%);
+          background:linear-gradient(90deg, transparent, rgba(255,255,255,.06) 45%, rgba(0,200,5,.10) 50%, rgba(255,255,255,.06) 55%, transparent);
+          animation:shimmer 1.35s ease-in-out infinite; }
+        @keyframes shimmer { 100% { transform:translateX(100%); } }
 
         /* ---- weigh-in note: expand/collapse ---- */
         .note-reveal { animation:noteIn .32s cubic-bezier(.22,1,.36,1); overflow:hidden; }
@@ -449,12 +459,12 @@ export default function LiftingTracker({ user }) {
           display:flex; flex-direction:column; align-items:center; gap:2px; min-width:0;
           padding:7px 0 6px; border:none; border-radius:12px; background:transparent;
           color:${T.sub}; font-weight:500; font-size:10px; cursor:pointer;
-          transition:background .2s ease, color .2s ease;
+          transition:background .22s ease, color .22s ease, transform .16s cubic-bezier(.34,1.56,.64,1);
         }
         .navbtn .navlbl { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
         .navbtn.on { background:rgba(0,200,5,.12); color:${T.green}; font-weight:700; }
         @media(hover:hover){ .navbtn:hover:not(.on){ background:rgba(255,255,255,.05); color:${T.ink}; } }
-        .navbtn:active { transform:scale(.94); }
+        .navbtn:active { transform:scale(.9); }
         .app-main { max-width:860px; margin:0 auto; padding:16px 14px; }
         .app-root { padding-bottom:calc(124px + min(env(safe-area-inset-bottom), 34px)); }
         /* floating "back" on member profiles — above the bottom nav on phones */
@@ -3387,7 +3397,14 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
       </div>
 
       {err && <div className="card" style={{color:T.danger, fontSize:13.5}}>{err}</div>}
-      {!members && <div className="card" style={{color:T.sub}}>Loading group…</div>}
+      {!members && (
+        <div className="card">
+          <div className="skeleton" style={{height:16, width:"45%", borderRadius:6, marginBottom:12}} />
+          <div className="skeleton" style={{height:52, borderRadius:10, marginBottom:9}} />
+          <div className="skeleton" style={{height:52, borderRadius:10, marginBottom:9}} />
+          <div className="skeleton" style={{height:52, borderRadius:10}} />
+        </div>
+      )}
 
       {members && (<>
         {nutritionOn && <GroupMacrosCard members={members} states={states} myId={user.id} streaksOn={streaksOn} />}
@@ -3548,7 +3565,12 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
       <div style={{fontSize:12.5, color:T.sub, marginBottom:10}}>
         Make a group, send friends the invite code, and see each other's workouts, PRs, and a friendly weekly race.
       </div>
-      {groups === null && <div style={{color:T.sub}}>Loading…</div>}
+      {groups === null && (
+        <div style={{display:"flex", flexDirection:"column", gap:9}}>
+          <div className="skeleton" style={{height:64, borderRadius:12}} />
+          <div className="skeleton" style={{height:64, borderRadius:12}} />
+        </div>
+      )}
       {groups !== null && !groups.length && <div style={{color:T.sub, fontSize:14, marginBottom:4}}>You're not in a group yet — create one below or join with a friend's code.</div>}
       {groups?.map(g=>{
         const mem = previews[g.id];
