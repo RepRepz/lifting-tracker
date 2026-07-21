@@ -3350,9 +3350,15 @@ const STEP_BLUE = "#4C9BFF", STEP_BLUEBG = "rgba(76,155,255,.16)";
 function Tap({ children }) {
   return <span style={{ display:"inline-block", color:STEP_BLUE, background:STEP_BLUEBG, borderRadius:6, padding:"1px 7px", fontWeight:700, whiteSpace:"nowrap" }}>{children}</span>;
 }
-/* a Shortcuts "magic variable" pill */
-function Var({ children }) {
-  return <span style={{ display:"inline-flex", alignItems:"center", gap:4, color:"#fff", background:STEP_BLUE, borderRadius:6, padding:"1px 7px 1px 6px", fontWeight:700, fontSize:12.5, whiteSpace:"nowrap" }}><span style={{ fontSize:9, opacity:.85 }}>◈</span>{children}</span>;
+/* a Shortcuts "magic variable" chip — blue text on a blue tint with a small app-icon
+   square, matching how variables actually render in the Shortcuts editor. */
+function Var({ children, icon, iconBg }) {
+  return (
+    <span style={{ display:"inline-flex", alignItems:"center", gap:5, color:STEP_BLUE, background:"rgba(76,155,255,.18)", borderRadius:6, padding:"2px 8px 2px 4px", fontWeight:700, fontSize:12.5, whiteSpace:"nowrap" }}>
+      <span style={{ width:16, height:16, borderRadius:4, flexShrink:0, background:iconBg || "#3B7BEF", display:"inline-flex", alignItems:"center", justifyContent:"center", fontSize:9.5, lineHeight:1 }}>{icon || "◈"}</span>
+      {children}
+    </span>
+  );
 }
 /* a mock of one action block as it appears on the phone */
 function MockCard({ glyph, glyphBg, title, rows }) {
@@ -3537,7 +3543,7 @@ function StepsCard({ user }) {
 
         <StepBlock n="1" title="Adjust Date  (get yesterday)">
           <SearchBar text="Adjust Date" />
-          <MockCard glyph="📅" glyphBg="#FF9500" title={<><Tap>Subtract</Tap> <Tap>1</Tap> <Tap>Day</Tap> from <Var>Current Date</Var></>} />
+          <MockCard glyph="🗓" glyphBg="#E64637" title={<><Tap>Subtract</Tap> <Tap>1</Tap> <Tap>day</Tap> from <Var icon="📅" iconBg="#3B7BEF">Current Date</Var></>} />
           <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55, marginBottom:9 }}>
             You've already got <b>Subtract</b>, <b>1</b>, and <b>Day</b> (the blue words). The last empty slot — the
             <b> “from ___”</b> part — is the date. <b style={{ color:T.ink }}>Tap it and pick <span style={{ color:STEP_BLUE }}>Current Date</span>.</b>
@@ -3553,17 +3559,26 @@ function StepsCard({ user }) {
           <SearchBar text="Find Health Samples" />
           {/* mock: the action with its two filter rows (Start Date is on yesterday) */}
           <div style={{ background:T.cardAlt, border:`1px solid ${STEP_BLUE}`, borderRadius:12, padding:"12px", margin:"0 0 10px" }}>
-            <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-              <span style={{ width:29, height:29, borderRadius:8, flexShrink:0, background:"#FF2D55", display:"flex", alignItems:"center", justifyContent:"center", fontSize:15 }}>❤️</span>
-              <span style={{ fontSize:14.5, fontWeight:700, color:T.ink }}>Find All <Tap>Health Samples</Tap></span>
+            <div style={{ display:"flex", alignItems:"flex-start", gap:10 }}>
+              <span style={{ width:29, height:29, borderRadius:8, flexShrink:0, background:"#fff", display:"flex", alignItems:"center", justifyContent:"center", fontSize:15 }}>❤️</span>
+              <span style={{ fontSize:14, fontWeight:600, color:T.ink, lineHeight:1.5 }}>Find <Tap>Health Samples</Tap> where <Tap>All</Tap> of the following are true</span>
             </div>
-            <div style={{ marginTop:11, borderTop:`1px solid ${T.line}`, paddingTop:11 }}>
-              <div style={{ fontSize:11, fontWeight:700, color:T.sub, textTransform:"uppercase", letterSpacing:.5, marginBottom:9 }}>where — set these two filter rows:</div>
-              <div style={{ display:"flex", gap:7, alignItems:"center", background:T.input, borderRadius:9, padding:"9px 11px", marginBottom:8 }}>
-                <Tap>Type</Tap><span style={{ color:T.sub, fontSize:13 }}>is</span><Tap>Steps</Tap>
+            <div style={{ marginTop:11, borderTop:`1px solid ${T.line}`, paddingTop:10 }}>
+              <div style={{ display:"flex", gap:7, alignItems:"center", flexWrap:"wrap", paddingBottom:10 }}>
+                <span style={{ color:T.ink, fontSize:14, fontWeight:600 }}>Type</span><Tap>is</Tap><Tap>Steps</Tap>
               </div>
-              <div style={{ display:"flex", gap:7, alignItems:"center", flexWrap:"wrap", background:T.input, borderRadius:9, padding:"9px 11px" }}>
-                <Tap>Start Date</Tap><span style={{ color:T.sub, fontSize:13 }}>is on</span><Var>Adjusted Date</Var>
+              <div style={{ display:"flex", gap:7, alignItems:"center", flexWrap:"wrap", padding:"10px 0", borderTop:`1px solid ${T.line}` }}>
+                <span style={{ color:T.ink, fontSize:14, fontWeight:600 }}>Start Date</span><Tap>is on</Tap><Var icon="🗓" iconBg="#E64637">Adjusted Date</Var>
+              </div>
+              <div style={{ display:"flex", alignItems:"center", gap:6, borderTop:`1px solid ${T.line}`, padding:"10px 0", color:STEP_BLUE, fontSize:13.5, fontWeight:600 }}><span style={{ fontSize:16 }}>⊕</span> Add Filter</div>
+              {[["Unit","count"],["Group by","None"],["Sort by","None"]].map(([k,v])=>(
+                <div key={k} style={{ display:"flex", justifyContent:"space-between", borderTop:`1px solid ${T.line}`, padding:"10px 0", fontSize:14 }}>
+                  <span style={{ color:T.ink }}>{k}</span><span style={{ color:STEP_BLUE, fontWeight:600 }}>{v}</span>
+                </div>
+              ))}
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", borderTop:`1px solid ${T.line}`, paddingTop:10, fontSize:14 }}>
+                <span style={{ color:T.ink }}>Limit</span>
+                <span style={{ width:34, height:20, borderRadius:99, background:T.line, position:"relative", flexShrink:0 }}><span style={{ position:"absolute", top:2, left:2, width:16, height:16, borderRadius:99, background:"#fff" }} /></span>
               </div>
             </div>
           </div>
@@ -3584,7 +3599,7 @@ function StepsCard({ user }) {
 
         <StepBlock n="3" title="Calculate Statistics">
           <SearchBar text="Calculate Statistics" />
-          <MockCard glyph="📊" glyphBg={STEP_BLUE} title={<>Calculate the <Tap>Sum</Tap> of <Var>Health Samples</Var></>} />
+          <MockCard glyph="📊" glyphBg="#8E8E93" title={<>Calculate the <Tap>Sum</Tap> of <Var icon="❤️" iconBg="#fff">Health Samples</Var></>} />
           <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55, marginBottom:9 }}>It starts as “<b>Average</b> of <b>Input</b>.” Tap <b>Average</b> → pick <b>Sum</b>. Tap <b>Input</b> → pick <b>Health Samples</b>. That adds all of yesterday's steps into one number.</div>
           <div style={{ display:"flex", gap:9, alignItems:"flex-start", background:"rgba(76,155,255,.10)", border:`1px solid ${STEP_BLUE}`, borderRadius:10, padding:"10px 12px", fontSize:11.5, color:T.sub, lineHeight:1.55 }}>
             <span style={{ flexShrink:0 }}>⚠️</span>
@@ -3596,11 +3611,20 @@ function StepsCard({ user }) {
 
         <StepBlock n="4" title="Format Date">
           <SearchBar text="Format Date" />
-          <MockCard glyph="📅" glyphBg="#FF9500" title={<>Format <Var>Adjusted Date</Var></>}
-            rows={[["Date Format", <Tap key="a">Custom</Tap>]]} />
+          <MockCard glyph="🗓" glyphBg="#E64637" title={<>Format <Var icon="🗓" iconBg="#E64637">Adjusted Date</Var></>}
+            rows={[
+              ["Date Format", <span key="a" style={{ color:STEP_BLUE, fontWeight:600 }}>Custom</span>],
+              ["Format String", <code key="b" style={{ fontFamily:"ui-monospace, Menlo, monospace", color:T.ink }}>yyyy-MM-dd</code>],
+              ["Locale", <span key="c" style={{ color:STEP_BLUE, fontWeight:600 }}>Default</span>],
+            ]} />
+          <div style={{ display:"flex", gap:9, alignItems:"flex-start", background:"rgba(255,80,0,.10)", border:`1px solid ${T.danger}`, borderRadius:10, padding:"10px 12px", fontSize:11.5, color:T.sub, lineHeight:1.55, marginBottom:9 }}>
+            <span style={{ flexShrink:0, fontSize:14 }}>⚠️</span>
+            <span><b style={{ color:T.ink }}>#1 mistake:</b> the date here must say <b style={{ color:STEP_BLUE }}>Adjusted Date</b> — not a greyed-out <b>“Date”</b>. If it's greyed,
+              <b style={{ color:T.ink }}> tap it and pick Adjusted Date</b>, or your steps won't save.</span>
+          </div>
           <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55, marginBottom:8 }}>
-            Tap the date slot → pick <b style={{ color:STEP_BLUE }}>Adjusted Date</b> (the yesterday from step 1 — <b>not</b> Current Date).
-            Tap <b>Short</b> next to Date Format → pick <b>Custom</b>. A <b>Format String</b> box appears — tap <b>Copy</b> below and paste it in there:
+            Tap the date slot → pick <b style={{ color:STEP_BLUE }}>Adjusted Date</b>. Tap <b>Short</b> next to Date Format → pick <b>Custom</b>.
+            A <b>Format String</b> box appears — tap <b>Copy</b> below and paste it in there:
           </div>
           <Copy label="Paste into the Format String box" value="yyyy-MM-dd" id="fmt" />
         </StepBlock>
@@ -3657,10 +3681,10 @@ function StepsCard({ user }) {
                 <span style={{ padding:"5px 12px", borderRadius:6, fontSize:12.5, fontWeight:700, color:T.sub }}>File</span>
               </div>
               <JField type="Text" name="p_token" nameId="k-tok" valueCopy={token} valueId="tok" secret valueNote="🔒 Don’t share this with anyone" />
-              <JField type="Text" name="p_day" nameId="k-day" valuePick={<>Tap this Value box. A row of blue variables pops up <b>just above the keyboard</b> — tap <b>Formatted Date</b> there (the result from step 4).</>} />
-              <JField type="Number" name="p_count" nameId="k-cnt" valuePick={<>Tap this Value box. In the variable bar <b>above the keyboard</b>, find <b>Sum</b> and tap it — that's the result of your “Calculate the Sum of Health Samples” action (step 3).</>} />
+              <JField type="Text" name="p_day" nameId="k-day" valuePick={<>Tap this Value box. In the bar <b>above the keyboard</b>, tap <b>Formatted Date</b> (from step 4). When it's set it looks like this: <span style={{ display:"inline-block", verticalAlign:"middle" }}><Var icon="📅" iconBg="#3B7BEF">Formatted Date</Var></span></>} />
+              <JField type="Number" name="p_count" nameId="k-cnt" valuePick={<>Tap this Value box. In the same bar <b>above the keyboard</b>, tap <b>Sum</b> (from step 3). When it's set it looks like this: <span style={{ display:"inline-block", verticalAlign:"middle" }}><Var icon="📊" iconBg="#8E8E93">Sum</Var></span></>} />
               <div style={{ fontSize:10.5, color:T.sub, marginTop:2, lineHeight:1.5 }}>
-                Only <b style={{ color:T.ink }}>p_token</b>’s value is copied. For <b>p_day</b> and <b>p_count</b> the value is a blue variable you <b>pick</b>, not type.
+                Only <b style={{ color:T.ink }}>p_token</b>’s value is copied. For <b>p_day</b> and <b>p_count</b> the value is a blue variable you <b>pick</b>, not type — they should end up looking exactly like the chips above.
               </div>
             </div>
           </div>
