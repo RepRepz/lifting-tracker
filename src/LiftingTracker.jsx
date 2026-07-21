@@ -57,13 +57,13 @@ const SEED_EXERCISES = [
   ["Kettlebell Swing",["Legs"],["Back"]],["Standing Calf Raise",["Legs"]],["Seated Calf Raise",["Legs"]],
   // abs / full body
   ["Plank",["Abs"]],["Hanging Leg Raise",["Abs"]],["Cable Crunch",["Abs"]],["Ab Wheel",["Abs"]],
-  ["Sit-Up",["Abs"]],["Crunch",["Abs"]],["Russian Twist",["Abs"]],["Mountain Climber",["Abs"]],
+  ["Sit-Up",["Abs"]],["Crunch",["Abs"]],["Decline Ab Crunch",["Abs"]],["Russian Twist",["Abs"]],["Mountain Climber",["Abs"]],
   ["Farmer's Carry",["Back"],["Abs"]],
 ];
 const BW_SET = new Set([
   "Pull-Up","Chin-Up","Dips","Triceps Dip","Inverted Row","Back Extension","Bodyweight Squat","Glute Bridge",
   "Push-Up","Wide Push-Up","Diamond Push-Up","Incline Push-Up","Decline Push-Up","Pike Push-Up","Archer Push-Up","Clap Push-Up","One-Arm Push-Up",
-  "Plank","Hanging Leg Raise","Ab Wheel","Sit-Up","Crunch","Russian Twist","Mountain Climber",
+  "Plank","Hanging Leg Raise","Ab Wheel","Sit-Up","Crunch","Decline Ab Crunch","Russian Twist","Mountain Climber",
 ]);
 /* Which seed moves load plates on a straight bar — drives the plate calculator. */
 const BARBELL_SEED = new Set([
@@ -101,12 +101,38 @@ const INTENSITY_FEEL = {
 };
 
 /* ---------- helpers ---------- */
+/* Time zone: "auto" follows this device's clock; a Settings pick overrides it.
+   Assigned from profile.tz on every render of the main component. */
+let APP_TZ = "auto";
+const detectedTZ = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return "UTC"; } };
+/* Current date + hour in the chosen zone (en-CA formats as YYYY-MM-DD). */
+const nowInfo = () => {
+  if (APP_TZ !== "auto") {
+    try {
+      const parts = new Intl.DateTimeFormat("en-CA", { timeZone: APP_TZ, year:"numeric", month:"2-digit", day:"2-digit", hour:"2-digit", hourCycle:"h23" }).formatToParts(new Date());
+      const g = (t) => parts.find(p => p.type === t)?.value;
+      return { date: `${g("year")}-${g("month")}-${g("day")}`, hour: +g("hour") };
+    } catch {}
+  }
+  const d = new Date();
+  return { date: `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`, hour: d.getHours() };
+};
 /* LOCAL date, not UTC — toISOString() would roll to tomorrow in the evening (US time) */
-const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
-// "Gym day": a late-night session (logged before 4 AM) still counts as the previous
-// calendar day by default, so lifting past midnight doesn't jump the date forward.
-// Only used to prefill the set form — everything else stays on the real calendar date.
-const gymDayStr = () => { const d = new Date(); if (d.getHours() < 4) d.setDate(d.getDate() - 1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
+const todayStr = () => nowInfo().date;
+// "Gym day": between midnight and 4 AM we decide from the log whether you're STILL in
+// yesterday's session (a set logged within the last 3 hours → keep yesterday's date) or
+// starting fresh after waking up (nothing recent → it's already the new day). Only used
+// to prefill the set form — the 🌙 hint shows the pick and one tap on the date changes it.
+const gymDayStr = (log) => {
+  const { date, hour } = nowInfo();
+  if (hour >= 4) return date;
+  let lastTs = 0;
+  const CAP = 4102444800000; // ids are Date.now() at logging; ignore absurd/future ones
+  if (Array.isArray(log)) for (const e of log) { const t = Number(e?.id); if (t > lastTs && t < CAP) lastTs = t; }
+  if (!lastTs || Date.now() - lastTs > 3 * 3600e3) return date; // fresh early-morning session
+  const d = new Date(date + "T00:00"); d.setDate(d.getDate() - 1);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+};
 const e1rm = (w, r) => w * (1 + r / 30);
 const fmtDate = (s) => { const d = new Date(s + "T00:00"); return `${d.getMonth()+1}/${d.getDate()}/${String(d.getFullYear()).slice(2)}`; };
 const monthKey = (s) => s.slice(0, 7);
@@ -163,13 +189,13 @@ const defaultData = {
   journal: {}, // { "YYYY-MM-DD": { mood, sleep, text } } — daily notes
   profile: {}, // heightIn (inches) lives here once set
   pins: [],    // pinned dashboard charts (exercise names)
-  libraryV: 7, // bumped when the seed library changes, so existing users get the update once
+  libraryV: 8, // bumped when the seed library changes, so existing users get the update once
 };
 
 /* One-time upgrade of previously saved data: pull in newly added seed exercises and
    the current primary/secondary muscle lists — custom moves pass through untouched.
    Runs only when libraryV is behind, so later deletions stay deleted. */
-function migrateData(d) {
+function migrateData(d, uname) {
   // pins used to live in this device's localStorage — carry them into account data once
   if (!Array.isArray(d.pins)) {
     let p = [];
@@ -190,8 +216,16 @@ function migrateData(d) {
   // "Single-Arm Cable Side Raise" — rename its log entries and drop the old library entry.
   const norm = (s) => (s || "").toLowerCase().replace(/-/g, " ").replace(/\s+/g, " ").trim();
   const isOldSideRaise = (name) => { const n = norm(name); return n.includes("low to high") && n.includes("side raise"); };
-  const log = (d.log || []).map(e => isOldSideRaise(e.exercise) ? { ...e, exercise: "Single-Arm Cable Side Raise" } : e);
+  let log = (d.log || []).map(e => isOldSideRaise(e.exercise) ? { ...e, exercise: "Single-Arm Cable Side Raise" } : e);
   const cleanedExercises = exercises.filter(x => !isOldSideRaise(x.name));
+  // one-off: dimi's 7/20 decline ab session, logged for him by request (runs once — the
+  // libraryV gate above plus this duplicate check keep it from ever doubling up)
+  if (uname === "dimi" && !log.some(e => e.exercise === "Decline Ab Crunch" && e.date === "2026-07-20")) {
+    const base = new Date("2026-07-20T12:00").getTime();
+    const note = "Kept my upper back off the bench the whole set — abs under constant tension, really activated.";
+    log = [...log, ...[1, 2, 3].map(n => ({ id: base + n, date: "2026-07-20", exercise: "Decline Ab Crunch",
+      set: n, weight: null, reps: 8, effort: "To failure", notes: n === 1 ? note : "" }))];
+  }
   return { ...d, log, exercises: cleanedExercises, cardioActivities, libraryV: defaultData.libraryV };
 }
 
@@ -295,19 +329,21 @@ export default function LiftingTracker({ user }) {
   useEffect(() => { dataRef.current = data; }, [data]);
 
   const username = user.user_metadata?.username || "you";
+  const unameLower = (user.user_metadata?.username || "").toLowerCase();
   const cacheKey = `lt-cache-${user.id}`;
   const pendKey = `lt-pending-${user.id}`;
+  APP_TZ = data.profile?.tz || "auto"; // date helpers everywhere follow the Settings pick
 
   useEffect(() => { (async () => {
     const cachedRaw = localStorage.getItem(cacheKey);
     // Unsynced offline edits from a previous session win (accepted trade-off)
     if (localStorage.getItem(pendKey) === "1" && cachedRaw) {
-      try { setData({ ...defaultData, ...migrateData(JSON.parse(cachedRaw)) }); setLoaded(true); return; } catch {}
+      try { setData({ ...defaultData, ...migrateData(JSON.parse(cachedRaw), unameLower) }); setLoaded(true); return; } catch {}
     }
     try {
       const v = await loadUserState(user.id);
       if (v) {
-        setData({ ...defaultData, ...migrateData(v) });
+        setData({ ...defaultData, ...migrateData(v, unameLower) });
         localStorage.setItem(cacheKey, JSON.stringify(v));
         setLoaded(true); return;
       }
@@ -316,13 +352,37 @@ export default function LiftingTracker({ user }) {
       console.error("load failed", e);
       if (cachedRaw) {
         // no signal, but we have this device's last copy — keep going offline
-        try { setData({ ...defaultData, ...migrateData(JSON.parse(cachedRaw)) }); setSyncState("offline"); setLoaded(true); return; } catch {}
+        try { setData({ ...defaultData, ...migrateData(JSON.parse(cachedRaw), unameLower) }); setSyncState("offline"); setLoaded(true); return; } catch {}
       }
       setLoadFailed(true);
     }
   })(); }, [user.id]);
 
+  // Big-delete guard: if one change would wipe out a big chunk of the data (a bug or a
+  // fat-fingered mass delete), saving pauses and a modal asks first. One-at-a-time
+  // deletes never come close to triggering it.
+  const [shrinkWarn, setShrinkWarn] = useState(null); // { prev, next } while a save is held
+  const allowShrink = useRef(false);
+  const entryCount = (d) => (d.log||[]).length + (d.bodyweight||[]).length + (d.cardio||[]).length;
   useEffect(() => { if (!loaded) return;
+    let prevN = null;
+    try { const raw = localStorage.getItem(cacheKey); if (raw) prevN = entryCount(JSON.parse(raw)); } catch {}
+    const nextN = entryCount(data);
+    if (!allowShrink.current && prevN !== null && prevN >= 20 && nextN < prevN / 2) {
+      setShrinkWarn({ prev: prevN, next: nextN });
+      return; // NOTHING is written (device or cloud) until the user decides
+    }
+    allowShrink.current = false;
+    // Rolling backups: first save of each day keeps a snapshot on this device (last 7 days),
+    // restorable from Settings → Data safety.
+    try {
+      const bkey = `lt-bk-${user.id}-${todayStr()}`;
+      if (!localStorage.getItem(bkey)) {
+        localStorage.setItem(bkey, localStorage.getItem(cacheKey) || JSON.stringify(data));
+        const mine = Object.keys(localStorage).filter(k => k.startsWith(`lt-bk-${user.id}-`)).sort();
+        while (mine.length > 7) localStorage.removeItem(mine.shift());
+      }
+    } catch {}
     // Always land the change on this device instantly; the cloud follows.
     localStorage.setItem(cacheKey, JSON.stringify(data));
     localStorage.setItem(pendKey, "1");
@@ -332,6 +392,11 @@ export default function LiftingTracker({ user }) {
       catch (e) { console.error("save failed", e); setSyncState("offline"); }
     }, 500);
   }, [data, loaded, user.id]);
+  const keepData = () => { // undo the mass delete: reload the untouched copy from this device
+    setShrinkWarn(null);
+    try { const raw = localStorage.getItem(cacheKey); if (raw) setData({ ...defaultData, ...migrateData(JSON.parse(raw), unameLower) }); } catch {}
+  };
+  const deleteAnyway = () => { allowShrink.current = true; setShrinkWarn(null); setData(d => ({ ...d })); };
 
   // When signal returns (or every 30s), push anything still pending.
   useEffect(() => {
@@ -516,7 +581,7 @@ export default function LiftingTracker({ user }) {
       <div style={{ position:"sticky", top:0, zIndex:10, background:T.bg, borderBottom:`1px solid ${T.line}` }}>
         <div style={{ maxWidth:960, margin:"0 auto", display:"flex", alignItems:"center", gap:14,
           padding:"calc(12px + env(safe-area-inset-top)) 20px 8px", color:"#fff" }}>
-          <div className="h" onClick={()=>setTab("dash")} style={{ fontSize:19, cursor:"pointer", userSelect:"none", whiteSpace:"nowrap", minWidth:0, overflow:"hidden", textOverflow:"ellipsis" }}>🏋️ MY LIFTING TRACKER</div>
+          <div className="h" onClick={()=>setTab("dash")} style={{ fontSize:19, cursor:"pointer", userSelect:"none", whiteSpace:"nowrap", minWidth:0, overflow:"hidden", textOverflow:"ellipsis" }}>🏋️ THE LAB</div>
           {/* tabs: inline & centered in the app bar on desktop; hidden on phone (bottom bar used) */}
           <nav className="nav-top" style={{ flex:1, justifyContent:"center" }}>
             {tabs.map(([id,label,icon]) => (
@@ -533,7 +598,7 @@ export default function LiftingTracker({ user }) {
       </div>
 
       {showSettings && (
-        <SettingsModal user={user} username={username} data={data}
+        <SettingsModal user={user} username={username} data={data} setData={setData}
           startTab={startTab} setStartTab={setStartTab} tabs={tabs}
           units={units} setUnits={setUnits} hunit={hunit} setHunit={setHunit}
           routinesOn={routinesOn} setRoutinesOn={setRoutinesOn}
@@ -541,6 +606,23 @@ export default function LiftingTracker({ user }) {
           waterOn={waterOn} setWaterOn={setWaterOn}
           nutritionOn={nutritionOn}
           onClose={()=>setShowSettings(false)} />
+      )}
+
+      {shrinkWarn && (
+        <div style={{ position:"fixed", inset:0, zIndex:60, background:"rgba(0,0,0,.72)", backdropFilter:"blur(2px)",
+          display:"flex", alignItems:"center", justifyContent:"center", padding:20, animation:"fadeSwap .18s ease-out both" }}>
+          <div className="card" style={{ maxWidth:430, width:"100%", borderColor:T.danger, marginBottom:0 }}>
+            <div className="h" style={{ fontSize:18, color:T.danger, marginBottom:8 }}>⚠️ Hold up — big deletion</div>
+            <div style={{ fontSize:14.5, color:T.ink, lineHeight:1.6, marginBottom:14 }}>
+              This change would shrink your data from <b>{shrinkWarn.prev}</b> logged entries to <b>{shrinkWarn.next}</b>.
+              Nothing has been saved yet — if you didn't mean to delete this much, keep your data and it's like it never happened.
+            </div>
+            <div style={{ display:"flex", gap:8 }}>
+              <button onClick={keepData} style={{ flex:1, background:T.green, color:"#000", padding:"12px", fontWeight:800, fontSize:15 }}>Keep my data</button>
+              <button onClick={deleteAnyway} style={{ background:T.dangerBg, color:T.danger, padding:"12px 16px", fontWeight:700, fontSize:14 }}>Delete anyway</button>
+            </div>
+          </div>
+        </div>
       )}
 
       {syncState === "offline" && (
@@ -738,10 +820,11 @@ function RoutinesPanel({ data, setData, onPick }) {
 function LogTab({ data, exMap, setData, routinesOn }) {
   const sorted = useMemo(()=>[...data.log].sort((a,b)=>a.date.localeCompare(b.date)||a.id-b.id),[data.log]);
   const last = sorted[sorted.length-1];
-  // date defaults to the "gym day" (before 4 AM = still yesterday); exercise only
-  // carries over if the last set was logged on that same day
-  const [date, setDate] = useState(gymDayStr());
-  const [exName, setExName] = useState(last?.date === gymDayStr() ? last.exercise : "");
+  // date defaults to the "gym day" (smart: after midnight it checks whether you're still
+  // mid-session or freshly awake); exercise only carries over from that same day
+  const gymDay = gymDayStr(sorted);
+  const [date, setDate] = useState(gymDay);
+  const [exName, setExName] = useState(last?.date === gymDay ? last.exercise : "");
   const [setNum, setSetNum] = useState(1);
   // set # follows what's actually in the log for this exercise+date, so it resets on a new
   // day/exercise and heals itself when a set is deleted (no more phantom "set 4 of 3")
@@ -843,34 +926,63 @@ function LogTab({ data, exMap, setData, routinesOn }) {
     return e1rm(entry.weight, entry.reps) > Math.max(...prior.map(p=>e1rm(p.weight||0,p.reps)));
   };
 
+  // drop sets: same set, weight lowered mid-set and kept going — extra {weight, reps} rows
+  const [drops, setDrops] = useState([]);
   const addSet = () => {
     if (!exName || !reps || (!isBW && !weight)) return;
     if (date > todayStr()) { setDate(todayStr()); return; } // no logging the future
+    const cleanDrops = drops
+      .map(dr => ({ weight: toLb(parseFloat(dr.weight), units), reps: parseInt(dr.reps) }))
+      .filter(dr => dr.weight > 0 && dr.reps > 0);
     const entry = { id: Date.now(), date, exercise: exName, set: setNum,
-      weight: isBW ? null : toLb(parseFloat(weight), units), reps: parseInt(reps), effort, notes };
+      weight: isBW ? null : toLb(parseFloat(weight), units), reps: parseInt(reps), effort, notes,
+      ...(cleanDrops.length ? { drops: cleanDrops } : {}) };
     const pr = checkPR(entry);
     setData(d => ({ ...d, log: [...d.log, entry] }));
     setJustSaved({ ...entry, pr });
-    setSetNum(n => n + 1); setNotes(""); setEffort("");
+    setSetNum(n => n + 1); setNotes(""); setEffort(""); setDrops([]);
     if (effort !== "Warm-up") startRest(); // auto-start rest between working sets (no-op when Off)
   };
   const sameAgain = () => {
     if (!justSaved) return;
     setReps(String(justSaved.reps));
     if (justSaved.weight != null) setWeight(String(dispW(justSaved.weight, units)));
+    if (justSaved.drops?.length) setDrops(justSaved.drops.map(dr => ({ weight: String(dispW(dr.weight, units)), reps: String(dr.reps) })));
     setJustSaved(null);
   };
 
-  const startNewExercise = (name) => { setExName(name); setSetNum(1); setWeight(""); setReps(""); setJustSaved(null); };
+  // most recent logged weight (in lb) for an exercise — lets us pre-fill the weight field so
+  // you don't retype a weight that didn't change; you only edit it when it's actually different.
+  const lastWeightFor = (name) => {
+    let best = null;
+    for (const e of data.log) {
+      if (e.exercise === name && e.weight != null &&
+          (!best || e.date > best.date || (e.date === best.date && (e.id||0) > (best.id||0)))) best = e;
+    }
+    return best ? best.weight : null;
+  };
+  const startNewExercise = (name) => {
+    const w = lastWeightFor(name);
+    setExName(name); setSetNum(1);
+    setWeight(w != null ? String(dispW(w, units)) : ""); // pre-fill the last weight used for this exercise
+    setReps(""); setJustSaved(null); setDrops([]);
+  };
+  // on reopen: if an exercise carried over from the current gym-day, pre-fill its last weight too
+  useEffect(() => {
+    if (exName && weight === "") {
+      const w = lastWeightFor(exName);
+      if (w != null) setWeight(String(dispW(w, units)));
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // routine tapped: load the exercise into the form, prefill target reps, jump to the gym day
   const pickFromRoutine = (exercise, reps) => {
     startNewExercise(exercise);
-    const already = data.log.filter(e => e.exercise === exercise && e.date === gymDayStr() && e.effort !== "Warm-up").length;
+    const already = data.log.filter(e => e.exercise === exercise && e.date === gymDay && e.effort !== "Warm-up").length;
     setSetNum(already + 1);
     const n = String(reps || "").match(/\d+/);
     if (n) setReps(n[0]);
-    setDate(gymDayStr());
+    setDate(gymDay);
     if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -892,6 +1004,7 @@ function LogTab({ data, exMap, setData, routinesOn }) {
   const searching = histQ.trim() !== "";
   const recent = searching ? histFull : histFull.slice(0, histLimit); // filtering shows every match
 
+  const [noteOpen, setNoteOpen] = useState(null); // set id whose 📝 note is expanded
   const [edit, setEdit] = useState(null); // copy of the set being edited
   const editIsBW = edit ? exMap[edit.exercise]?.type === "Bodyweight" : false;
   const editValid = edit && edit.reps !== "" && edit.exercise && (editIsBW || edit.weight !== "");
@@ -933,7 +1046,7 @@ function LogTab({ data, exMap, setData, routinesOn }) {
       <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:10}}>
         <div>
           <DateField label="Date" value={date} max={todayStr()} onChange={setDate} />
-          {date === gymDayStr() && gymDayStr() !== todayStr() && (
+          {date === gymDay && gymDay !== todayStr() && (
             <span style={{display:"block", fontSize:11, color:T.sub, marginTop:3}}>🌙 counted as yesterday</span>
           )}
         </div>
@@ -986,6 +1099,24 @@ function LogTab({ data, exMap, setData, routinesOn }) {
         {!isBW && <label style={lbl}>Weight ({uLabel(units)})<input type="number" inputMode="decimal" value={weight} onChange={e=>setWeight(e.target.value)} /></label>}
         <label style={lbl}>Reps<input type="number" inputMode="numeric" value={reps} onChange={e=>setReps(e.target.value)} /></label>
       </div>
+      {!isBW && exName && (
+        <div style={{marginBottom:10}}>
+          {drops.map((dr, i) => (
+            <div key={i} style={{display:"grid", gridTemplateColumns:"1fr 1fr 44px", gap:10, marginBottom:8, alignItems:"end"}}>
+              <label style={lbl}>Drop {i+1} weight ({uLabel(units)})
+                <input type="number" inputMode="decimal" value={dr.weight} onChange={ev=>setDrops(a=>a.map((x,j)=>j===i?{...x, weight:ev.target.value}:x))} /></label>
+              <label style={lbl}>Reps
+                <input type="number" inputMode="numeric" value={dr.reps} onChange={ev=>setDrops(a=>a.map((x,j)=>j===i?{...x, reps:ev.target.value}:x))} /></label>
+              <button type="button" onClick={()=>setDrops(a=>a.filter((_,j)=>j!==i))}
+                style={{background:T.input, color:T.danger, border:`1px solid ${T.line}`, minHeight:44, borderRadius:10, fontSize:15}}>✕</button>
+            </div>
+          ))}
+          <button type="button" onClick={()=>setDrops(a=>[...a, {weight:"", reps:""}])}
+            style={{background:"none", border:`1px dashed ${T.line}`, color:T.sub, padding:"9px 14px", fontSize:13, fontWeight:600, borderRadius:10, width:"100%"}}>
+            ⤵ Drop set — lowered the weight, kept going (saves inside this set)
+          </button>
+        </div>
+      )}
       {usesPlates(exMap[exName]) && (
         <div style={{ background:T.cream, border:`1px solid ${T.creamLine}`, borderRadius:10, padding:"10px 12px", marginBottom:10, fontSize:13.5 }}>
           <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom: (plateMode==="build" || weight>0) ? 9 : 0, flexWrap:"wrap" }}>
@@ -1070,6 +1201,7 @@ function LogTab({ data, exMap, setData, routinesOn }) {
       {justSaved && (
         <div style={{marginTop:12, textAlign:"center", fontSize:14}}>
           Saved: {justSaved.exercise} — set {justSaved.set}{justSaved.weight!=null?`, ${dispW(justSaved.weight,units)}×${justSaved.reps}`:`, ${justSaved.reps} reps`}
+          {justSaved.drops?.length ? ` + ${justSaved.drops.length} drop${justSaved.drops.length===1?"":"s"}` : ""}
           {justSaved.pr && <span className="chip" style={{background:T.mint, color:T.green, marginLeft:8}}>🎉 New PR!</span>}
           <div style={{marginTop:8}}>
             <button onClick={sameAgain} style={{ background:T.input, border:`1px solid ${T.line}`, color:T.ink, padding:"8px 16px", fontSize:13.5, fontWeight:700 }}>
@@ -1086,15 +1218,28 @@ function LogTab({ data, exMap, setData, routinesOn }) {
         autoCapitalize="none" autoCorrect="off" spellCheck={false} style={{marginBottom:10}} />
       <div style={{overflowX:"auto"}}>
         <table><thead><tr><th>Date</th><th>Exercise</th><th>Set</th><th>Weight ({uLabel(units)})</th><th>Reps</th><th>Effort</th><th></th></tr></thead>
-          <tbody>{recent.map(e => (<Fragment key={e.id}>
-            <tr>
-              <td>{fmtDate(e.date)}</td><td>{e.exercise}</td><td>{e.set}</td>
-              <td>{e.weight==null ? "BW" : dispW(e.weight, units)}</td><td>{e.reps}</td><td style={{color:T.sub}}>{e.effort||""}</td>
+          <tbody>{recent.map(e => { const isToday = e.date === todayStr(); return (<Fragment key={e.id}>
+            <tr style={isToday ? {background:"rgba(0,200,5,.05)"} : undefined}>
+              <td>{isToday ? <span style={{color:"#00A804", fontWeight:800}}>Today</span> : fmtDate(e.date)}</td><td>{e.exercise}</td><td>{e.set}</td>
+              <td>{e.weight==null ? "BW" : dispW(e.weight, units)}{e.drops?.length ? <span style={{color:T.sub}}>{" ↘ "}{e.drops.map(dr=>dispW(dr.weight, units)).join(" ↘ ")}</span> : null}</td>
+              <td>{e.reps}{e.drops?.length ? <span style={{color:T.sub}}>{" / "}{e.drops.map(dr=>dr.reps).join(" / ")}</span> : null}</td>
+              <td style={{color:T.sub}}>{e.effort||""}</td>
               <td style={{whiteSpace:"nowrap"}}>
+                {String(e.notes||"").trim() && (
+                  <button className="note-btn" onClick={()=>setNoteOpen(o=>o===e.id?null:e.id)}
+                    style={{background:"none", color:T.green, fontSize:12.5, fontWeight:700, padding:"4px 6px"}}>
+                    <span className="note-caret" style={{display:"inline-block", transform: noteOpen===e.id?"rotate(90deg)":"none"}}>▸</span> Note
+                  </button>
+                )}
                 <PencilBtn onClick={()=>setEdit({ id:e.id, date:e.date, exercise:e.exercise, set:e.set, weight:e.weight==null ? "" : dispW(e.weight, units), reps:e.reps, effort:e.effort||"", notes:e.notes||"" })} />
                 <ConfirmX onConfirm={()=>setData(d=>({...d, log:d.log.filter(x=>x.id!==e.id)}))} />
               </td>
             </tr>
+            {noteOpen === e.id && (
+              <tr><td colSpan={7} style={{padding:"4px 6px 10px"}}>
+                <div className="note-reveal" style={noteBox}><span style={{flexShrink:0}}>📝</span><span>{e.notes}</span></div>
+              </td></tr>
+            )}
             {edit?.id === e.id && (
               <tr><td colSpan={7} style={{padding:"6px 4px"}}>
                 <div style={editBox}>
@@ -1130,7 +1275,7 @@ function LogTab({ data, exMap, setData, routinesOn }) {
                 </div>
               </td></tr>
             )}
-          </Fragment>))}
+          </Fragment>);})}
             {!recent.length && <tr><td colSpan={7} style={{color:T.sub}}>{searching ? "No sets match that exercise." : "Nothing logged yet — your first set goes here."}</td></tr>}
           </tbody>
         </table>
@@ -2611,9 +2756,15 @@ function MuscleChips({ prim, sec, onChange }) {
   );
 }
 
+/* "ez bar curl" -> "Ez Bar Curl" — words typed all-lowercase get capitalized (after
+   spaces, hyphens, and parens); words the user already capitalized (EZ, RDL) are kept. */
+const properCase = (s) => s.trim().replace(/\s+/g, " ").split(" ")
+  .map(w => w === w.toLowerCase() ? w.replace(/(^|[-(/])([a-z])/g, (m, p, c) => p + c.toUpperCase()) : w).join(" ");
+
 function ExercisesTab({ data, setData }) {
   const [name, setName] = useState(""); const [muscles, setMuscles] = useState([]);
   const [muscles2, setMuscles2] = useState([]); const [equip, setEquip] = useState("Barbell (plates)");
+  const [addMsg, setAddMsg] = useState(null); // "already in your library" notice
   const [libQ, setLibQ] = useState(""); const [libM, setLibM] = useState("All");
   const shownEx = useMemo(() => {
     const q = libQ.trim().toLowerCase();
@@ -2623,16 +2774,28 @@ function ExercisesTab({ data, setData }) {
   }, [data.exercises, libQ, libM]);
 
   const [edit, setEdit] = useState(null); // { orig, name, muscles, muscles2, equip }
+  const [mergeTo, setMergeTo] = useState(""); // fold this exercise into another one
   const editValid = edit && edit.name.trim() && edit.muscles.length > 0 &&
-    !data.exercises.some(x => x.name === edit.name.trim() && x.name !== edit.orig);
+    !data.exercises.some(x => x.name.toLowerCase() === edit.name.trim().toLowerCase() && x.name !== edit.orig);
   const saveEdit = () => {
     if (!editValid) return;
-    const nn = edit.name.trim();
+    const nn = properCase(edit.name);
     setData(d=>({ ...d,
       exercises: d.exercises.map(x => x.name===edit.orig ? { name:nn, muscle:edit.muscles[0], muscles:edit.muscles, muscles2:edit.muscles2, ...fromEquip(edit.equip) } : x),
       log: nn !== edit.orig ? d.log.map(e => e.exercise===edit.orig ? { ...e, exercise:nn } : e) : d.log,
+      routines: nn !== edit.orig ? (d.routines||[]).map(r => ({ ...r, items:(r.items||[]).map(it => it.exercise===edit.orig ? { ...it, exercise:nn } : it) })) : d.routines,
     }));
     setEdit(null);
+  };
+  // merge: every logged set (and routine slot) moves to the picked exercise, then this one is deleted
+  const doMerge = () => {
+    if (!mergeTo || !edit) return;
+    setData(d=>({ ...d,
+      log: d.log.map(e => e.exercise===edit.orig ? { ...e, exercise:mergeTo } : e),
+      routines: (d.routines||[]).map(r => ({ ...r, items:(r.items||[]).map(it => it.exercise===edit.orig ? { ...it, exercise:mergeTo } : it) })),
+      exercises: d.exercises.filter(x => x.name !== edit.orig),
+    }));
+    setEdit(null); setMergeTo("");
   };
 
   const exMuscle = Object.fromEntries(data.exercises.map(x => [x.name, muscleLabel(x)]));
@@ -2652,7 +2815,7 @@ function ExercisesTab({ data, setData }) {
     ...[...data.cardio].sort((a,b)=>a.date.localeCompare(b.date))
       .map(e => [e.date, e.activity, e.duration, e.intensity||"machine", e.calories ?? ""].map(csvEsc).join(",")),
   ].join("\n"), "text/csv");
-  const exportAll = () => download(`lifting-tracker-backup-${stamp}.json`, JSON.stringify(data, null, 2), "application/json");
+  const exportAll = () => download(`the-lab-backup-${stamp}.json`, JSON.stringify(data, null, 2), "application/json");
   const outBtn = { background:"none", border:`1px solid ${T.line}`, color:T.ink, padding:"9px 14px", fontSize:13.5, fontWeight:600 };
 
   return (<>
@@ -2660,13 +2823,21 @@ function ExercisesTab({ data, setData }) {
       <div className="h" style={{fontSize:19, color:T.tealDk, marginBottom:4}}>📚 Exercise library</div>
       <div style={{fontSize:12.5, color:T.sub, marginBottom:10}}>Add your own moves (e.g. Decline Push-Up). Pick <b>Barbell</b> to get the plate helper when logging; <b>Bodyweight</b> moves auto-track by reps.</div>
       <div style={{display:"flex", gap:8, marginBottom:10, flexWrap:"wrap"}}>
-        <input value={name} onChange={e=>setName(e.target.value)} placeholder="Exercise name" style={{flex:2, minWidth:150}} />
+        <input value={name} onChange={e=>{setName(e.target.value); setAddMsg(null);}} placeholder="Exercise name" style={{flex:2, minWidth:150}} />
         <select value={equip} onChange={e=>setEquip(e.target.value)} style={{flex:1, minWidth:150}}>{EQUIP_OPTS.map(o=><option key={o}>{o}</option>)}</select>
       </div>
       <div style={{fontSize:12, color:T.sub, marginBottom:6}}>Muscle groups: tap once = <b style={{color:T.green}}>✓ main</b> (full set credit) · tap again = <b style={{color:AMBER}}>½ secondary</b> (half credit) · third tap clears. First main pick decides where it sorts.</div>
       <MuscleChips prim={muscles} sec={muscles2} onChange={(p,s)=>{setMuscles(p);setMuscles2(s);}} />
       {name.trim() && !muscles.length && <div style={{fontSize:12, color:AMBER, marginTop:6}}>Pick at least one main muscle group to add this exercise.</div>}
-      <button onClick={()=>{ if(!name.trim()||!muscles.length)return; setData(d=>({...d, exercises:[...d.exercises.filter(x=>x.name!==name.trim()), {name:name.trim(), muscle:muscles[0], muscles, muscles2, ...fromEquip(equip)}]})); setName(""); setMuscles([]); setMuscles2([]); }}
+      {addMsg && <div style={{fontSize:12.5, color:AMBER, marginTop:6}}>{addMsg}</div>}
+      <button onClick={()=>{
+          if(!name.trim()||!muscles.length)return;
+          const nn = properCase(name); // capitalization fixes itself — "cable fly" becomes "Cable Fly"
+          const dupe = data.exercises.find(x => x.name.toLowerCase() === nn.toLowerCase());
+          if (dupe) { setAddMsg(`“${dupe.name}” is already in your library — no duplicate added. (To fold one exercise into another, open it with ✏️ and use Merge.)`); return; }
+          setData(d=>({...d, exercises:[...d.exercises, {name:nn, muscle:muscles[0], muscles, muscles2, ...fromEquip(equip)}]}));
+          setName(""); setMuscles([]); setMuscles2([]); setAddMsg(null);
+        }}
         disabled={!name.trim()||!muscles.length}
         style={{background:T.green, color:"#000", padding:"10px 20px", fontWeight:700, marginTop:10, marginBottom:14, opacity:(!name.trim()||!muscles.length)?0.45:1}}>Add exercise</button>
       <input value={libQ} onChange={e=>setLibQ(e.target.value)} placeholder="🔍 Search your library…"
@@ -2685,7 +2856,7 @@ function ExercisesTab({ data, setData }) {
           <tbody>{shownEx.map(x=>(<Fragment key={x.name}>
             <tr><td>{x.name}</td><td>{muscleLabel(x)}</td><td>{equipOf(x)}</td>
               <td style={{whiteSpace:"nowrap"}}>
-                <PencilBtn onClick={()=>setEdit({ orig:x.name, name:x.name, muscles:musclesOf(x), muscles2:secondariesOf(x), equip:equipOf(x) })} />
+                <PencilBtn onClick={()=>{ setEdit({ orig:x.name, name:x.name, muscles:musclesOf(x), muscles2:secondariesOf(x), equip:equipOf(x) }); setMergeTo(""); }} />
                 <ConfirmX onConfirm={()=>setData(d=>({...d, exercises:d.exercises.filter(e=>e.name!==x.name)}))} />
               </td></tr>
             {edit?.orig === x.name && (
@@ -2705,6 +2876,25 @@ function ExercisesTab({ data, setData }) {
                     <button onClick={()=>setEdit(null)} style={cancelSm}>Cancel</button>
                   </div>
                   {!editValid && edit.name.trim() && <div style={{fontSize:12, color:T.danger, marginTop:6}}>That name is already used by another exercise.</div>}
+                  {data.exercises.length > 1 && (
+                    <div style={{marginTop:12, paddingTop:12, borderTop:`1px solid ${T.line}`}}>
+                      <div style={{fontSize:12.5, color:T.sub, marginBottom:8}}>
+                        Added this by accident and it already exists? <b style={{color:T.ink}}>Merge it:</b> every set logged
+                        under “{edit.orig}” moves to the exercise you pick, then “{edit.orig}” is deleted. History stays intact.
+                      </div>
+                      <div style={{display:"flex", gap:8, flexWrap:"wrap"}}>
+                        <select value={mergeTo} onChange={ev=>setMergeTo(ev.target.value)} style={{flex:1, minWidth:170}}>
+                          <option value="">— merge into… —</option>
+                          {data.exercises.filter(z=>z.name!==edit.orig).map(z=><option key={z.name}>{z.name}</option>)}
+                        </select>
+                        {mergeTo && (
+                          <button onClick={doMerge} style={{background:AMBER, color:"#000", padding:"9px 16px", fontWeight:700, fontSize:13.5}}>
+                            Merge &amp; delete
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </td></tr>
             )}
@@ -2856,7 +3046,7 @@ function SectionHead({ icon, label }) {
   );
 }
 
-function SettingsModal({ user, username, data, startTab, setStartTab, tabs, units, setUnits, hunit, setHunit, routinesOn, setRoutinesOn, streaksOn, setStreaksOn, waterOn, setWaterOn, nutritionOn, onClose }) {
+function SettingsModal({ user, username, data, setData, startTab, setStartTab, tabs, units, setUnits, hunit, setHunit, routinesOn, setRoutinesOn, streaksOn, setStreaksOn, waterOn, setWaterOn, nutritionOn, onClose }) {
   const memberSince = user.created_at ? new Date(user.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}) : "—";
   const totalSets = (data.log||[]).length;
 
@@ -2921,6 +3111,21 @@ function SettingsModal({ user, username, data, startTab, setStartTab, tabs, unit
           </div>
         </div>
 
+        {/* time zone — decides when "today" starts for logging */}
+        <div style={{ ...sCard }}>
+          <div style={{ fontSize:14, fontWeight:700, color:T.ink, marginBottom:2 }}>Time zone</div>
+          <div style={{ fontSize:12, color:T.sub, marginBottom:10 }}>
+            Decides when “today” starts for your logs. <b>Auto</b> follows this device's clock and is right for
+            almost everyone — only change it if your phone is set to a different place than where you lift.
+          </div>
+          <select value={data.profile?.tz || "auto"} onChange={e=>setData(d=>({ ...d, profile:{ ...(d.profile||{}), tz:e.target.value } }))}>
+            <option value="auto">🌐 Auto — {detectedTZ().replace(/_/g," ")}</option>
+            {(typeof Intl.supportedValuesOf === "function" ? Intl.supportedValuesOf("timeZone") : []).map(z=>(
+              <option key={z} value={z}>{z.replace(/_/g," ")}</option>
+            ))}
+          </select>
+        </div>
+
         {/* view preference */}
         <div style={{ ...sCard }}>
           <div style={{ fontSize:14, fontWeight:700, color:T.ink, marginBottom:2 }}>Open the app on</div>
@@ -2944,6 +3149,9 @@ function SettingsModal({ user, username, data, startTab, setStartTab, tabs, unit
             desc="Adds a daily water-intake tracker to the Macros tab. Turning it off just hides it — anything you logged stays." />
         </>)}
 
+        <SectionHead icon="🛟" label="Data safety" />
+        <BackupsCard user={user} username={username} setData={setData} />
+
         <SectionHead icon="🔐" label="Keys to the castle" />
         <ChangePasswordCard />
         <SecurityCard username={username} />
@@ -2958,6 +3166,53 @@ function SettingsModal({ user, username, data, startTab, setStartTab, tabs, unit
   );
 }
 const sCard = { background:T.cream, border:`1px solid ${T.creamLine}`, borderRadius:12, padding:14, marginBottom:12 };
+
+/* Automatic on-device backups: the first save of each day snapshots your data (last 7
+   days kept). Restoring loads that snapshot — and still goes through the big-delete
+   guard, so a bad restore can't silently nuke anything either. */
+function BackupsCard({ user, username, setData }) {
+  const scan = () => {
+    const pre = `lt-bk-${user.id}-`;
+    return Object.keys(localStorage).filter(k => k.startsWith(pre)).sort().reverse()
+      .map(k => { try { const d = JSON.parse(localStorage.getItem(k)); return { key:k, day:k.slice(pre.length),
+        n:(d.log||[]).length + (d.bodyweight||[]).length + (d.cardio||[]).length }; } catch { return null; } })
+      .filter(Boolean);
+  };
+  const [list] = useState(scan);
+  const [confirmKey, setConfirmKey] = useState(null);
+  const [done, setDone] = useState(false);
+  const restore = (k) => {
+    try {
+      const raw = localStorage.getItem(k); if (!raw) return;
+      setData({ ...defaultData, ...migrateData(JSON.parse(raw), (username||"").toLowerCase()) });
+      setConfirmKey(null); setDone(true);
+    } catch {}
+  };
+  return (
+    <div style={{ ...sCard }}>
+      <div style={{ fontSize:14, fontWeight:700, color:T.ink, marginBottom:2 }}>Automatic backups on this device</div>
+      <div style={{ fontSize:12, color:T.sub, marginBottom:10 }}>
+        Kept automatically — a snapshot from the start of each of the last 7 days you used the app here.
+        Restoring replaces what's loaded now with that snapshot (a big shrink still asks you first).
+        For an extra copy you control, the 📚 Library tab has full downloads under “Your data.”
+      </div>
+      {done && <div style={{ fontSize:12.5, color:T.green, fontWeight:700, marginBottom:8 }}>✅ Restored — check your log, then just keep using the app to save it.</div>}
+      {!list.length && <div style={{ fontSize:12.5, color:T.sub }}>No snapshots yet — one is kept automatically the next time you log something.</div>}
+      {list.map(b => (
+        <div key={b.key} style={{ display:"flex", alignItems:"center", gap:8, padding:"7px 0", borderTop:`1px solid ${T.creamLine}`, fontSize:13 }}>
+          <span style={{ fontWeight:700, minWidth:88 }}>{fmtDate(b.day)}</span>
+          <span style={{ color:T.sub, flex:1 }}>{b.n} entries</span>
+          {confirmKey === b.key ? (<>
+            <button onClick={()=>restore(b.key)} style={{ background:T.dangerBg, color:T.danger, padding:"6px 12px", fontSize:12.5, fontWeight:700 }}>Yes, restore this</button>
+            <button onClick={()=>setConfirmKey(null)} style={{ background:T.input, color:T.sub, padding:"6px 10px", fontSize:12.5, fontWeight:600 }}>Cancel</button>
+          </>) : (
+            <button onClick={()=>setConfirmKey(b.key)} style={{ background:T.input, color:T.ink, border:`1px solid ${T.line}`, padding:"6px 12px", fontSize:12.5, fontWeight:700 }}>Restore</button>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 /* Change the password while signed in (no current-password needed — session proves identity). */
 function ChangePasswordCard() {
@@ -3173,6 +3428,51 @@ function MonthlyRecapModal({ recap, groupName, emoji, onClose }) {
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* Read-only set history for a group member's profile — their FULL log (the data is
+   already downloaded for the group screens, so this costs nothing extra). */
+function MemberLog({ pdata, who }) {
+  const units = useUnit();
+  const [q, setQ] = useState("");
+  const [limit, setLimit] = useState(30);
+  const full = useMemo(() => {
+    const sortedL = [...(pdata.log || [])].sort((a,b)=>a.date.localeCompare(b.date)||(a.id||0)-(b.id||0)).reverse();
+    const qq = q.trim().toLowerCase();
+    return qq ? sortedL.filter(e => e.exercise.toLowerCase().includes(qq)) : sortedL;
+  }, [pdata.log, q]);
+  const searching = q.trim() !== "";
+  const shown = searching ? full : full.slice(0, limit);
+  if (!(pdata.log || []).length) return null;
+  return (
+    <div className="card">
+      <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:8}}>📝 {who}'s set history</div>
+      <input value={q} onChange={e=>{setQ(e.target.value); setLimit(30);}} placeholder="🔍 Filter by exercise…"
+        autoCapitalize="none" autoCorrect="off" spellCheck={false} style={{marginBottom:10}} />
+      <div style={{overflowX:"auto"}}>
+        <table><thead><tr><th>Date</th><th>Exercise</th><th>Set</th><th>Weight ({uLabel(units)})</th><th>Reps</th><th>Effort</th></tr></thead>
+          <tbody>{shown.map(e => (
+            <tr key={e.id || `${e.date}-${e.exercise}-${e.set}`}>
+              <td>{e.date === todayStr() ? <span style={{color:"#00A804", fontWeight:800}}>Today</span> : fmtDate(e.date)}</td>
+              <td>{e.exercise}</td><td>{e.set}</td>
+              <td>{e.weight==null ? "BW" : dispW(e.weight, units)}{e.drops?.length ? <span style={{color:T.sub}}>{" ↘ "}{e.drops.map(dr=>dispW(dr.weight, units)).join(" ↘ ")}</span> : null}</td>
+              <td>{e.reps}{e.drops?.length ? <span style={{color:T.sub}}>{" / "}{e.drops.map(dr=>dr.reps).join(" / ")}</span> : null}</td>
+              <td style={{color:T.sub}}>{e.effort||""}</td>
+            </tr>
+          ))}
+          {!shown.length && <tr><td colSpan={6} style={{color:T.sub}}>No sets match that exercise.</td></tr>}
+          </tbody></table>
+      </div>
+      {!searching && full.length > shown.length && (
+        <div style={{display:"flex", gap:8, marginTop:12}}>
+          <button onClick={()=>setLimit(l=>l+50)} style={{flex:1, background:T.input, color:T.ink, border:`1px solid ${T.line}`, padding:"10px", fontWeight:700, fontSize:13, borderRadius:10}}>
+            Show more ({full.length - shown.length} older)
+          </button>
+          <button onClick={()=>setLimit(full.length)} style={{background:"none", color:T.sub, padding:"10px 14px", fontWeight:700, fontSize:13}}>Show all</button>
+        </div>
+      )}
     </div>
   );
 }
@@ -3477,6 +3777,7 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
           <MacroCalendar data={pdata} title={`🥗 ${profile.username}'s nutrition`} />
         )}
         <RecordsTab data={pdata} exMap={pexMap} />
+        <MemberLog pdata={pdata} who={profile.username} />
         <GoalCard data={pdata} setData={()=>{}} current={bw.length ? bw[bw.length-1] : null} rows={bw}
           readOnly who={`${profile.username} hasn't`} />
         <div className="card" style={{display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, textAlign:"center"}}>

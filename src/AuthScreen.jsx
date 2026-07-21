@@ -129,7 +129,7 @@ export default function AuthScreen() {
         fontWeight: 800, letterSpacing: ".2px",
         fontSize: 26, color: C.head, marginBottom: 18,
       }}>
-        🏋️ MY LIFTING TRACKER
+        🏋️ THE LAB
       </div>
 
       <form onSubmit={mode === "forgot" ? (fq ? doReset : (e) => { e.preventDefault(); findQuestion(); }) : submit} style={{

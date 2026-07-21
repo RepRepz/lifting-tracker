@@ -11,7 +11,7 @@
 const GREEN = "#00C805";
 const GOLD  = "#E9C46A";
 
-export default function LoadingScreen({ label = "Loading your tracker…" }) {
+export default function LoadingScreen({ label = "Loading The Lab…" }) {
   return (
     <div style={wrap}>
       <style>{css}</style>

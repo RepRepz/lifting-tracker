@@ -1,7 +1,7 @@
 {
-  "name": "My Lifting Tracker",
-  "short_name": "Lifting",
-  "description": "Workout tracker for me and my friends",
+  "name": "The Lab",
+  "short_name": "The Lab",
+  "description": "The Lab — where the lifts get logged",
   "start_url": ".",
   "scope": ".",
   "display": "standalone",
