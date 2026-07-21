@@ -3128,19 +3128,7 @@ function SettingsModal({ user, username, data, setData, startTab, setStartTab, t
         </SettingsSection>
 
         <SettingsSection icon="🕐" title="Time & dates" desc="Your time zone, and when your day starts">
-          <div style={{ ...sCard }}>
-            <div style={{ fontSize:14, fontWeight:700, color:T.ink, marginBottom:2 }}>Time zone</div>
-            <div style={{ fontSize:12, color:T.sub, marginBottom:10 }}>
-              Decides when “today” starts for your logs. <b>Auto</b> follows this device's clock and is right for
-              almost everyone — only change it if your phone is set to a different place than where you lift.
-            </div>
-            <select value={data.profile?.tz || "auto"} onChange={e=>setData(d=>({ ...d, profile:{ ...(d.profile||{}), tz:e.target.value } }))}>
-              <option value="auto">🌐 Auto — {detectedTZ().replace(/_/g," ")}</option>
-              {(typeof Intl.supportedValuesOf === "function" ? Intl.supportedValuesOf("timeZone") : []).map(z=>(
-                <option key={z} value={z}>{z.replace(/_/g," ")}</option>
-              ))}
-            </select>
-          </div>
+          <TimeZoneCard data={data} setData={setData} />
           <DayStartCard data={data} setData={setData} />
         </SettingsSection>
 
@@ -3176,6 +3164,38 @@ function SettingsModal({ user, username, data, setData, startTab, setStartTab, t
 }
 const sCard = { background:T.cream, border:`1px solid ${T.creamLine}`, borderRadius:12, padding:14, marginBottom:12 };
 
+/* Short, popular-first time-zone list — Auto covers almost everyone; the full IANA
+   list (~400 zones) hides behind a "show every time zone" tap for the rare case. */
+const TZ_POPULAR = [
+  ["United States & Canada", [
+    ["America/New_York", "Eastern — New York"],
+    ["America/Chicago", "Central — Chicago"],
+    ["America/Denver", "Mountain — Denver"],
+    ["America/Phoenix", "Arizona — Phoenix"],
+    ["America/Los_Angeles", "Pacific — Los Angeles"],
+    ["America/Anchorage", "Alaska"],
+    ["Pacific/Honolulu", "Hawaii"],
+    ["America/Toronto", "Eastern — Toronto"],
+  ]],
+  ["Europe", [
+    ["Europe/London", "UK & Ireland — London"],
+    ["Europe/Paris", "Central Europe — Paris, Berlin"],
+    ["Europe/Sarajevo", "Central Europe — Sarajevo"],
+    ["Europe/Athens", "Eastern Europe — Athens"],
+  ]],
+  ["Rest of the world", [
+    ["America/Mexico_City", "Mexico — Mexico City"],
+    ["America/Sao_Paulo", "Brazil — São Paulo"],
+    ["Asia/Dubai", "UAE — Dubai"],
+    ["Asia/Kolkata", "India"],
+    ["Asia/Shanghai", "China"],
+    ["Asia/Tokyo", "Japan"],
+    ["Australia/Sydney", "Australia — Sydney"],
+    ["UTC", "UTC"],
+  ]],
+];
+const TZ_POPULAR_IDS = new Set(TZ_POPULAR.flatMap(([, zs]) => zs.map(([id]) => id)));
+
 /* Collapsible Settings section: icon + title + one-line description, tap to expand. */
 function SettingsSection({ icon, title, desc, children, defaultOpen = false }) {
   const [open, setOpen] = useState(defaultOpen);
@@ -3193,6 +3213,45 @@ function SettingsSection({ icon, title, desc, children, defaultOpen = false }) {
           display:"inline-block", transform: open ? "rotate(90deg)" : "none", transition:"transform .22s cubic-bezier(.34,1.56,.64,1)" }}>▸</span>
       </button>
       {open && <div style={{ padding:"2px 14px 14px", animation:"noteIn .24s ease-out both" }}>{children}</div>}
+    </div>
+  );
+}
+
+/* Time zone: Auto (detected from the device) is the default and right for almost
+   everyone; the dropdown offers the popular zones, full list on request. */
+function TimeZoneCard({ data, setData }) {
+  const [showAll, setShowAll] = useState(false);
+  const tzVal = data.profile?.tz || "auto";
+  const setTz = (z) => setData(d => ({ ...d, profile: { ...(d.profile||{}), tz: z } }));
+  const allZones = showAll && typeof Intl.supportedValuesOf === "function" ? Intl.supportedValuesOf("timeZone") : [];
+  return (
+    <div style={{ ...sCard }}>
+      <div style={{ fontSize:14, fontWeight:700, color:T.ink, marginBottom:2 }}>Time zone</div>
+      <div style={{ fontSize:12, color:T.sub, marginBottom:10 }}>
+        Decides when “today” starts for your logs. <b>Auto detects it from your phone</b> — right for
+        almost everyone, and it follows you when you travel. Only pick one manually if your device's
+        clock is set to a different place than where you lift.
+      </div>
+      <select value={tzVal} onChange={e=>setTz(e.target.value)}>
+        <option value="auto">🌐 Auto — detected: {detectedTZ().replace(/_/g," ")}</option>
+        {TZ_POPULAR.map(([g, zs]) => (
+          <optgroup key={g} label={g}>
+            {zs.map(([id, l]) => <option key={id} value={id}>{l}</option>)}
+          </optgroup>
+        ))}
+        {/* a manually-set zone outside the short list still shows correctly */}
+        {tzVal !== "auto" && !TZ_POPULAR_IDS.has(tzVal) && !showAll && <option value={tzVal}>{tzVal.replace(/_/g," ")}</option>}
+        {showAll && (
+          <optgroup label="Every time zone">
+            {allZones.filter(z => !TZ_POPULAR_IDS.has(z)).map(z => <option key={z} value={z}>{z.replace(/_/g," ")}</option>)}
+          </optgroup>
+        )}
+      </select>
+      {!showAll && (
+        <button onClick={()=>setShowAll(true)} style={{ background:"none", color:T.sub, fontSize:12, textDecoration:"underline", padding:"6px 2px 0" }}>
+          Can't find yours? Show every time zone
+        </button>
+      )}
     </div>
   );
 }
