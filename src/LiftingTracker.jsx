@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, lazy, Suspense, Fragment, createContext, useContext } from "react";
-import { supabase, loadUserState, saveUserState, listMyGroups, listMembers, createGroup, joinGroup, leaveGroup, listReactions, addReaction, removeReaction, setSecurityQuestion, getSecurityQuestion, lastActiveFor, setGroupEmoji, resetInviteCode } from "./lib/storage.js";
+import { supabase, loadUserState, saveUserState, listMyGroups, listMembers, createGroup, joinGroup, leaveGroup, listReactions, addReaction, removeReaction, setSecurityQuestion, getSecurityQuestion, lastActiveFor, setGroupEmoji, resetInviteCode, listCloudBackups, getCloudBackup } from "./lib/storage.js";
 import { SECURITY_QUESTIONS } from "./AuthScreen.jsx";
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
@@ -3181,7 +3181,8 @@ function SettingsModal({ user, username, data, setData, startTab, setStartTab, t
           </>)}
         </SettingsSection>
 
-        <SettingsSection icon="🛟" title="Data safety" desc="Automatic backups kept on this device">
+        <SettingsSection icon="🛟" title="Data safety" desc="Automatic backups — in the cloud and on this device">
+          <CloudBackupsCard username={username} setData={setData} />
           <BackupsCard user={user} username={username} setData={setData} />
         </SettingsSection>
 
@@ -3332,6 +3333,58 @@ function DayStartCard({ data, setData }) {
   );
 }
 
+/* Cloud backups: Supabase keeps a snapshot of each day's starting state (~30 days,
+   written by a database trigger — no app code can forget to do it). Works from ANY
+   device, so a lost phone can't take your history with it. */
+function CloudBackupsCard({ username, setData }) {
+  const [rows, setRows] = useState(null); // null = loading
+  const [err, setErr] = useState(null);
+  const [confirmDay, setConfirmDay] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+  useEffect(() => { (async () => {
+    try { setRows(await listCloudBackups()); }
+    catch (e) { setErr("Couldn't reach the cloud — check your connection."); setRows([]); }
+  })(); }, []);
+  const restore = async (day) => {
+    setBusy(true); setErr(null);
+    try {
+      const v = await getCloudBackup(day);
+      if (!v) throw new Error("empty");
+      setData({ ...defaultData, ...migrateData(v, (username || "").toLowerCase()) });
+      setConfirmDay(null); setDone(true);
+    } catch { setErr("Couldn't load that backup — try again in a moment."); }
+    finally { setBusy(false); }
+  };
+  return (
+    <div style={{ ...sCard }}>
+      <div style={{ fontSize:14, fontWeight:700, color:T.ink, marginBottom:2 }}>☁️ In the cloud</div>
+      <div style={{ fontSize:12, color:T.sub, marginBottom:10 }}>
+        A copy of each day's data, kept for 30 days — reachable from <b>any</b> device, even if
+        this one is lost or wiped. Saved automatically; nothing for you to do.
+      </div>
+      {done && <div style={{ fontSize:12.5, color:T.green, fontWeight:700, marginBottom:8 }}>✅ Restored — check your log, then just keep using the app to save it.</div>}
+      {err && <div style={{ fontSize:12.5, color:T.danger, marginBottom:8 }}>{err}</div>}
+      {rows === null && <div className="skeleton" style={{ height:44, borderRadius:10 }} />}
+      {rows !== null && !rows.length && !err && (
+        <div style={{ fontSize:12.5, color:T.sub }}>No cloud backups yet — your first one appears after tomorrow's first change.</div>
+      )}
+      {(rows || []).map(r => (
+        <div key={String(r.day)} style={{ display:"flex", alignItems:"center", gap:8, padding:"7px 0", borderTop:`1px solid ${T.creamLine}`, fontSize:13 }}>
+          <span style={{ fontWeight:700, minWidth:88 }}>{fmtDate(String(r.day))}</span>
+          <span style={{ color:T.sub, flex:1 }}>{(r.sets||0) + (r.weighins||0) + (r.cardio||0)} entries</span>
+          {confirmDay === r.day ? (<>
+            <button disabled={busy} onClick={()=>restore(r.day)} style={{ background:T.dangerBg, color:T.danger, padding:"6px 12px", fontSize:12.5, fontWeight:700, opacity:busy?0.6:1 }}>{busy ? "Restoring…" : "Yes, restore this"}</button>
+            <button disabled={busy} onClick={()=>setConfirmDay(null)} style={{ background:T.input, color:T.sub, padding:"6px 10px", fontSize:12.5, fontWeight:600 }}>Cancel</button>
+          </>) : (
+            <button onClick={()=>setConfirmDay(r.day)} style={{ background:T.input, color:T.ink, border:`1px solid ${T.line}`, padding:"6px 12px", fontSize:12.5, fontWeight:700 }}>Restore</button>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /* Automatic on-device backups: the first save of each day snapshots your data (last 7
    days kept). Restoring loads that snapshot — and still goes through the big-delete
    guard, so a bad restore can't silently nuke anything either. */
@@ -3355,11 +3408,11 @@ function BackupsCard({ user, username, setData }) {
   };
   return (
     <div style={{ ...sCard }}>
-      <div style={{ fontSize:14, fontWeight:700, color:T.ink, marginBottom:2 }}>Automatic backups on this device</div>
+      <div style={{ fontSize:14, fontWeight:700, color:T.ink, marginBottom:2 }}>📱 On this device</div>
       <div style={{ fontSize:12, color:T.sub, marginBottom:10 }}>
-        Kept automatically — a snapshot from the start of each of the last 7 days you used the app here.
-        Restoring replaces what's loaded now with that snapshot (a big shrink still asks you first).
-        For an extra copy you control, the 📚 Library tab has full downloads under “Your data.”
+        The last 7 days you used the app here — works even offline. Restoring replaces what's
+        loaded now (a big shrink still asks first). For a copy you keep yourself, the 📚 Library
+        tab has full downloads under “Your data.”
       </div>
       {done && <div style={{ fontSize:12.5, color:T.green, fontWeight:700, marginBottom:8 }}>✅ Restored — check your log, then just keep using the app to save it.</div>}
       {!list.length && <div style={{ fontSize:12.5, color:T.sub }}>No snapshots yet — one is kept automatically the next time you log something.</div>}

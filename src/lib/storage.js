@@ -24,6 +24,26 @@ export async function saveUserState(userId, value) {
   if (error) throw error;
 }
 
+/* ---------- cloud backups (daily automatic snapshots, ~30 days) ---------- */
+
+/** Lists the signed-in user's cloud snapshots: [{ day, sets, weighins, cardio }], newest first. */
+export async function listCloudBackups() {
+  const { data, error } = await supabase.rpc("list_state_history");
+  if (error) throw error;
+  return data ?? [];
+}
+
+/** Fetches one snapshot's full data by day ("YYYY-MM-DD"); RLS limits it to your own. */
+export async function getCloudBackup(day) {
+  const { data, error } = await supabase
+    .from("user_state_history")
+    .select("value")
+    .eq("day", day)
+    .maybeSingle();
+  if (error) throw error;
+  return data?.value ?? null;
+}
+
 /* ---------- security question (password reset without email) ---------- */
 
 /** Signed-in user sets/changes their reset question + answer (answer is hashed server-side). */
