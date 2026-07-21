@@ -44,6 +44,28 @@ export async function getCloudBackup(day) {
   return data?.value ?? null;
 }
 
+/* ---------- steps (Apple Health via the phone Shortcut) ---------- */
+
+/** Returns (and lazily creates) the signed-in user's secret step-upload code. */
+export async function getStepToken() {
+  const { data, error } = await supabase.rpc("my_step_token");
+  if (error) throw error;
+  return data ?? null;
+}
+
+/** Recent step counts for a set of users: { user_id: { "YYYY-MM-DD": count } }.
+    RLS limits results to yourself + groupmates. */
+export async function stepsFor(userIds, sinceDay) {
+  if (!userIds.length) return {};
+  let q = supabase.from("steps").select("user_id, day, count").in("user_id", userIds);
+  if (sinceDay) q = q.gte("day", sinceDay);
+  const { data, error } = await q;
+  if (error) throw error;
+  const out = {};
+  for (const r of data ?? []) (out[r.user_id] ||= {})[r.day] = r.count;
+  return out;
+}
+
 /* ---------- security question (password reset without email) ---------- */
 
 /** Signed-in user sets/changes their reset question + answer (answer is hashed server-side). */

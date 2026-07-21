@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, lazy, Suspense, Fragment, createContext, useContext } from "react";
-import { supabase, loadUserState, saveUserState, listMyGroups, listMembers, createGroup, joinGroup, leaveGroup, listReactions, addReaction, removeReaction, setSecurityQuestion, getSecurityQuestion, lastActiveFor, setGroupEmoji, resetInviteCode, listCloudBackups, getCloudBackup } from "./lib/storage.js";
+import { supabase, loadUserState, saveUserState, listMyGroups, listMembers, createGroup, joinGroup, leaveGroup, listReactions, addReaction, removeReaction, setSecurityQuestion, getSecurityQuestion, lastActiveFor, setGroupEmoji, resetInviteCode, listCloudBackups, getCloudBackup, getStepToken, stepsFor } from "./lib/storage.js";
 import { SECURITY_QUESTIONS } from "./AuthScreen.jsx";
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
@@ -3181,6 +3181,10 @@ function SettingsModal({ user, username, data, setData, startTab, setStartTab, t
           </>)}
         </SettingsSection>
 
+        <SettingsSection icon="🚶" title="Apple Health steps" desc="Auto-log your daily steps from your iPhone">
+          <StepsCard user={user} />
+        </SettingsSection>
+
         <SettingsSection icon="🛟" title="Data safety" desc="Automatic backups — in the cloud and on this device">
           <CloudBackupsCard username={username} setData={setData} />
           <BackupsCard user={user} username={username} setData={setData} />
@@ -3329,6 +3333,101 @@ function DayStartCard({ data, setData }) {
           }}>{l}</button>
         ))}
       </div>
+    </div>
+  );
+}
+
+/* Apple Health steps: a website can't read Health directly (Apple only allows native
+   apps), so an iPhone Shortcut reads today's steps and POSTs them to log_steps() using
+   this user's secret code. The card generates that code, shows the exact setup values,
+   and displays today's synced count so you can tell it's working. */
+function StepsCard({ user }) {
+  const [token, setToken] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+  const [copied, setCopied] = useState("");
+  const [today, setToday] = useState(undefined); // undefined = loading, null = none
+  const url = (import.meta.env.VITE_SUPABASE_URL || "") + "/rest/v1/rpc/log_steps";
+  const apikey = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
+
+  // show today's synced steps (if the Shortcut has already run)
+  useEffect(() => { (async () => {
+    try { const s = await stepsFor([user.id], todayStr()); setToday(s[user.id]?.[todayStr()] ?? null); }
+    catch { setToday(null); }
+  })(); }, [user.id]);
+
+  const connect = async () => {
+    setBusy(true); setErr(null);
+    try { setToken(await getStepToken()); }
+    catch { setErr("Couldn't set this up right now — check your connection and try again."); }
+    finally { setBusy(false); }
+  };
+  const copy = (text, label) => {
+    try { navigator.clipboard.writeText(text); } catch {}
+    setCopied(label); setTimeout(() => setCopied(c => c === label ? "" : c), 1400);
+  };
+
+  const CopyRow = ({ label, value, id }) => (
+    <div style={{ marginBottom:10 }}>
+      <div style={{ fontSize:11.5, fontWeight:700, color:T.sub, marginBottom:4, textTransform:"uppercase", letterSpacing:.4 }}>{label}</div>
+      <div style={{ display:"flex", gap:6, alignItems:"stretch" }}>
+        <code style={{ flex:1, minWidth:0, background:T.input, borderRadius:8, padding:"8px 10px", fontSize:12,
+          color:T.ink, overflowWrap:"anywhere", fontFamily:"ui-monospace, Menlo, monospace" }}>{value}</code>
+        <button onClick={()=>copy(value, id)} style={{ flexShrink:0, background: copied===id ? T.green : T.input,
+          color: copied===id ? "#000" : T.ink, border:`1px solid ${T.line}`, borderRadius:8, padding:"0 12px", fontSize:12.5, fontWeight:700 }}>
+          {copied===id ? "Copied" : "Copy"}
+        </button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{ ...sCard, marginBottom:0 }}>
+      <div style={{ fontSize:14, fontWeight:700, color:T.ink, marginBottom:2 }}>🚶 Steps from Apple Health</div>
+      <div style={{ fontSize:12, color:T.sub, marginBottom:10, lineHeight:1.55 }}>
+        A website can't read Apple Health on its own, so this uses a free <b>Apple Shortcut</b> on your
+        iPhone to send your daily steps in — refreshing each time you open The Lab. A one-time, ~2-minute setup.
+      </div>
+
+      {today !== undefined && today !== null && (
+        <div style={{ display:"flex", alignItems:"baseline", gap:8, background:"rgba(0,200,5,.10)", border:`1px solid ${T.green}`,
+          borderRadius:10, padding:"9px 12px", marginBottom:10 }}>
+          <span style={{ fontSize:22, fontWeight:800, color:T.green, fontVariantNumeric:"tabular-nums" }}>{today.toLocaleString()}</span>
+          <span style={{ fontSize:12.5, color:T.sub }}>steps synced today ✓</span>
+        </div>
+      )}
+
+      {err && <div style={{ fontSize:12.5, color:T.danger, marginBottom:8 }}>{err}</div>}
+
+      {!token ? (
+        <button onClick={connect} disabled={busy} style={{ background:T.green, color:"#000", fontWeight:800,
+          padding:"11px 16px", borderRadius:10, fontSize:14, width:"100%", opacity:busy?0.6:1 }}>
+          {busy ? "Setting up…" : "Connect Apple Health"}
+        </button>
+      ) : (<>
+        <div style={{ fontSize:12.5, color:T.ink, fontWeight:700, marginBottom:8 }}>
+          Build a Shortcut on your iPhone with these 4 actions, using the values below:
+        </div>
+        <ol style={{ fontSize:12.5, color:T.sub, lineHeight:1.6, paddingLeft:18, margin:"0 0 12px" }}>
+          <li><b>Find Health Samples</b> — Type: <i>Steps</i>, add filter <i>Start Date · is · Today</i>.</li>
+          <li><b>Calculate Statistics</b> — Operation: <i>Sum</i>, over those samples.</li>
+          <li><b>Format Date</b> — Date: <i>Current Date</i>, custom format <code>yyyy-MM-dd</code>.</li>
+          <li><b>Get Contents of URL</b> — set it up with the boxes below (Method: POST, JSON body).</li>
+        </ol>
+        <CopyRow label="URL" value={url} id="url" />
+        <CopyRow label={'Header · apikey'} value={apikey} id="key" />
+        <div style={{ fontSize:11.5, color:T.sub, marginBottom:10, lineHeight:1.5 }}>
+          Also add header <b>Content-Type</b> = <code>application/json</code>. Then set the Request Body to
+          <b> JSON</b> with three fields: <code>p_token</code> (Text, below), <code>p_day</code> (the
+          Formatted Date from step 3), and <code>p_count</code> (Number, the Statistics result).
+        </div>
+        <CopyRow label="p_token (your secret — don't share it)" value={token} id="tok" />
+        <div style={{ fontSize:11.5, color:T.sub, lineHeight:1.5 }}>
+          Last step: in Shortcuts → <b>Automation</b> → new <b>Personal Automation</b> → <b>App</b> →
+          pick <b>The Lab</b> → <i>Is Opened</i> → Run this shortcut (turn off “Ask Before Running”). If
+          The Lab isn't in the app list, use a few <b>Time of Day</b> automations instead.
+        </div>
+      </>)}
     </div>
   );
 }
