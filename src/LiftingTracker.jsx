@@ -4523,6 +4523,7 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
   const [recap, setRecap] = useState(null); // end-of-month recap popup: { pmKey, monthLabel, rows } | null
   const [profileTab, setProfileTab] = useState("lifting"); // sub-tab inside a member profile
   const [profileSteps, setProfileSteps] = useState(undefined); // open profile's step map (separate steps table)
+  const [memberSteps, setMemberSteps] = useState({}); // user_id -> {day->count} auto steps (this week) for the group board
   const [dueling, setDueling] = useState(false); // challenge form open on a profile
   const [duelDays, setDuelDays] = useState("7");
   const [duelMsg, setDuelMsg] = useState("");
@@ -4548,6 +4549,17 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
     })();
     return () => { alive = false; };
   }, [profile?.user_id]);
+
+  // members' auto-synced steps for the group "this week" board
+  useEffect(() => {
+    if (!members?.length) { setMemberSteps({}); return; }
+    let alive = true;
+    (async () => {
+      try { const s = await stepsFor(members.map(m=>m.user_id), weekStart(todayStr())); if (alive) setMemberSteps(s); }
+      catch { if (alive) setMemberSteps({}); }
+    })();
+    return () => { alive = false; };
+  }, [members]);
 
   const saveEmoji = async (e) => {
     if (!e || !active) return;
@@ -4740,12 +4752,13 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
     if (!members) return [];
     const thisWk = weekStart(todayStr());
     const rows = members.map(m => {
-      const st = states[m.user_id] || {};
-      const week = (st.cardio || []).filter(c => c.steps && weekStart(c.date) === thisWk).reduce((s,c)=>s+c.steps, 0);
-      return { user: m.username, uid: m.user_id, week };
+      const mp = memberSteps[m.user_id] || {};
+      let week = 0, days = 0;
+      for (const d in mp) if (weekStart(d) === thisWk) { week += mp[d]; days++; }
+      return { user: m.username, uid: m.user_id, week, avg: days ? Math.round(week/days) : 0 };
     }).filter(r => r.week > 0).sort((a,b)=>b.week - a.week);
     return rows;
-  }, [members, states]);
+  }, [members, memberSteps]);
 
   const strength = useMemo(() => {
     if (!members) return { rows: [], best: {} };
@@ -5012,17 +5025,24 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
 
         {stepBoard.length > 0 && (
           <div className="card">
-            <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:8}}>👣 Steps this week</div>
+            <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:2}}>👣 Steps this week</div>
+            <div style={{fontSize:12, color:T.sub, marginBottom:8}}>Total since <b style={{color:T.ink}}>Monday</b> · small number = steps/day so far · tap to view a profile.</div>
             {stepBoard.map((r,i)=>{
               const top = stepBoard[0].week || 1;
+              const isMe = r.uid===user.id;
               return (
-                <div key={r.uid} style={{display:"flex", alignItems:"center", gap:8, padding:"5px 0"}}>
-                  <div style={{width:96, fontSize:13.5, fontWeight: r.uid===user.id?700:400, color: r.uid===user.id?T.green:T.ink, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{i===0?"👑 ":""}{r.user}{r.uid===user.id?" (you)":""}</div>
-                  <div style={{flex:1, height:8, background:T.input, borderRadius:99, overflow:"hidden"}}>
-                    <div style={{width:`${r.week/top*100}%`, height:"100%", background:T.green, borderRadius:99, transition:"width .5s ease"}} />
-                  </div>
-                  <b style={{fontSize:13, color:T.ink, minWidth:58, textAlign:"right"}}>{r.week.toLocaleString()}</b>
-                </div>
+                <button key={r.uid} onClick={()=>setProfile(members.find(m=>m.user_id===r.uid))} title={`${r.avg.toLocaleString()} steps/day average this week`}
+                  style={{width:"100%", textAlign:"left", background:"none", display:"flex", alignItems:"center", gap:9, padding:"9px 2px", borderTop: i===0?"none":`1px solid ${T.creamLine}`}}>
+                  <span style={{width:20, textAlign:"center", fontWeight:800, fontSize:13, color: i===0?T.green:T.sub}}>{i===0?"👑":i+1}</span>
+                  <span style={{width:82, flexShrink:0, fontSize:13.5, fontWeight: isMe?800:600, color: isMe?T.green:T.ink, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{r.user}{isMe?" (you)":""}</span>
+                  <span style={{flex:1, height:8, background:T.input, borderRadius:99, overflow:"hidden"}}>
+                    <span style={{display:"block", width:`${r.week/top*100}%`, height:"100%", background:T.green, borderRadius:99, transition:"width .5s ease"}} />
+                  </span>
+                  <span style={{textAlign:"right", flexShrink:0, minWidth:64}}>
+                    <b style={{fontSize:13, color:T.ink, display:"block", fontVariantNumeric:"tabular-nums"}}>{r.week.toLocaleString()}</b>
+                    <span style={{fontSize:10.5, color:T.sub}}>{r.avg.toLocaleString()}/day</span>
+                  </span>
+                </button>
               );
             })}
           </div>
