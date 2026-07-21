@@ -3625,7 +3625,17 @@ function StepsCard({ user }) {
               </div>
             </div>
           </div>
-          <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55 }}>Last thing: tap the name at the top to call it <b>“Sync Steps to The Lab,”</b> then tap <b>Done</b>.</div>
+        </StepBlock>
+
+        <StepBlock n="5" title="Name it & save">
+          <div style={{ background:"rgba(0,200,5,.08)", border:`1px solid ${T.green}`, borderRadius:12, padding:"13px 14px" }}>
+            <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55, marginBottom:9 }}>
+              At the top of the shortcut, tap its <b style={{ color:T.ink }}>name</b> (or the <b>⌄</b> next to it → <b>Rename</b>), erase what's there,
+              and paste this <b style={{ color:T.ink }}>exact</b> name — it must match, or the Sync button and automations can't find it:
+            </div>
+            <Copy label="Shortcut name — tap Copy, then paste it" value="Sync Steps to The Lab" id="name" />
+            <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55, marginTop:8 }}>Then tap <b style={{ color:T.ink }}>Done</b> (top-right). Your shortcut is built. ✅</div>
+          </div>
         </StepBlock>
 
         {/* test it — do this first, before automating */}
