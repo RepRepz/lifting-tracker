@@ -300,6 +300,7 @@ export default function LiftingTracker({ user }) {
   const [units, setUnits] = useState(() => localStorage.getItem("lt-units") || "lb");
   const [hunit, setHunit] = useState(() => localStorage.getItem("lt-hunit") || "ftin"); // height: "ftin" | "cm"
   const [routinesOn, setRoutinesOn] = useState(() => localStorage.getItem("lt-routines-on") === "1"); // optional templates feature
+  const [stepsOn, setStepsOn] = useState(() => localStorage.getItem("lt-steps-on") === "1"); // Apple Health steps tab
   // Lifting is always on for everyone. The full Macros/nutrition feature is built and kept
   // in the codebase (Nutrition.jsx + the tab wiring below) but PARKED for most accounts.
   // Currently unlocked ONLY for these usernames (a private demo for Anis). Add a name here
@@ -315,9 +316,11 @@ export default function LiftingTracker({ user }) {
   useEffect(() => { localStorage.setItem("lt-units", units); }, [units]);
   useEffect(() => { localStorage.setItem("lt-hunit", hunit); }, [hunit]);
   useEffect(() => { localStorage.setItem("lt-routines-on", routinesOn ? "1" : "0"); }, [routinesOn]);
+  useEffect(() => { localStorage.setItem("lt-steps-on", stepsOn ? "1" : "0"); }, [stepsOn]);
   useEffect(() => {
     if (tab === "macros" && !nutritionOn) setTab("dash"); // non-dev accounts never land on Macros
-  }, [nutritionOn, tab]);
+    if (tab === "steps" && !stepsOn) setTab("dash");      // hide the Steps tab when the feature is off
+  }, [nutritionOn, stepsOn, tab]);
   const [loaded, setLoaded] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
   const [syncState, setSyncState] = useState("synced"); // "synced" | "offline"
@@ -431,7 +434,9 @@ export default function LiftingTracker({ user }) {
     ...(nutritionOn ? [["macros","Macros","🥗"]] : []),
     ["journal","Journal","📓"],
     ["friends","Groups","👥"],
-    ...(liftingOn ? [["cardio","Cardio","🏃"],["body","Body","⚖️"]] : []),
+    ...(liftingOn ? [["cardio","Cardio","🏃"]] : []),
+    ...(liftingOn && stepsOn ? [["steps","Steps","👟"]] : []),
+    ...(liftingOn ? [["body","Body","⚖️"]] : []),
   ];
 
   return (
@@ -616,6 +621,7 @@ export default function LiftingTracker({ user }) {
           startTab={startTab} setStartTab={setStartTab} tabs={tabs}
           units={units} setUnits={setUnits} hunit={hunit} setHunit={setHunit}
           routinesOn={routinesOn} setRoutinesOn={setRoutinesOn}
+          stepsOn={stepsOn} setStepsOn={setStepsOn}
           streaksOn={streaksOn} setStreaksOn={setStreaksOn}
           waterOn={waterOn} setWaterOn={setWaterOn}
           nutritionOn={nutritionOn}
@@ -654,7 +660,8 @@ export default function LiftingTracker({ user }) {
           {tab==="friends" && <FriendsTab user={user} nutritionOn={nutritionOn} streaksOn={streaksOn} />}
           {tab==="macros" && nutritionOn && <MacroTab data={data} setData={setData} streaksOn={streaksOn} waterOn={waterOn} />}
           {tab==="body" && liftingOn && <BodyTab data={data} setData={setData} hunit={hunit} />}
-          {tab==="cardio" && liftingOn && <CardioTab data={data} setData={setData} latestBW={latestBW} user={user} />}
+          {tab==="cardio" && liftingOn && <CardioTab data={data} setData={setData} latestBW={latestBW} user={user} stepsOn={stepsOn} />}
+          {tab==="steps" && liftingOn && stepsOn && <StepsTab user={user} />}
           {tab==="ex" && liftingOn && <ExercisesTab data={data} setData={setData} />}
         </div>
       </main>
@@ -2489,22 +2496,19 @@ function BodyTab({ data, setData, hunit }) {
 }
 
 /* ================= CARDIO ================= */
-/* Steps dashboard (Apple Health, auto-synced) — the top section of the Cardio tab.
-   Reads the `steps` table for the user + groupmates: goal ring, 14-day bar chart,
-   weekly stats, group leaderboard, and a once-a-day celebration when a whole group
-   has logged the same day. Read-only — steps arrive via the phone Shortcut. */
-function StepsPanel({ user }) {
-  const GOAL = 10000;
+/* Shared loader for step data: returns { mine (day->count map), board (yesterday
+   leaderboard across groupmates), celebrate (group name if everyone logged), dismiss }.
+   Reads the `steps` table (RLS gives you yourself + groupmates). */
+function useSteps(user, sinceDays) {
   const addDays = (ds,n)=>{ const d=new Date(ds+"T00:00"); d.setDate(d.getDate()+n);
     return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
   const yStr = addDays(todayStr(), -1);
   const [mine, setMine] = useState(undefined);
   const [board, setBoard] = useState([]);
   const [celebrate, setCelebrate] = useState(null);
-
   useEffect(()=>{ let alive=true; (async()=>{
     try {
-      const since = addDays(todayStr(), -14);
+      const since = addDays(todayStr(), -sinceDays);
       let groups=[]; try { groups = await listMyGroups(); } catch {}
       const nameOf = {}; const gm = [];
       for (const g of groups) { try {
@@ -2528,32 +2532,68 @@ function StepsPanel({ user }) {
         }
       }
     } catch { if (alive) setMine({}); }
-  })(); return ()=>{ alive=false; }; }, [user.id]);
+  })(); return ()=>{ alive=false; }; }, [user.id, sinceDays]);
+  const dismiss = () => { localStorage.setItem(`lt-allin-${yStr}`, "1"); setCelebrate(null); };
+  return { mine, board, celebrate, dismiss, yStr, addDays };
+}
 
-  const dismissCelebrate = () => { localStorage.setItem(`lt-allin-${yStr}`, "1"); setCelebrate(null); };
+/* Full Steps tab (Apple Health, auto-synced): goal ring, an Apple-Health-style ranged
+   bar chart (W/M/6M/Y/5Y with a daily-average readout), and a group leaderboard, plus a
+   once-a-day celebration when a whole group has logged. Read-only. */
+function StepsTab({ user }) {
+  const GOAL = 10000;
+  const [range, setRange] = useState("M");
+  const { mine, board, celebrate, dismiss, yStr, addDays } = useSteps(user, 5*365 + 40);
+  const avgOf = (arr)=> arr.length ? Math.round(arr.reduce((a,b)=>a+b,0)/arr.length) : 0;
 
-  const series = []; for (let i=13;i>=0;i--){ const d=addDays(todayStr(),-i); series.push({ day:d, count:(mine&&mine[d])||0 }); }
   const yCount = (mine && mine[yStr]) || 0;
-  const chartMax = Math.max(GOAL, ...series.map(s=>s.count), 1);
-  const last7 = series.slice(-8, -1);
-  const withData = last7.filter(s=>s.count>0);
-  const weekTotal = withData.reduce((a,s)=>a+s.count,0);
-  const avg = withData.length ? Math.round(weekTotal/withData.length) : 0;
-  const best = Math.max(0, ...series.map(s=>s.count));
   const pct = Math.min(1, yCount/GOAL);
   const R=52, C=2*Math.PI*R;
+  const hero = useMemo(()=>{
+    const m = mine || {};
+    const seven = []; for (let i=1;i<=7;i++){ const v=m[addDays(todayStr(),-i)]; if (v!=null) seven.push(v); }
+    const all = Object.values(m);
+    return { avg: avgOf(seven), best: all.length ? Math.max(...all) : 0 };
+  }, [mine]);
+
+  const chart = useMemo(()=>{
+    const m = mine || {}; const today = todayStr(); let bars=[]; let every=1;
+    if (range==="W" || range==="M") {
+      const n = range==="W"?7:30; every = range==="W"?1:5;
+      for (let i=n-1;i>=0;i--){ const d=addDays(today,-i);
+        bars.push({ label: range==="W" ? new Date(d+"T00:00").toLocaleDateString("en-US",{weekday:"narrow"}) : String(new Date(d+"T00:00").getDate()),
+          value: m[d]||0, has: m[d]!=null, mark: d===yStr }); }
+    } else if (range==="6M") {
+      every = 4; const ws = weekStart(today);
+      for (let i=25;i>=0;i--){ const start=addDays(ws,-7*i); const days=[]; for(let k=0;k<7;k++){ const d=addDays(start,k); if(m[d]!=null) days.push(m[d]); }
+        bars.push({ label: new Date(start+"T00:00").toLocaleDateString("en-US",{month:"short"}), value: avgOf(days), has: days.length>0 }); }
+    } else if (range==="Y") {
+      every = 1; const [yy,mm] = today.split("-").map(Number);
+      for (let i=11;i>=0;i--){ const dt=new Date(yy, mm-1-i, 1); const key=`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}`;
+        const days=Object.keys(m).filter(d=>d.startsWith(key)).map(d=>m[d]);
+        bars.push({ label: dt.toLocaleDateString("en-US",{month:"narrow"}), value: avgOf(days), has: days.length>0 }); }
+    } else { // 5Y
+      every=1; const yy=Number(today.slice(0,4));
+      for (let i=4;i>=0;i--){ const year=yy-i; const days=Object.keys(m).filter(d=>d.startsWith(String(year))).map(d=>m[d]);
+        bars.push({ label:String(year), value: avgOf(days), has: days.length>0 }); }
+    }
+    const wd = bars.filter(b=>b.has);
+    return { bars, avg: avgOf(wd.map(b=>b.value)), max: Math.max(1, ...bars.map(b=>b.value)), every };
+  }, [mine, range]);
+
+  const rangeSub = { W:"Past week", M:"Past 30 days", "6M":"Past 6 months", Y:"Past year", "5Y":"Past 5 years" };
   const dayLabel = (d) => d===yStr ? "yesterday" : d===todayStr() ? "today" : new Date(d+"T00:00").toLocaleDateString("en-US",{weekday:"short"});
 
-  if (mine === undefined) return <div className="card"><div className="skeleton" style={{height:180, borderRadius:12}} /></div>;
+  if (mine === undefined) return <div className="card"><div className="skeleton" style={{height:220, borderRadius:12}} /></div>;
 
   if (!Object.keys(mine).length) {
     return (
       <div className="card" style={{textAlign:"center"}}>
-        <div style={{fontSize:34, marginBottom:6}}>👟</div>
-        <div className="h" style={{fontSize:18, color:T.tealDk, marginBottom:6}}>Auto-track your steps</div>
+        <div style={{fontSize:40, marginBottom:8}}>👟</div>
+        <div className="h" style={{fontSize:19, color:T.tealDk, marginBottom:6}}>No steps yet</div>
         <div style={{fontSize:13, color:T.sub, lineHeight:1.55, maxWidth:340, margin:"0 auto"}}>
-          Connect Apple Health once and your daily steps show up here on their own — goal ring, weekly stats, and a group leaderboard.
-          Set it up in <b style={{color:T.ink}}>Settings → 🚶 Apple Health steps</b>.
+          Your steps sync automatically once you finish the one-time setup in <b style={{color:T.ink}}>Settings → 🚶 Apple Health steps</b>.
+          After the first sync your ring, charts, and group board fill in here.
         </div>
       </div>
     );
@@ -2561,21 +2601,19 @@ function StepsPanel({ user }) {
 
   return (<>
     {celebrate && (
-      <div onClick={dismissCelebrate} style={{position:"fixed", inset:0, zIndex:60, background:"rgba(0,0,0,.6)", backdropFilter:"blur(2px)", display:"flex", alignItems:"center", justifyContent:"center", padding:24, animation:"fadeSwap .2s ease-out both"}}>
+      <div onClick={dismiss} style={{position:"fixed", inset:0, zIndex:60, background:"rgba(0,0,0,.6)", backdropFilter:"blur(2px)", display:"flex", alignItems:"center", justifyContent:"center", padding:24, animation:"fadeSwap .2s ease-out both"}}>
         <div onClick={e=>e.stopPropagation()} style={{background:T.card, border:`1px solid ${T.green}`, borderRadius:18, padding:"26px 22px", maxWidth:340, textAlign:"center", animation:"calPop .28s cubic-bezier(.34,1.56,.64,1) both"}}>
           <div style={{fontSize:44, marginBottom:8}}>🎉</div>
           <div className="h" style={{fontSize:20, color:T.green, marginBottom:6}}>Whole squad logged!</div>
           <div style={{fontSize:13.5, color:T.sub, lineHeight:1.55, marginBottom:16}}>Everyone in <b style={{color:T.ink}}>{celebrate}</b> got their steps in for {dayLabel(yStr)}. Momentum. 🔥</div>
-          <button onClick={dismissCelebrate} style={{background:T.green, color:"#000", fontWeight:800, fontSize:15, padding:"11px 20px", borderRadius:10, width:"100%"}}>Let's go</button>
+          <button onClick={dismiss} style={{background:T.green, color:"#000", fontWeight:800, fontSize:15, padding:"11px 20px", borderRadius:10, width:"100%"}}>Let's go</button>
         </div>
       </div>
     )}
 
+    {/* hero ring */}
     <div className="card">
-      <div style={{display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14}}>
-        <div className="h" style={{fontSize:19, color:T.tealDk}}>👟 Steps</div>
-        <a href={`shortcuts://run-shortcut?name=${encodeURIComponent("The Lab: Steps")}`} style={{fontSize:12.5, fontWeight:700, color:T.green, textDecoration:"none", background:T.mint, padding:"6px 12px", borderRadius:99}}>🔄 Sync now</a>
-      </div>
+      <div className="h" style={{fontSize:19, color:T.tealDk, marginBottom:14}}>👟 Steps</div>
       <div style={{display:"flex", alignItems:"center", gap:20}}>
         <div style={{position:"relative", width:120, height:120, flexShrink:0}}>
           <svg width="120" height="120">
@@ -2592,29 +2630,40 @@ function StepsPanel({ user }) {
           <div style={{fontSize:12.5, color:T.sub}}>Yesterday</div>
           <div style={{fontSize:15, fontWeight:700, color:T.ink, marginBottom:12}}>{yCount>=GOAL ? "Goal smashed 💪" : yCount>0 ? "Keep it moving" : "No steps yet"}</div>
           <div style={{display:"flex", gap:18}}>
-            <div><div style={{fontSize:17, fontWeight:800, color:T.ink}}>{avg.toLocaleString()}</div><div style={{fontSize:10.5, color:T.sub}}>daily avg</div></div>
-            <div><div style={{fontSize:17, fontWeight:800, color:T.ink}}>{best.toLocaleString()}</div><div style={{fontSize:10.5, color:T.sub}}>best day</div></div>
+            <div><div style={{fontSize:17, fontWeight:800, color:T.ink}}>{hero.avg.toLocaleString()}</div><div style={{fontSize:10.5, color:T.sub}}>7-day avg</div></div>
+            <div><div style={{fontSize:17, fontWeight:800, color:T.ink}}>{hero.best.toLocaleString()}</div><div style={{fontSize:10.5, color:T.sub}}>best day</div></div>
           </div>
         </div>
       </div>
     </div>
 
+    {/* ranged chart (Apple-Health style) */}
     <div className="card">
-      <div className="h" style={{fontSize:16, color:T.tealDk, marginBottom:2}}>Last 14 days</div>
-      <div style={{fontSize:12, color:T.sub, marginBottom:12}}>Green bars hit your {GOAL/1000}k goal.</div>
-      <div style={{display:"flex", alignItems:"flex-end", gap:4, height:116}}>
-        {series.map((s,i)=>(
-          <div key={s.day} style={{flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:4, minWidth:0}}>
-            <div className="vbar" style={{width:"100%", maxWidth:16, borderRadius:"4px 4px 2px 2px",
-              height: s.count>0 ? Math.max(4, (s.count/chartMax)*90) : 3,
-              background: s.count>=GOAL ? T.green : s.count>0 ? "rgba(0,200,5,.5)" : T.line,
-              animationDelay:`${i*0.03}s`}} />
-            <span style={{fontSize:9, color: s.day===yStr?T.green:T.sub, fontWeight: s.day===yStr?800:400}}>{new Date(s.day+"T00:00").getDate()}</span>
+      <div style={{display:"flex", background:T.input, borderRadius:10, padding:3, gap:2, marginBottom:14}}>
+        {["W","M","6M","Y","5Y"].map(r=>(
+          <button key={r} onClick={()=>setRange(r)} style={{flex:1, padding:"7px 0", borderRadius:8, fontSize:12.5, fontWeight:800,
+            background: range===r?T.green:"none", color: range===r?"#000":T.sub}}>{r}</button>
+        ))}
+      </div>
+      <div style={{fontSize:11, fontWeight:700, color:T.sub, textTransform:"uppercase", letterSpacing:.6}}>Daily average</div>
+      <div style={{display:"flex", alignItems:"baseline", gap:6}}>
+        <span style={{fontSize:27, fontWeight:800, color:T.ink, fontVariantNumeric:"tabular-nums"}}>{chart.avg.toLocaleString()}</span>
+        <span style={{fontSize:13, color:T.sub}}>steps/day</span>
+      </div>
+      <div style={{fontSize:12, color:T.sub, marginBottom:14}}>{rangeSub[range]}</div>
+      <div style={{display:"flex", alignItems:"flex-end", gap: range==="W"?8:3, height:130}}>
+        {chart.bars.map((b,i)=>(
+          <div key={i} style={{flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:5, minWidth:0}}>
+            <div className="vbar" style={{width:"100%", maxWidth: range==="W"?30:14, borderRadius:"4px 4px 2px 2px",
+              height: b.has&&b.value>0 ? Math.max(4, (b.value/chart.max)*100) : 3,
+              background: b.mark ? T.green : b.has ? "rgba(0,200,5,.6)" : T.line, animationDelay:`${i*0.02}s`}} />
+            <span style={{fontSize:9, color: b.mark?T.green:T.sub, fontWeight: b.mark?800:400, whiteSpace:"nowrap"}}>{(i%chart.every===0 || i===chart.bars.length-1) ? b.label : ""}</span>
           </div>
         ))}
       </div>
     </div>
 
+    {/* group leaderboard */}
     {board.length > 0 && (
       <div className="card">
         <div className="h" style={{fontSize:16, color:T.tealDk, marginBottom:2}}>Group steps — yesterday</div>
@@ -2631,7 +2680,25 @@ function StepsPanel({ user }) {
   </>);
 }
 
-function CardioTab({ data, setData, latestBW, user }) {
+/* One-line steps recap shown on the Cardio tab (only when the Steps feature is on). */
+function CardioStepsRecap({ user }) {
+  const { mine, yStr, addDays } = useSteps(user, 8);
+  if (!mine || !Object.keys(mine).length) return null;
+  const y = mine[yStr]; const t = mine[todayStr()];
+  const show = t != null ? { n:t, when:"today" } : y != null ? { n:y, when:"yesterday" } : null;
+  if (!show) return null;
+  return (
+    <div className="card" style={{display:"flex", alignItems:"center", gap:12, padding:"12px 16px"}}>
+      <span style={{fontSize:24}}>👟</span>
+      <div style={{flex:1, minWidth:0}}>
+        <div style={{fontSize:18, fontWeight:800, color:T.green, fontVariantNumeric:"tabular-nums"}}>{show.n.toLocaleString()} <span style={{fontSize:12.5, color:T.sub, fontWeight:600}}>steps {show.when}</span></div>
+        <div style={{fontSize:11.5, color:T.sub}}>Auto-tracked from Apple Health · full charts in the Steps tab</div>
+      </div>
+    </div>
+  );
+}
+
+function CardioTab({ data, setData, latestBW, user, stepsOn }) {
   const units = useUnit();
   const [date, setDate] = useState(todayStr());
   const [activity, setActivity] = useState("");
@@ -2728,7 +2795,7 @@ function CardioTab({ data, setData, latestBW, user }) {
   };
 
   return (<>
-    <StepsPanel user={user} />
+    {stepsOn && <CardioStepsRecap user={user} />}
 
     <div className="card">
       <div className="h" style={{fontSize:19, color:T.tealDk, marginBottom:4}}>🏃 Log cardio</div>
@@ -2762,6 +2829,12 @@ function CardioTab({ data, setData, latestBW, user }) {
                   </label>}
             </>}
       </div>
+      {isSteps && stepsOn && (
+        <div style={{display:"flex", gap:9, alignItems:"flex-start", background:"rgba(255,80,0,.10)", border:`1px solid ${T.danger}`, borderRadius:10, padding:"9px 12px", marginBottom:10, fontSize:12.5, color:T.sub, lineHeight:1.5}}>
+          <span style={{flexShrink:0}}>⚠️</span>
+          <span>Your steps are already <b style={{color:T.ink}}>auto-tracked in the Steps tab</b> from Apple Health. Logging a step count here too will double-count — skip it unless you specifically want a separate manual entry.</span>
+        </div>
+      )}
       {estCal!=null && <div style={{background:T.cream, borderRadius:10, padding:"8px 12px", marginBottom:10, fontSize:14}}>Estimated: <b>{estCal} cal</b>{isSteps && steps && <span style={{color:T.sub}}> · about {stepsMiles(parseInt(steps)||0)} mi</span>}</div>}
       <button onClick={add} disabled={!canSave} style={{width:"100%", padding:"12px", background:T.green, color:"#000", fontWeight:700, fontSize:16, opacity:canSave?1:0.45}}>Save session</button>
     </div>
@@ -3205,7 +3278,7 @@ function SectionHead({ icon, label }) {
   );
 }
 
-function SettingsModal({ user, username, data, setData, startTab, setStartTab, tabs, units, setUnits, hunit, setHunit, routinesOn, setRoutinesOn, streaksOn, setStreaksOn, waterOn, setWaterOn, nutritionOn, onClose }) {
+function SettingsModal({ user, username, data, setData, startTab, setStartTab, tabs, units, setUnits, hunit, setHunit, routinesOn, setRoutinesOn, stepsOn, setStepsOn, streaksOn, setStreaksOn, waterOn, setWaterOn, nutritionOn, onClose }) {
   const memberSince = user.created_at ? new Date(user.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}) : "—";
   const totalSets = (data.log||[]).length;
 
@@ -3333,6 +3406,8 @@ function SettingsModal({ user, username, data, setData, startTab, setStartTab, t
         </SettingsSection>
 
         <SettingsSection icon="🚶" title="Apple Health steps" desc="Auto-log your daily steps from your iPhone">
+          <FeatureToggle label="Show the Steps tab" on={stepsOn} setOn={setStepsOn}
+            desc="Adds a 👟 Steps tab (goal ring, W/M/6M/Y/5Y charts, group leaderboard) and a steps recap on the Cardio tab. Flip this on once you've set up syncing below." />
           <StepsCard user={user} />
         </SettingsSection>
 
