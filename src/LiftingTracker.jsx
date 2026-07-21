@@ -119,17 +119,14 @@ const nowInfo = () => {
 };
 /* LOCAL date, not UTC — toISOString() would roll to tomorrow in the evening (US time) */
 const todayStr = () => nowInfo().date;
-// "Gym day": between midnight and 4 AM we decide from the log whether you're STILL in
-// yesterday's session (a set logged within the last 3 hours → keep yesterday's date) or
-// starting fresh after waking up (nothing recent → it's already the new day). Only used
-// to prefill the set form — the 🌙 hint shows the pick and one tap on the date changes it.
-const gymDayStr = (log) => {
+// "Gym day": anything logged before YOUR chosen day-start hour (Settings, default 4 AM)
+// still counts as the previous calendar day — so a night owl's 1 AM session stays on
+// "tonight", while someone whose day starts at midnight gets the new date immediately.
+// Only used to prefill the set form; the 🌙 hint shows the pick and one tap changes it.
+let DAY_START = 4; // hour the date flips for logging; assigned from profile.dayStart
+const gymDayStr = () => {
   const { date, hour } = nowInfo();
-  if (hour >= 4) return date;
-  let lastTs = 0;
-  const CAP = 4102444800000; // ids are Date.now() at logging; ignore absurd/future ones
-  if (Array.isArray(log)) for (const e of log) { const t = Number(e?.id); if (t > lastTs && t < CAP) lastTs = t; }
-  if (!lastTs || Date.now() - lastTs > 3 * 3600e3) return date; // fresh early-morning session
+  if (hour >= DAY_START) return date;
   const d = new Date(date + "T00:00"); d.setDate(d.getDate() - 1);
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 };
@@ -333,6 +330,7 @@ export default function LiftingTracker({ user }) {
   const cacheKey = `lt-cache-${user.id}`;
   const pendKey = `lt-pending-${user.id}`;
   APP_TZ = data.profile?.tz || "auto"; // date helpers everywhere follow the Settings pick
+  DAY_START = data.profile?.dayStart ?? 4; // 0 = date flips at midnight
 
   useEffect(() => { (async () => {
     const cachedRaw = localStorage.getItem(cacheKey);
@@ -820,9 +818,9 @@ function RoutinesPanel({ data, setData, onPick }) {
 function LogTab({ data, exMap, setData, routinesOn }) {
   const sorted = useMemo(()=>[...data.log].sort((a,b)=>a.date.localeCompare(b.date)||a.id-b.id),[data.log]);
   const last = sorted[sorted.length-1];
-  // date defaults to the "gym day" (smart: after midnight it checks whether you're still
-  // mid-session or freshly awake); exercise only carries over from that same day
-  const gymDay = gymDayStr(sorted);
+  // date defaults to the "gym day" (before your Settings day-start hour = still yesterday);
+  // exercise only carries over from that same day
+  const gymDay = gymDayStr();
   const [date, setDate] = useState(gymDay);
   const [exName, setExName] = useState(last?.date === gymDay ? last.exercise : "");
   const [setNum, setSetNum] = useState(1);
@@ -3124,6 +3122,24 @@ function SettingsModal({ user, username, data, setData, startTab, setStartTab, t
               <option key={z} value={z}>{z.replace(/_/g," ")}</option>
             ))}
           </select>
+        </div>
+
+        {/* day start — when the date flips for logging */}
+        <div style={{ ...sCard }}>
+          <div style={{ fontSize:14, fontWeight:700, color:T.ink, marginBottom:2 }}>My day starts at</div>
+          <div style={{ fontSize:12, color:T.sub, marginBottom:10 }}>
+            Sets logged before this time still count as the night before. <b>4 AM</b> suits night owls
+            (a 1 AM session stays on “tonight's” date); pick <b>Midnight</b> if you're up lifting at
+            3 AM and want it on the new day. Only changes the pre-filled date — you can always tap the date to override.
+          </div>
+          <div style={{ display:"flex", background:T.input, borderRadius:10, padding:3, maxWidth:320 }}>
+            {[[0,"Midnight"],[2,"2 AM"],[4,"4 AM"]].map(([v,l])=>(
+              <button key={v} onClick={()=>setData(d=>({ ...d, profile:{ ...(d.profile||{}), dayStart:v } }))} style={{
+                flex:1, padding:"9px 0", borderRadius:8, fontWeight:700, fontSize:14,
+                background: (data.profile?.dayStart ?? 4)===v ? T.green : "none", color: (data.profile?.dayStart ?? 4)===v ? "#000" : T.sub,
+              }}>{l}</button>
+            ))}
+          </div>
         </div>
 
         {/* view preference */}
