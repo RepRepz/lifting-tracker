@@ -500,6 +500,9 @@ export default function LiftingTracker({ user }) {
         /* ---- weigh-in note: expand/collapse ---- */
         .note-reveal { animation:noteIn .32s cubic-bezier(.22,1,.36,1); overflow:hidden; }
         @keyframes noteIn { from { opacity:0; transform:translateY(-6px); max-height:0; } to { opacity:1; transform:translateY(0); max-height:400px; } }
+        /* settings sections: fade/slide only — NO max-height, so tall content (password
+           card etc.) is never clipped and the sheet can scroll through all of it */
+        @keyframes secIn { from { opacity:0; transform:translateY(-5px); } to { opacity:1; transform:none; } }
         .note-btn { transition:color .15s ease, background .15s ease, transform .12s ease; }
         .note-btn:active { transform:scale(.9); }
         @media(hover:hover){ .note-btn:hover{ color:${T.green}!important; } }
@@ -2930,7 +2933,8 @@ const IS_STANDALONE = typeof window !== "undefined" &&
 
 function DownloadAppCard() {
   const [done, setDone] = useState(() => localStorage.getItem("lt-a2hs-done") === "1");
-  if (!IS_MOBILE || IS_STANDALONE || done) return null;
+  if (!IS_MOBILE || IS_STANDALONE) return null;
+  if (done) return <div style={{ fontSize:13, color:T.green, fontWeight:700, padding:"4px 2px" }}>✅ Marked as installed — this guide disappears next time you open Settings.</div>;
   const isiOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
   return (
     <div style={{ ...sCard, borderColor:T.green }}>
@@ -3061,19 +3065,52 @@ function SettingsModal({ user, username, data, setData, startTab, setStartTab, t
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  // freeze the page behind the sheet — otherwise iOS "scroll chains" to the app
+  // underneath when the sheet's scroll hits an edge, which feels like broken scrolling
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, []);
+
+  // swipe DOWN on the grab handle to dismiss (the sheet follows your finger)
+  const sheetRef = useRef(null);
+  const dragY = useRef(null);
+  const grab = {
+    onTouchStart: (e) => {
+      dragY.current = { y0: e.touches[0].clientY, dy: 0 };
+      if (sheetRef.current) sheetRef.current.style.animation = "none"; // let transform take over
+    },
+    onTouchMove: (e) => {
+      if (!dragY.current) return;
+      const dy = Math.max(0, e.touches[0].clientY - dragY.current.y0);
+      dragY.current.dy = dy;
+      if (sheetRef.current) { sheetRef.current.style.transition = "none"; sheetRef.current.style.transform = `translateY(${dy}px)`; }
+    },
+    onTouchEnd: () => {
+      const dy = dragY.current?.dy || 0; dragY.current = null;
+      const el = sheetRef.current; if (!el) return;
+      if (dy > 90) { onClose(); return; }
+      el.style.transition = "transform .25s cubic-bezier(.22,1,.36,1)"; el.style.transform = "translateY(0)";
+    },
+  };
+
   return (
     <div onClick={onClose} style={{
       position:"fixed", inset:0, zIndex:50, background:"rgba(0,0,0,.6)", backdropFilter:"blur(2px)",
-      display:"flex", alignItems:"flex-end", justifyContent:"center",
+      display:"flex", alignItems:"flex-end", justifyContent:"center", touchAction:"none",
       animation:"fadeSwap .18s ease-out both",
     }}>
-      <div onClick={e=>e.stopPropagation()} style={{
+      <div ref={sheetRef} onClick={e=>e.stopPropagation()} style={{
         background:T.card, borderTop:`1px solid ${T.line}`, borderRadius:"18px 18px 0 0",
-        width:"100%", maxWidth:520, maxHeight:"88vh", overflowY:"auto",
+        width:"100%", maxWidth:520, maxHeight:"88dvh", overflowY:"auto",
+        overscrollBehavior:"contain", WebkitOverflowScrolling:"touch", touchAction:"pan-y",
         padding:"18px 16px calc(20px + env(safe-area-inset-bottom))",
         animation:"sheetUp .26s cubic-bezier(.22,1,.36,1) both",
       }}>
-        <div style={{ width:38, height:4, background:T.line, borderRadius:99, margin:"0 auto 14px" }} />
+        <div {...grab} style={{ touchAction:"none", cursor:"grab", padding:"6px 0 12px", margin:"-8px 0 2px" }}>
+          <div style={{ width:38, height:4, background:T.line, borderRadius:99, margin:"0 auto" }} />
+        </div>
 
         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
           <div>
@@ -3163,6 +3200,7 @@ function SettingsModal({ user, username, data, setData, startTab, setStartTab, t
   );
 }
 const sCard = { background:T.cream, border:`1px solid ${T.creamLine}`, borderRadius:12, padding:14, marginBottom:12 };
+export const __SettingsTest = SettingsModal; // harness.html renders the sheet standalone for testing
 
 /* Short, popular-first time-zone list — Auto covers almost everyone; the full IANA
    list (~400 zones) hides behind a "show every time zone" tap for the rare case. */
@@ -3212,7 +3250,7 @@ function SettingsSection({ icon, title, desc, children, defaultOpen = false }) {
         <span style={{ color: open ? T.green : T.sub, fontSize:15, flexShrink:0,
           display:"inline-block", transform: open ? "rotate(90deg)" : "none", transition:"transform .22s cubic-bezier(.34,1.56,.64,1)" }}>▸</span>
       </button>
-      {open && <div style={{ padding:"2px 14px 14px", animation:"noteIn .24s ease-out both" }}>{children}</div>}
+      {open && <div style={{ padding:"2px 14px 14px", animation:"secIn .22s ease-out both" }}>{children}</div>}
     </div>
   );
 }
