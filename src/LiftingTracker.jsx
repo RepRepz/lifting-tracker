@@ -569,6 +569,12 @@ export default function LiftingTracker({ user }) {
           .app-main-wide { max-width:1200px; }
         }
 
+        /* Robinhood-style slider (Settings → My day starts at) */
+        input[type=range].lab-range { -webkit-appearance:none; appearance:none; width:100%; height:26px; border-radius:99px; border:none; padding:10px 0; min-height:26px; background-clip:content-box; outline:none; cursor:pointer; }
+        input[type=range].lab-range:focus { box-shadow:none; }
+        .lab-range::-webkit-slider-thumb { -webkit-appearance:none; appearance:none; width:26px; height:26px; border-radius:50%; background:#000; border:3px solid ${T.green}; box-shadow:0 2px 10px rgba(0,200,5,.45); transition:transform .15s ease; }
+        .lab-range:active::-webkit-slider-thumb { transform:scale(1.18); }
+        .lab-range::-moz-range-thumb { width:26px; height:26px; border-radius:50%; background:#000; border:3px solid ${T.green}; box-shadow:0 2px 10px rgba(0,200,5,.45); }
         /* drag-to-reorder */
         .drag-handle { cursor:grab; touch-action:none; }
         .dragging { opacity:.55; }
@@ -3077,100 +3083,87 @@ function SettingsModal({ user, username, data, setData, startTab, setStartTab, t
           <button onClick={onClose} style={{ background:T.input, color:T.sub, width:34, height:34, borderRadius:99, fontSize:16, flexShrink:0 }}>✕</button>
         </div>
 
-        <SectionHead icon="📲" label="Take it with you" />
-        <DownloadAppCard />
+        {/* the install guide only exists on a phone browser that hasn't installed yet */}
+        {IS_MOBILE && !IS_STANDALONE && localStorage.getItem("lt-a2hs-done") !== "1" && (
+          <SettingsSection icon="📲" title="Get the app" desc="Put The Lab on your home screen" defaultOpen>
+            <DownloadAppCard />
+          </SettingsSection>
+        )}
 
-        <SectionHead icon="🎛" label="Make it yours" />
-        {/* units */}
-        <div style={{ ...sCard }}>
-          <div style={{ fontSize:14, fontWeight:700, color:T.ink, marginBottom:2 }}>Weight units</div>
-          <div style={{ fontSize:12, color:T.sub, marginBottom:10 }}>Changes everything shown across the app, and switches the plate calculator to matching plates. Your data is unchanged underneath.</div>
-          <div style={{ display:"flex", background:T.input, borderRadius:10, padding:3, maxWidth:200 }}>
-            {["lb","kg"].map(u=>(
-              <button key={u} onClick={()=>setUnits(u)} style={{
-                flex:1, padding:"9px 0", borderRadius:8, fontWeight:700, fontSize:14,
-                background: units===u ? T.green : "none", color: units===u ? "#000" : T.sub,
-              }}>{u === "lb" ? "Pounds (lb)" : "Kilos (kg)"}</button>
-            ))}
+        <SettingsSection icon="🎛" title="Display & units" desc="Pounds or kilos, height, and your start tab">
+          <div style={{ ...sCard }}>
+            <div style={{ fontSize:14, fontWeight:700, color:T.ink, marginBottom:2 }}>Weight units</div>
+            <div style={{ fontSize:12, color:T.sub, marginBottom:10 }}>Changes everything shown across the app, and switches the plate calculator to matching plates. Your data is unchanged underneath.</div>
+            <div style={{ display:"flex", background:T.input, borderRadius:10, padding:3, maxWidth:200 }}>
+              {["lb","kg"].map(u=>(
+                <button key={u} onClick={()=>setUnits(u)} style={{
+                  flex:1, padding:"9px 0", borderRadius:8, fontWeight:700, fontSize:14,
+                  background: units===u ? T.green : "none", color: units===u ? "#000" : T.sub,
+                }}>{u === "lb" ? "Pounds (lb)" : "Kilos (kg)"}</button>
+              ))}
+            </div>
           </div>
-        </div>
 
-        {/* height units (for the BMI calculator on the Body tab) */}
-        <div style={{ ...sCard }}>
-          <div style={{ fontSize:14, fontWeight:700, color:T.ink, marginBottom:2 }}>Height units</div>
-          <div style={{ fontSize:12, color:T.sub, marginBottom:10 }}>Used by the BMI calculator on the Body tab.</div>
-          <div style={{ display:"flex", background:T.input, borderRadius:10, padding:3, maxWidth:230 }}>
-            {[["ftin","Feet + inches"],["cm","Centimeters"]].map(([v,label])=>(
-              <button key={v} onClick={()=>setHunit(v)} style={{
-                flex:1, padding:"9px 0", borderRadius:8, fontWeight:700, fontSize:14,
-                background: hunit===v ? T.green : "none", color: hunit===v ? "#000" : T.sub,
-              }}>{label}</button>
-            ))}
+          <div style={{ ...sCard }}>
+            <div style={{ fontSize:14, fontWeight:700, color:T.ink, marginBottom:2 }}>Height units</div>
+            <div style={{ fontSize:12, color:T.sub, marginBottom:10 }}>Used by the BMI calculator on the Body tab.</div>
+            <div style={{ display:"flex", background:T.input, borderRadius:10, padding:3, maxWidth:230 }}>
+              {[["ftin","Feet + inches"],["cm","Centimeters"]].map(([v,label])=>(
+                <button key={v} onClick={()=>setHunit(v)} style={{
+                  flex:1, padding:"9px 0", borderRadius:8, fontWeight:700, fontSize:14,
+                  background: hunit===v ? T.green : "none", color: hunit===v ? "#000" : T.sub,
+                }}>{label}</button>
+              ))}
+            </div>
           </div>
-        </div>
 
-        {/* time zone — decides when "today" starts for logging */}
-        <div style={{ ...sCard }}>
-          <div style={{ fontSize:14, fontWeight:700, color:T.ink, marginBottom:2 }}>Time zone</div>
-          <div style={{ fontSize:12, color:T.sub, marginBottom:10 }}>
-            Decides when “today” starts for your logs. <b>Auto</b> follows this device's clock and is right for
-            almost everyone — only change it if your phone is set to a different place than where you lift.
+          <div style={{ ...sCard, marginBottom:0 }}>
+            <div style={{ fontSize:14, fontWeight:700, color:T.ink, marginBottom:2 }}>Open the app on</div>
+            <div style={{ fontSize:12, color:T.sub, marginBottom:10 }}>Pick the tab you land on each time — set it to Log for the fastest gym start.</div>
+            <select value={startTab} onChange={e=>setStartTab(e.target.value)}>
+              {tabs.map(([id,label,icon])=><option key={id} value={id}>{icon} {label}</option>)}
+              <option value="last">📍 Wherever I left off</option>
+            </select>
           </div>
-          <select value={data.profile?.tz || "auto"} onChange={e=>setData(d=>({ ...d, profile:{ ...(d.profile||{}), tz:e.target.value } }))}>
-            <option value="auto">🌐 Auto — {detectedTZ().replace(/_/g," ")}</option>
-            {(typeof Intl.supportedValuesOf === "function" ? Intl.supportedValuesOf("timeZone") : []).map(z=>(
-              <option key={z} value={z}>{z.replace(/_/g," ")}</option>
-            ))}
-          </select>
-        </div>
+        </SettingsSection>
 
-        {/* day start — when the date flips for logging */}
-        <div style={{ ...sCard }}>
-          <div style={{ fontSize:14, fontWeight:700, color:T.ink, marginBottom:2 }}>My day starts at</div>
-          <div style={{ fontSize:12, color:T.sub, marginBottom:10 }}>
-            Sets logged before this time still count as the night before. <b>4 AM</b> suits night owls
-            (a 1 AM session stays on “tonight's” date); pick <b>Midnight</b> if you're up lifting at
-            3 AM and want it on the new day. Only changes the pre-filled date — you can always tap the date to override.
+        <SettingsSection icon="🕐" title="Time & dates" desc="Your time zone, and when your day starts">
+          <div style={{ ...sCard }}>
+            <div style={{ fontSize:14, fontWeight:700, color:T.ink, marginBottom:2 }}>Time zone</div>
+            <div style={{ fontSize:12, color:T.sub, marginBottom:10 }}>
+              Decides when “today” starts for your logs. <b>Auto</b> follows this device's clock and is right for
+              almost everyone — only change it if your phone is set to a different place than where you lift.
+            </div>
+            <select value={data.profile?.tz || "auto"} onChange={e=>setData(d=>({ ...d, profile:{ ...(d.profile||{}), tz:e.target.value } }))}>
+              <option value="auto">🌐 Auto — {detectedTZ().replace(/_/g," ")}</option>
+              {(typeof Intl.supportedValuesOf === "function" ? Intl.supportedValuesOf("timeZone") : []).map(z=>(
+                <option key={z} value={z}>{z.replace(/_/g," ")}</option>
+              ))}
+            </select>
           </div>
-          <div style={{ display:"flex", background:T.input, borderRadius:10, padding:3, maxWidth:320 }}>
-            {[[0,"Midnight"],[2,"2 AM"],[4,"4 AM"]].map(([v,l])=>(
-              <button key={v} onClick={()=>setData(d=>({ ...d, profile:{ ...(d.profile||{}), dayStart:v } }))} style={{
-                flex:1, padding:"9px 0", borderRadius:8, fontWeight:700, fontSize:14,
-                background: (data.profile?.dayStart ?? 4)===v ? T.green : "none", color: (data.profile?.dayStart ?? 4)===v ? "#000" : T.sub,
-              }}>{l}</button>
-            ))}
-          </div>
-        </div>
+          <DayStartCard data={data} setData={setData} />
+        </SettingsSection>
 
-        {/* view preference */}
-        <div style={{ ...sCard }}>
-          <div style={{ fontSize:14, fontWeight:700, color:T.ink, marginBottom:2 }}>Open the app on</div>
-          <div style={{ fontSize:12, color:T.sub, marginBottom:10 }}>Pick the tab you land on each time — set it to Log for the fastest gym start.</div>
-          <select value={startTab} onChange={e=>setStartTab(e.target.value)}>
-            {tabs.map(([id,label,icon])=><option key={id} value={id}>{icon} {label}</option>)}
-            <option value="last">📍 Wherever I left off</option>
-          </select>
-        </div>
+        <SettingsSection icon="🧩" title="Features" desc="Optional parts of the app — on or off">
+          <FeatureToggle label="Workout routines" on={routinesOn} setOn={setRoutinesOn}
+            desc="Adds a Routines section to the Log tab: build templates like “Push Day,” then tap Start to log them exercise-by-exercise. Off by default. Turning it off just hides it — your saved routines stay." />
+          {/* Water + Streaks toggles belong to the Macros feature — shown only when it's unlocked */}
+          {nutritionOn && (<>
+            <FeatureToggle label="Workout streaks" on={streaksOn} setOn={setStreaksOn}
+              desc="Shows your weekly streak (🔥) on the dashboard and in groups. Turning it off just hides the streak counters." />
+            <FeatureToggle label="Water tracking" on={waterOn} setOn={setWaterOn}
+              desc="Adds a daily water-intake tracker to the Macros tab. Turning it off just hides it — anything you logged stays." />
+          </>)}
+        </SettingsSection>
 
-        <SectionHead icon="🧩" label="Pick your features" />
-        {/* workout routines / templates (optional) */}
-        <FeatureToggle label="Workout routines" on={routinesOn} setOn={setRoutinesOn}
-          desc="Adds a Routines section to the Log tab: build templates like “Push Day,” then tap Start to log them exercise-by-exercise. Off by default. Turning it off just hides it — your saved routines stay." />
+        <SettingsSection icon="🛟" title="Data safety" desc="Automatic backups kept on this device">
+          <BackupsCard user={user} username={username} setData={setData} />
+        </SettingsSection>
 
-        {/* Water + Streaks toggles belong to the Macros feature — shown only when it's unlocked */}
-        {nutritionOn && (<>
-          <FeatureToggle label="Workout streaks" on={streaksOn} setOn={setStreaksOn}
-            desc="Shows your weekly streak (🔥) on the dashboard and in groups. Turning it off just hides the streak counters." />
-          <FeatureToggle label="Water tracking" on={waterOn} setOn={setWaterOn}
-            desc="Adds a daily water-intake tracker to the Macros tab. Turning it off just hides it — anything you logged stays." />
-        </>)}
-
-        <SectionHead icon="🛟" label="Data safety" />
-        <BackupsCard user={user} username={username} setData={setData} />
-
-        <SectionHead icon="🔐" label="Keys to the castle" />
-        <ChangePasswordCard />
-        <SecurityCard username={username} />
+        <SettingsSection icon="🔐" title="Account & security" desc="Password and your reset question">
+          <ChangePasswordCard />
+          <SecurityCard username={username} />
+        </SettingsSection>
 
         <button onClick={()=>supabase.auth.signOut()} style={{
           width:"100%", marginTop:6, padding:13, background:T.dangerBg, color:T.danger, fontWeight:700, fontSize:15,
@@ -3182,6 +3175,65 @@ function SettingsModal({ user, username, data, setData, startTab, setStartTab, t
   );
 }
 const sCard = { background:T.cream, border:`1px solid ${T.creamLine}`, borderRadius:12, padding:14, marginBottom:12 };
+
+/* Collapsible Settings section: icon + title + one-line description, tap to expand. */
+function SettingsSection({ icon, title, desc, children, defaultOpen = false }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div style={{ border:`1px solid ${open ? T.green : T.line}`, borderRadius:14, marginBottom:10, overflow:"hidden",
+      background:T.card, transition:"border-color .2s ease" }}>
+      <button onClick={()=>setOpen(o=>!o)} style={{ width:"100%", display:"flex", alignItems:"center", gap:12,
+        padding:"14px", background:"none", borderRadius:0, textAlign:"left" }}>
+        <span style={{ fontSize:21, width:28, textAlign:"center", flexShrink:0 }}>{icon}</span>
+        <span style={{ flex:1, minWidth:0 }}>
+          <span style={{ display:"block", fontSize:15, fontWeight:800, color:T.ink }}>{title}</span>
+          <span style={{ display:"block", fontSize:12, color:T.sub, marginTop:1 }}>{desc}</span>
+        </span>
+        <span style={{ color: open ? T.green : T.sub, fontSize:15, flexShrink:0,
+          display:"inline-block", transform: open ? "rotate(90deg)" : "none", transition:"transform .22s cubic-bezier(.34,1.56,.64,1)" }}>▸</span>
+      </button>
+      {open && <div style={{ padding:"2px 14px 14px", animation:"noteIn .24s ease-out both" }}>{children}</div>}
+    </div>
+  );
+}
+
+/* "My day starts at" — slider from Midnight to 8 AM with a live readout. Sets logged
+   before this hour are dated the night before (stored as profile.dayStart). */
+function DayStartCard({ data, setData }) {
+  const v = data.profile?.dayStart ?? 4;
+  const set = (n) => setData(d => ({ ...d, profile: { ...(d.profile||{}), dayStart: n } }));
+  const fmtH = (h) => h === 0 ? "Midnight" : `${h}:00 AM`;
+  const pct = v / 8 * 100;
+  return (
+    <div style={{ ...sCard, marginBottom:0 }}>
+      <div style={{ display:"flex", alignItems:"baseline", justifyContent:"space-between", gap:8, marginBottom:2 }}>
+        <div style={{ fontSize:14, fontWeight:700, color:T.ink }}>🌙 My day starts at</div>
+        <div style={{ fontSize:19, fontWeight:800, color:T.green, fontVariantNumeric:"tabular-nums" }}>{fmtH(v)}</div>
+      </div>
+      <div style={{ fontSize:12, color:T.sub, marginBottom:10, lineHeight:1.55 }}>
+        {v === 0
+          ? "The date flips exactly at midnight — a 12:30 AM set counts as the new day."
+          : `Sets logged between midnight and ${fmtH(v)} still count as the night before, so a late session stays on one date.`}
+        {" "}This only changes the pre-filled date when logging — tapping the date always overrides it.
+      </div>
+      <input type="range" min="0" max="8" step="1" value={v} onChange={e=>set(+e.target.value)}
+        className="lab-range" aria-label="Hour your day starts"
+        style={{ background:`linear-gradient(to right, ${T.green} ${pct}%, ${T.input} ${pct}%)` }} />
+      <div style={{ display:"flex", justifyContent:"space-between", fontSize:10.5, color:T.sub, margin:"2px 3px 12px" }}>
+        {["12","1","2","3","4","5","6","7","8 AM"].map(t=><span key={t}>{t}</span>)}
+      </div>
+      <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+        {[[0,"🌅 Midnight — early bird"],[4,"🦉 4 AM — night owl"]].map(([n,l])=>(
+          <button key={n} onClick={()=>set(n)} style={{
+            padding:"7px 13px", borderRadius:99, fontSize:12.5, fontWeight:700,
+            background: v===n ? "rgba(0,200,5,.14)" : T.input, color: v===n ? T.green : T.sub,
+            border:`1px solid ${v===n ? T.green : T.line}`,
+          }}>{l}</button>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 /* Automatic on-device backups: the first save of each day snapshots your data (last 7
    days kept). Restoring loads that snapshot — and still goes through the big-delete
