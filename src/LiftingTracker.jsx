@@ -4867,19 +4867,25 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
   /* all-time group records */
   const records = useMemo(() => {
     if (!members) return [];
-    let heaviest=null, volBest=null, streakBest=null, weekMost=null, cardioLong=null;
+    let sessionsBest=null, setsBest=null, prBest=null, streakBest=null, weekMost=null, cardioLong=null;
     for (const m of members) {
       const st = states[m.user_id]; if (!st) continue;
-      for (const e of (st.log || [])) {
-        if (e.weight != null && (!heaviest || e.weight > heaviest.v))
-          heaviest = { v:e.weight, text:`${dispW(e.weight,units)} ${uLabel(units)} × ${e.reps} — ${e.exercise}`, who:m.username };
+      const trainDays = new Set([...(st.log||[]).map(e=>e.date), ...(st.cardio||[]).map(e=>e.date)]);
+      if (trainDays.size > 0 && (!sessionsBest || trainDays.size > sessionsBest.v))
+        sessionsBest = { v:trainDays.size, text:`${trainDays.size} sessions`, who:m.username };
+      const setCount = (st.log || []).length;
+      if (setCount > 0 && (!setsBest || setCount > setsBest.v))
+        setsBest = { v:setCount, text:`${setCount.toLocaleString()} sets`, who:m.username };
+      // biggest all-time estimated-1RM across the big lifts (progress, not just who's heaviest today)
+      let top1rm = 0, top1rmLift = "";
+      for (const lift of BIG_LIFTS) {
+        for (const e of (st.log || [])) if (e.exercise === lift && e.weight != null) {
+          const est = e1rm(e.weight, e.reps);
+          if (est > top1rm) { top1rm = est; top1rmLift = lift; }
+        }
       }
-      const volByDate = {};
-      for (const e of (st.log || [])) volByDate[e.date] = (volByDate[e.date] || 0) + (e.weight || 0) * e.reps;
-      for (const [d, v] of Object.entries(volByDate)) {
-        if (v > 0 && (!volBest || v > volBest.v))
-          volBest = { v, text:`${Math.round(dispW(v,units)).toLocaleString()} ${uLabel(units)} (${fmtDate(d)})`, who:m.username };
-      }
+      if (top1rm > 0 && (!prBest || top1rm > prBest.v))
+        prBest = { v:top1rm, text:`${Math.round(dispW(top1rm,units)).toLocaleString()} ${uLabel(units)} ${LIFT_SHORT[top1rmLift]||top1rmLift}`, who:m.username };
       const s = computeStreak(st.log, st.cardio);
       if (s.best > 0 && (!streakBest || s.best > streakBest.v))
         streakBest = { v:s.best, text:`${s.best} week${s.best===1?"":"s"} in a row`, who:m.username };
@@ -4896,11 +4902,12 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
       }
     }
     return [
-      heaviest   && { icon:"🏋️", label:"Heaviest set", ...heaviest },
-      volBest    && { icon:"🐂", label:"Biggest session volume", ...volBest },
-      streakBest && { icon:"🔥", label:"Longest streak", ...streakBest },
-      weekMost   && { icon:"📅", label:"Most workout days in a week", ...weekMost },
-      cardioLong && { icon:"🏃", label:"Longest cardio", ...cardioLong },
+      sessionsBest && { icon:"📈", label:"Most sessions logged", ...sessionsBest },
+      setsBest     && { icon:"🧱", label:"Most sets logged", ...setsBest },
+      prBest       && { icon:"🏆", label:"Top estimated 1RM", ...prBest },
+      streakBest   && { icon:"🔥", label:"Longest streak", ...streakBest },
+      weekMost     && { icon:"📅", label:"Most workout days in a week", ...weekMost },
+      cardioLong   && { icon:"🏃", label:"Longest cardio", ...cardioLong },
     ].filter(Boolean);
   }, [members, states, units]);
 
