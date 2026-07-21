@@ -3537,11 +3537,11 @@ function StepsCard({ user }) {
 
         <StepBlock n="1" title="Adjust Date  (get yesterday)">
           <SearchBar text="Adjust Date" />
-          <MockCard glyph="📅" glyphBg="#FF9500" title={<>Adjust <Var>Current Date</Var></>}
-            rows={[["Operation", <Tap key="a">Subtract</Tap>], ["Amount", <span key="b" style={{ display:"flex", gap:5 }}><Tap>1</Tap><Tap>Day</Tap></span>]]} />
+          <MockCard glyph="📅" glyphBg="#FF9500" title={<><Tap>Subtract</Tap> <Tap>1</Tap> <Tap>Day</Tap> from <Var>Current Date</Var></>} />
           <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55, marginBottom:9 }}>
-            Set <b>Date</b> = <b>Current Date</b>. It starts on “Add” — tap <b>Add</b> and switch it to <b>Subtract</b>. Set the amount to <b>1</b> and the unit to <b>Days</b>.
-            This makes <b style={{ color:T.ink }}>yesterday</b> (its result is called <b>Adjusted Date</b>).
+            You've already got <b>Subtract</b>, <b>1</b>, and <b>Day</b> (the blue words). The last empty slot — the
+            <b> “from ___”</b> part — is the date. <b style={{ color:T.ink }}>Tap it and pick <span style={{ color:STEP_BLUE }}>Current Date</span>.</b>
+            {" "}Now it reads <b>Subtract 1 Day from Current Date</b> = <b style={{ color:T.ink }}>yesterday</b> (its result is called <b>Adjusted Date</b>).
           </div>
           <div style={{ display:"flex", gap:9, alignItems:"flex-start", background:"rgba(76,155,255,.10)", border:`1px solid ${STEP_BLUE}`, borderRadius:10, padding:"10px 12px", fontSize:11.5, color:T.sub, lineHeight:1.55 }}>
             <span style={{ flexShrink:0 }}>ℹ️</span>
