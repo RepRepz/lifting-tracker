@@ -3438,40 +3438,44 @@ function StepsCard({ user }) {
     </div>
   );
 
-  // a small tap-to-copy chip used inline inside the mock pictures
-  const CopyChip = ({ value, id, label, secret, block }) => {
+  // a tap-to-copy chip used inline inside the mock pictures. `block` = full width,
+  // `wrap` = let a long value wrap so nothing (incl. the Copy button) gets cut off.
+  const CopyChip = ({ value, id, label, secret, block, wrap }) => {
     const on = copied === id;
     return (
       <button onClick={()=>copy(value, id)} title="Tap to copy" style={{
         display: block ? "flex" : "inline-flex", width: block ? "100%" : "auto",
-        alignItems:"center", gap:6, textAlign:"left", verticalAlign:"middle",
+        alignItems: wrap ? "flex-start" : "center", gap:8, textAlign:"left", verticalAlign:"middle",
         background: on ? T.green : T.input, border:`1px solid ${on ? T.green : (secret ? T.green : T.line)}`,
         borderRadius:7, padding: block ? "9px 11px" : "4px 9px", fontSize:12, fontWeight:700,
         color: on ? "#000" : STEP_BLUE, fontFamily:"ui-monospace, Menlo, monospace", maxWidth:"100%", overflow:"hidden" }}>
-        <span style={{ flex: block ? 1 : "0 1 auto", minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{label ?? value}</span>
-        <span style={{ flexShrink:0, fontSize:10, fontWeight:700, color: on ? "#000" : T.sub }}>{on ? "✓" : "copy"}</span>
+        <span style={{ flex: block ? 1 : "0 1 auto", minWidth:0,
+          overflow: wrap ? "visible" : "hidden", textOverflow: wrap ? "clip" : "ellipsis",
+          whiteSpace: wrap ? "normal" : "nowrap", overflowWrap: wrap ? "anywhere" : "normal", wordBreak: wrap ? "break-all" : "normal" }}>{label ?? value}</span>
+        <span style={{ flexShrink:0, fontSize:11, fontWeight:800, color: on ? "#000" : STEP_BLUE }}>{on ? "Copied ✓" : "Copy"}</span>
       </button>
     );
   };
 
-  // one JSON body field: copyable Key (left) and either a copyable Value or a "pick a variable" note (right)
+  // one JSON body field, stacked so the Value + its Copy button always get full width
   const JField = ({ type, name, nameId, valueCopy, valueId, valueNote, valuePick, secret }) => (
-    <div style={{ background:T.input, border:`1px solid ${T.line}`, borderRadius:10, overflow:"hidden", marginBottom:8 }}>
+    <div style={{ background:T.input, border:`1px solid ${secret ? T.green : T.line}`, borderRadius:10, overflow:"hidden", marginBottom:8 }}>
       <div style={{ fontSize:10, fontWeight:700, color:T.sub, textTransform:"uppercase", letterSpacing:.6, padding:"6px 11px", borderBottom:`1px solid ${T.line}`, background:T.cardAlt }}>Field type: {type}</div>
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr" }}>
-        <div style={{ padding:"8px 11px" }}>
-          <div style={{ fontSize:9.5, fontWeight:700, color:T.sub, textTransform:"uppercase", letterSpacing:.5, marginBottom:4 }}>Key (left)</div>
+      <div style={{ padding:"9px 11px" }}>
+        <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10, flexWrap:"wrap" }}>
+          <span style={{ fontSize:9.5, fontWeight:700, color:T.sub, textTransform:"uppercase", letterSpacing:.5 }}>Key</span>
           <CopyChip value={name} id={nameId} />
         </div>
-        <div style={{ padding:"8px 11px", borderLeft:`1px solid ${T.line}` }}>
-          <div style={{ fontSize:9.5, fontWeight:700, color:T.sub, textTransform:"uppercase", letterSpacing:.5, marginBottom:4 }}>Value (right)</div>
-          {valueCopy != null ? (<>
-            <CopyChip value={valueCopy} id={valueId} secret={secret} block />
-            {valueNote && <div style={{ fontSize:10.5, fontWeight:700, color: secret ? T.danger : T.sub, marginTop:5 }}>{valueNote}</div>}
-          </>) : (
-            <div style={{ fontSize:11.5, color:T.ink, lineHeight:1.4 }}>{valuePick}</div>
-          )}
-        </div>
+        <div style={{ fontSize:9.5, fontWeight:700, color:T.sub, textTransform:"uppercase", letterSpacing:.5, marginBottom:5 }}>Value</div>
+        {valueCopy != null ? (<>
+          <CopyChip value={valueCopy} id={valueId} secret={secret} block wrap />
+          {valueNote && <div style={{ fontSize:11, fontWeight:800, color: secret ? T.danger : T.sub, marginTop:6 }}>{valueNote}</div>}
+        </>) : (
+          <div style={{ display:"flex", gap:8, alignItems:"flex-start", background:STEP_BLUEBG, border:`1px solid ${STEP_BLUE}`, borderRadius:8, padding:"9px 11px" }}>
+            <span style={{ flexShrink:0, fontSize:14 }}>👆</span>
+            <span style={{ fontSize:12, color:T.ink, lineHeight:1.5 }}>{valuePick}</span>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -3613,9 +3617,9 @@ function StepsCard({ user }) {
                 <span style={{ padding:"5px 12px", borderRadius:6, fontSize:12.5, fontWeight:800, background:T.green, color:"#000" }}>JSON</span>
                 <span style={{ padding:"5px 12px", borderRadius:6, fontSize:12.5, fontWeight:700, color:T.sub }}>File</span>
               </div>
-              <JField type="Text" name="p_token" nameId="k-tok" valueCopy={token} valueId="tok" secret valueNote="🔒 Don’t share this" />
-              <JField type="Text" name="p_day" nameId="k-day" valuePick={<>Tap this box → pick the <b>Formatted Date</b> variable (block 3)</>} />
-              <JField type="Number" name="p_count" nameId="k-cnt" valuePick={<>Tap this box → pick the <b>Statistics</b> variable (block 2)</>} />
+              <JField type="Text" name="p_token" nameId="k-tok" valueCopy={token} valueId="tok" secret valueNote="🔒 Don’t share this with anyone" />
+              <JField type="Text" name="p_day" nameId="k-day" valuePick={<>Tap this Value box. A row of blue variables pops up <b>just above the keyboard</b> — tap <b>Formatted Date</b> there (it's the result from block 3).</>} />
+              <JField type="Number" name="p_count" nameId="k-cnt" valuePick={<>Tap this Value box. In that same bar <b>above the keyboard</b>, tap <b>Statistics</b> (the result from block 2).</>} />
               <div style={{ fontSize:10.5, color:T.sub, marginTop:2, lineHeight:1.5 }}>
                 Only <b style={{ color:T.ink }}>p_token</b>’s value is copied. For <b>p_day</b> and <b>p_count</b> the value is a blue variable you <b>pick</b>, not type.
               </div>
