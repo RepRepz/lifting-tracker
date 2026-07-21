@@ -4532,6 +4532,51 @@ function MemberLog({ pdata, who }) {
   );
 }
 
+/* Quick "cool facts" popup for a member's steps (opened from the group Steps board). */
+function StepFactsModal({ name, isMe, map, rank, onClose }) {
+  const m = map || {};
+  const today = todayStr();
+  const days = Object.keys(m);
+  const total = days.reduce((s,d)=>s+m[d],0);
+  let best=null; for (const d of days) if (!best || m[d]>best.count) best={date:d,count:m[d]};
+  const thisWk = weekStart(today);
+  let wkTotal=0, wkDays=0; for (const d of days) if (weekStart(d)===thisWk){ wkTotal+=m[d]; wkDays++; }
+  const wkAvg = wkDays ? Math.round(wkTotal/wkDays) : 0;
+  const last7=[]; for(let i=1;i<=7;i++){ const d=dAdd(today,-i); if(m[d]!=null) last7.push(m[d]); }
+  const avg7 = last7.length ? Math.round(last7.reduce((a,b)=>a+b,0)/last7.length) : 0;
+  const goalDays = days.filter(d=>m[d]>=10000).length;
+  let streak=0; for(let i=1;i<400;i++){ const d=dAdd(today,-i); if(m[d]!=null && m[d]>=10000) streak++; else break; }
+  const tiles = [
+    [rank?`#${rank}`:"—", "this week's rank", rank===1],
+    [wkTotal.toLocaleString(), "steps this week"],
+    [wkAvg.toLocaleString(), "avg/day this week"],
+    [avg7.toLocaleString(), "7-day average"],
+    [best?best.count.toLocaleString():"—", best?`best day · ${fmtDate(best.date)}`:"best day"],
+    [String(streak), "🔥 day 10k streak", streak>0],
+    [goalDays.toLocaleString(), "days over 10k"],
+    [stepsMiles(total), "miles logged (total)"],
+  ];
+  return (
+    <div onClick={onClose} style={{position:"fixed", inset:0, zIndex:60, background:"rgba(0,0,0,.6)", backdropFilter:"blur(2px)", display:"flex", alignItems:"center", justifyContent:"center", padding:20, animation:"fadeSwap .18s ease-out both"}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:T.card, border:`1px solid ${T.line}`, borderRadius:18, padding:"20px 18px", maxWidth:380, width:"100%", animation:"calPop .26s cubic-bezier(.34,1.56,.64,1) both"}}>
+        <div style={{display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:3}}>
+          <div className="h" style={{fontSize:19, color:T.tealDk}}>👟 {name}{isMe?" (you)":""}</div>
+          <button onClick={onClose} style={{background:T.input, color:T.sub, width:30, height:30, borderRadius:99, fontSize:14}}>✕</button>
+        </div>
+        <div style={{fontSize:12, color:T.sub, marginBottom:14}}>Step stats{rank===1?" — leading the group 👑":""}</div>
+        <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:8}}>
+          {tiles.map(([n,l,hot],i)=>(
+            <div key={i} style={{background:T.input, borderRadius:12, padding:"11px 12px", border:`1px solid ${hot?T.green:T.line}`}}>
+              <div style={{fontSize:19, fontWeight:800, color: hot?T.green:T.ink, fontVariantNumeric:"tabular-nums", lineHeight:1.1}}>{n}</div>
+              <div style={{fontSize:11, color:T.sub, marginTop:3}}>{l}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function FriendsTab({ user, nutritionOn, streaksOn }) {
   const units = useUnit();
   const [groups, setGroups] = useState(null);        // null = loading
@@ -4551,7 +4596,10 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
   const [recap, setRecap] = useState(null); // end-of-month recap popup: { pmKey, monthLabel, rows } | null
   const [profileTab, setProfileTab] = useState("lifting"); // sub-tab inside a member profile
   const [profileSteps, setProfileSteps] = useState(undefined); // open profile's step map (separate steps table)
-  const [memberSteps, setMemberSteps] = useState({}); // user_id -> {day->count} auto steps (this week) for the group board
+  const [memberSteps, setMemberSteps] = useState({}); // user_id -> {day->count} auto steps (~1yr) for board + facts
+  const [facts, setFacts] = useState(null); // steps "cool facts" popup: { uid, name } | null
+  const savedActiveId = useRef(localStorage.getItem("lt-active-group")); // reopen last group after refresh
+  const restoredGroup = useRef(false);
   const [dueling, setDueling] = useState(false); // challenge form open on a profile
   const [duelDays, setDuelDays] = useState("7");
   const [duelMsg, setDuelMsg] = useState("");
@@ -4583,7 +4631,7 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
     if (!members?.length) { setMemberSteps({}); return; }
     let alive = true;
     (async () => {
-      try { const s = await stepsFor(members.map(m=>m.user_id), weekStart(todayStr())); if (alive) setMemberSteps(s); }
+      try { const s = await stepsFor(members.map(m=>m.user_id), dAdd(todayStr(), -370)); if (alive) setMemberSteps(s); }
       catch { if (alive) setMemberSteps({}); }
     })();
     return () => { alive = false; };
@@ -4602,6 +4650,18 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
     catch (e) { setGroups([]); setErr("Couldn't load groups — check your connection. (If this is the first time, the database part may not be set up yet.)"); }
   };
   useEffect(() => { refreshGroups(); }, []);
+
+  // remember which group you're in, and reopen it after a refresh
+  useEffect(() => {
+    if (active) localStorage.setItem("lt-active-group", active.id);
+    else localStorage.removeItem("lt-active-group");
+  }, [active]);
+  useEffect(() => {
+    if (restoredGroup.current || !groups?.length) return;
+    restoredGroup.current = true;
+    const id = savedActiveId.current;
+    if (id) { const g = groups.find(x => x.id === id); if (g) setActive(g); }
+  }, [groups]);
 
   /* one-line preview per group: members + how recently each was active */
   const [previews, setPreviews] = useState({}); // group_id -> [{username, last}]
@@ -4940,6 +5000,7 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
   if (active) {
     return (<>
       {recap && <MonthlyRecapModal recap={recap} groupName={active.name} emoji={active.emoji} onClose={closeRecap} />}
+      {facts && <StepFactsModal name={facts.name} isMe={facts.uid===user.id} map={memberSteps[facts.uid]} rank={(stepBoard.findIndex(r=>r.uid===facts.uid)+1) || null} onClose={()=>setFacts(null)} />}
       <button onClick={()=>{setActive(null); setMembers(null);}} style={{ background:"none", color:T.green, fontWeight:700, fontSize:14, marginBottom:10 }}>← All groups</button>
       <div className="card">
         <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", gap:8, flexWrap:"wrap"}}>
@@ -5034,23 +5095,22 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
 
         <div className="card">
           <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:2}}>🏁 This week</div>
-          <div style={{fontSize:12, color:T.sub, marginBottom:6}}>Workouts Mon–Sun{streaksOn ? " · 🔥 = week streak" : ""} · tap to view a profile.</div>
+          <div style={{fontSize:12, color:T.sub, marginBottom:6}}>Workouts Mon–Sun{streaksOn ? " · 🔥 = week streak" : ""}.</div>
           {consistency.map((r,i)=>{
             const isMe = r.uid===user.id;
             return (
-              <button key={r.uid} onClick={()=>setProfile(members.find(m=>m.user_id===r.uid))}
-                style={{width:"100%", textAlign:"left", background:"none", display:"flex", alignItems:"center", gap:10, padding:"10px 2px", borderTop: i===0?"none":`1px solid ${T.creamLine}`}}>
+              <div key={r.uid} style={{display:"flex", alignItems:"center", gap:9, padding:"10px 2px", borderTop: i===0?"none":`1px solid ${T.creamLine}`}}>
                 <span style={{width:22, textAlign:"center", fontWeight:800, fontSize:14, color: i===0&&r.workouts>0?T.green:T.sub}}>{i===0&&r.workouts>0?"👑":i+1}</span>
                 <span style={{flex:1, minWidth:0, fontWeight:isMe?800:600, color:isMe?T.green:T.ink, fontSize:14, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{r.user}{isMe?" (you)":""}</span>
-                <span style={{width:78, display:"flex", alignItems:"center", gap:6, flexShrink:0}}>
+                <span style={{width:70, display:"flex", alignItems:"center", gap:6, flexShrink:0}}>
                   <span style={{flex:1, height:6, background:T.input, borderRadius:99, overflow:"hidden"}}>
                     <span style={{display:"block", width:`${Math.min(r.workouts,7)/7*100}%`, height:"100%", background:T.green, borderRadius:99}} />
                   </span>
                   <b style={{color: r.workouts>0?T.green:T.sub, fontSize:13, width:12, textAlign:"right"}}>{r.workouts}</b>
                 </span>
-                {streaksOn && <span style={{width:40, textAlign:"center", fontSize:13, fontWeight:700, color: r.streak>0?T.ink:T.sub, flexShrink:0}}>{r.streak>0?`🔥${r.streak}`:"—"}</span>}
-                <span style={{color:T.sub, fontSize:15, flexShrink:0}}>›</span>
-              </button>
+                {streaksOn && <span style={{width:38, textAlign:"center", fontSize:13, fontWeight:700, color: r.streak>0?T.ink:T.sub, flexShrink:0}}>{r.streak>0?`🔥${r.streak}`:"—"}</span>}
+                <button onClick={()=>setProfile(members.find(m=>m.user_id===r.uid))} style={{background:"none", color:T.green, fontSize:12.5, fontWeight:700, padding:"4px 4px", whiteSpace:"nowrap", flexShrink:0}}>View ›</button>
+              </div>
             );
           })}
         </div>
@@ -5058,12 +5118,12 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
         {stepBoard.length > 0 && (
           <div className="card">
             <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:2}}>👣 Steps this week</div>
-            <div style={{fontSize:12, color:T.sub, marginBottom:8}}>Total since <b style={{color:T.ink}}>Monday</b> · small number = steps/day so far · tap to view a profile.</div>
+            <div style={{fontSize:12, color:T.sub, marginBottom:8}}>Total since <b style={{color:T.ink}}>Monday</b> · small number = steps/day so far · tap anyone for fun stats.</div>
             {stepBoard.map((r,i)=>{
               const top = stepBoard[0].week || 1;
               const isMe = r.uid===user.id;
               return (
-                <button key={r.uid} onClick={()=>setProfile(members.find(m=>m.user_id===r.uid))} title={`${r.avg.toLocaleString()} steps/day average this week`}
+                <button key={r.uid} onClick={()=>setFacts({ uid:r.uid, name:r.user })} title={`${r.avg.toLocaleString()} steps/day average this week`}
                   style={{width:"100%", textAlign:"left", background:"none", display:"flex", alignItems:"center", gap:9, padding:"9px 2px", borderTop: i===0?"none":`1px solid ${T.creamLine}`}}>
                   <span style={{width:20, textAlign:"center", fontWeight:800, fontSize:13, color: i===0?T.green:T.sub}}>{i===0?"👑":i+1}</span>
                   <span style={{width:82, flexShrink:0, fontSize:13.5, fontWeight: isMe?800:600, color: isMe?T.green:T.ink, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{r.user}{isMe?" (you)":""}</span>
