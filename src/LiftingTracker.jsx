@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, lazy, Suspense, Fragment, createContext, useContext } from "react";
-import { supabase, loadUserState, saveUserState, listMyGroups, listMembers, createGroup, joinGroup, leaveGroup, listReactions, addReaction, removeReaction, setSecurityQuestion, getSecurityQuestion, lastActiveFor, setGroupEmoji, resetInviteCode, listCloudBackups, getCloudBackup, getStepToken, stepsFor } from "./lib/storage.js";
+import { supabase, loadUserState, saveUserState, listMyGroups, listMembers, createGroup, joinGroup, leaveGroup, listReactions, addReaction, removeReaction, setSecurityQuestion, getSecurityQuestion, lastActiveFor, setGroupEmoji, resetInviteCode, listCloudBackups, getCloudBackup, getStepToken, stepsFor, createDuel, listDuels, deleteDuel } from "./lib/storage.js";
 import { SECURITY_QUESTIONS } from "./AuthScreen.jsx";
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
@@ -2656,11 +2656,107 @@ function StepRingChart({ map, goal }) {
   </>);
 }
 
-/* Full Steps tab: editable daily goal, your ring+chart, a weekly race and a yesterday
-   board (tap anyone to open their graph), and a once-a-day whole-group celebration. */
+/* Head-to-head step duels: instant-start, custom length, most total steps wins.
+   Standings are summed from each person's step map over the duel window. */
+function DuelsCard({ user, all, nameOf, myId, myName }) {
+  const [duels, setDuels] = useState([]);
+  const [open, setOpen] = useState(false);
+  const [oppId, setOppId] = useState("");
+  const [days, setDays] = useState("7");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const load = async () => { try { setDuels(await listDuels()); } catch {} };
+  useEffect(()=>{ load(); }, []);
+
+  const today = todayStr();
+  const opps = Object.entries(nameOf).filter(([id])=>id!==myId);
+  const sumRange = (map, s, e)=>{ let t=0; const m=map||{}; for (const d in m) if (d>=s && d<=e) t+=m[d]; return t; };
+  const mine = duels.filter(d => d.a_id===myId || d.b_id===myId);
+
+  const create = async () => {
+    if (!oppId) return;
+    const n = Math.max(1, Math.min(365, parseInt(days)||7));
+    setBusy(true); setErr("");
+    try { await createDuel(oppId, myName, nameOf[oppId]||"?", today, dAdd(today, n-1)); setOpen(false); setOppId(""); setDays("7"); await load(); }
+    catch(e){ setErr(String(e?.message||e)); }
+    finally { setBusy(false); }
+  };
+  const remove = async (id) => { try { await deleteDuel(id); await load(); } catch {} };
+
+  return (
+    <div className="card">
+      <div style={{display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom: (mine.length||open)?10:0}}>
+        <div className="h" style={{fontSize:16, color:T.tealDk}}>⚔️ Step duels</div>
+        {!open && <button onClick={()=>setOpen(true)} style={{background:T.green, color:"#000", fontWeight:800, fontSize:12.5, padding:"6px 13px", borderRadius:99}}>+ New</button>}
+      </div>
+
+      {open && (
+        <div style={{background:T.input, border:`1px solid ${T.line}`, borderRadius:12, padding:12, marginBottom:12}}>
+          <div style={{display:"grid", gridTemplateColumns:"1fr 92px", gap:8, marginBottom:8}}>
+            <label style={lbl}>Opponent
+              <select value={oppId} onChange={e=>setOppId(e.target.value)}>
+                <option value="">— pick —</option>
+                {opps.map(([id,name])=><option key={id} value={id}>{name}</option>)}
+              </select>
+            </label>
+            <label style={lbl}>Days<input type="number" inputMode="numeric" value={days} onChange={e=>setDays(e.target.value)} /></label>
+          </div>
+          {!opps.length && <div style={{fontSize:12, color:T.sub, marginBottom:8}}>Join a group with friends to duel them.</div>}
+          {err && <div style={{color:T.danger, fontSize:12.5, marginBottom:8}}>{err}</div>}
+          <div style={{display:"flex", gap:8}}>
+            <button onClick={create} disabled={!oppId||busy} style={{flex:1, background:T.green, color:"#000", fontWeight:800, padding:"9px", opacity:(!oppId||busy)?0.5:1}}>{busy?"Starting…":"Start duel ⚔️"}</button>
+            <button onClick={()=>setOpen(false)} style={{background:T.card, color:T.sub, padding:"9px 14px"}}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {!mine.length && !open && <div style={{fontSize:13, color:T.sub, marginTop:10}}>No duels yet — challenge a groupmate to a step battle 👊</div>}
+
+      {mine.map(d=>{
+        const meA = d.a_id===myId;
+        const oId = meA ? d.b_id : d.a_id;
+        const oName = meA ? d.b_name : d.a_name;
+        const mySum = sumRange(all[myId] || all[user.id], d.start_day, d.end_day);
+        const oppSum = sumRange(all[oId], d.start_day, d.end_day);
+        const mx = Math.max(mySum, oppSum, 1);
+        const finished = today > d.end_day;
+        const daysLeft = finished ? 0 : Math.round((new Date(d.end_day+"T00:00") - new Date(today+"T00:00"))/86400000) + 1;
+        const status = finished
+          ? (mySum>oppSum ? "🏆 You won!" : oppSum>mySum ? `${oName} won` : "Tie — dead heat")
+          : `${daysLeft} day${daysLeft===1?"":"s"} left`;
+        const statusColor = finished ? (mySum>oppSum?T.green:oppSum>mySum?T.danger:T.sub) : T.sub;
+        return (
+          <div key={d.id} style={{borderTop:`1px solid ${T.creamLine}`, padding:"11px 0"}}>
+            <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8}}>
+              <span style={{fontSize:13.5, fontWeight:800, color:T.ink}}>You vs {oName}</span>
+              <span style={{fontSize:12.5, fontWeight:800, color:statusColor}}>{status}</span>
+            </div>
+            {[["You", mySum, true],[oName, oppSum, false]].map(([nm,val,me])=>(
+              <div key={nm+String(me)} style={{display:"flex", alignItems:"center", gap:8, marginBottom:5}}>
+                <span style={{width:66, fontSize:12.5, fontWeight: me?800:600, color: me?T.green:T.ink, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{nm}</span>
+                <span style={{flex:1, height:8, background:T.input, borderRadius:99, overflow:"hidden"}}>
+                  <span style={{display:"block", width:`${val/mx*100}%`, height:"100%", background: me?T.green:"rgba(0,200,5,.5)", borderRadius:99, transition:"width .5s ease"}} />
+                </span>
+                <b style={{fontSize:12.5, color:T.ink, minWidth:54, textAlign:"right", fontVariantNumeric:"tabular-nums"}}>{val.toLocaleString()}</b>
+              </div>
+            ))}
+            <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginTop:4}}>
+              <span style={{fontSize:11, color:T.sub}}>{fmtDate(d.start_day)} – {fmtDate(d.end_day)}</span>
+              <ConfirmX label={finished?"Remove":"Cancel"} onConfirm={()=>remove(d.id)} />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* Full Steps tab: editable daily goal, your ring+chart, a weekly race, step duels,
+   and a once-a-day whole-group celebration. */
 function StepsTab({ user, data, setData }) {
   const goal = (data.profile?.stepGoal) || 10000;
   const { mine, all, nameOf, board, celebrate, dismiss, yStr, myId } = useSteps(user, 5*365 + 40);
+  const myName = nameOf[myId] || (user.user_metadata?.username || "you");
   const [editGoal, setEditGoal] = useState(false);
   const [goalInput, setGoalInput] = useState(String(goal));
   const [view, setView] = useState(null); // { id, name } groupmate graph popup
@@ -2740,6 +2836,8 @@ function StepsTab({ user, data, setData }) {
         {race.map((r,i)=><Row key={r.id} r={r} i={i} value={r.sum} />)}
       </div>
     )}
+
+    <DuelsCard user={user} all={all} nameOf={nameOf} myId={myId} myName={myName} />
 
     {/* groupmate graph popup */}
     {view && (
@@ -4425,12 +4523,24 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
   const [recap, setRecap] = useState(null); // end-of-month recap popup: { pmKey, monthLabel, rows } | null
   const [profileTab, setProfileTab] = useState("lifting"); // sub-tab inside a member profile
   const [profileSteps, setProfileSteps] = useState(undefined); // open profile's step map (separate steps table)
+  const [dueling, setDueling] = useState(false); // challenge form open on a profile
+  const [duelDays, setDuelDays] = useState("7");
+  const [duelMsg, setDuelMsg] = useState("");
   const myName = user.user_metadata?.username || "you";
   const isOwner = active?.created_by === user.id;
+
+  const startDuel = async () => {
+    if (!profile) return;
+    const n = Math.max(1, Math.min(365, parseInt(duelDays)||7));
+    try { await createDuel(profile.user_id, myName, profile.username, todayStr(), dAdd(todayStr(), n-1));
+      setDueling(false); setDuelMsg(`Duel started — ${n} day${n===1?"":"s"}! Track it in the 👟 Steps tab.`); }
+    catch(e){ setDuelMsg("Couldn't start: " + String(e?.message||e)); }
+  };
 
   // load the open profile's steps (they live in the `steps` table, not user_state)
   useEffect(() => {
     if (!profile) { setProfileSteps(undefined); setProfileTab("lifting"); return; }
+    setDueling(false); setDuelMsg("");
     let alive = true;
     (async () => {
       try { const s = await stepsFor([profile.user_id], dAdd(todayStr(), -5*365 - 40)); if (alive) setProfileSteps(s[profile.user_id] || {}); }
@@ -4750,11 +4860,26 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
             )}
           </>)}
 
-          {tab==="steps" && (
-            profileSteps === undefined ? <div className="card"><div className="skeleton" style={{height:220, borderRadius:12}} /></div>
+          {tab==="steps" && (<>
+            {profile.user_id !== user.id && (
+              <div className="card">
+                {!dueling && !duelMsg && (
+                  <button onClick={()=>{ setDuelDays("7"); setDueling(true); }} style={{width:"100%", background:T.green, color:"#000", fontWeight:800, padding:"11px", borderRadius:10, fontSize:14}}>⚔️ Challenge {profile.username} to a step duel</button>
+                )}
+                {dueling && (
+                  <div style={{display:"flex", gap:8, alignItems:"flex-end", flexWrap:"wrap"}}>
+                    <label style={{...lbl, flex:1, minWidth:120}}>Length (days)<input type="number" inputMode="numeric" value={duelDays} onChange={e=>setDuelDays(e.target.value)} /></label>
+                    <button onClick={startDuel} style={{background:T.green, color:"#000", fontWeight:800, padding:"11px 16px"}}>Start ⚔️</button>
+                    <button onClick={()=>setDueling(false)} style={{background:T.input, color:T.sub, padding:"11px 13px"}}>Cancel</button>
+                  </div>
+                )}
+                {duelMsg && <div style={{fontSize:13, color:T.green, fontWeight:700}}>{duelMsg}</div>}
+              </div>
+            )}
+            {profileSteps === undefined ? <div className="card"><div className="skeleton" style={{height:220, borderRadius:12}} /></div>
             : Object.keys(profileSteps).length ? <StepRingChart map={profileSteps} goal={10000} />
-            : <div className="card" style={{textAlign:"center", color:T.sub, padding:"26px 16px"}}><div style={{fontSize:34, marginBottom:8}}>👟</div>{profile.username} hasn't synced any steps yet.</div>
-          )}
+            : <div className="card" style={{textAlign:"center", color:T.sub, padding:"26px 16px"}}><div style={{fontSize:34, marginBottom:8}}>👟</div>{profile.username} hasn't synced any steps yet.</div>}
+          </>)}
 
           {tab==="macros" && nutritionOn && (
             (pdata.foods || []).length > 0

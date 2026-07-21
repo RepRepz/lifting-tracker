@@ -66,6 +66,30 @@ export async function stepsFor(userIds, sinceDay) {
   return out;
 }
 
+/* ---------- step duels (head-to-head) ---------- */
+
+/** Start a duel vs another user (you are the challenger). Instant — no accept needed. */
+export async function createDuel(bId, aName, bName, startDay, endDay) {
+  const { data: { user } } = await supabase.auth.getUser();
+  const { error } = await supabase.from("duels").insert({
+    a_id: user.id, b_id: bId, a_name: aName, b_name: bName, start_day: startDay, end_day: endDay,
+  });
+  if (error) throw error;
+}
+
+/** All duels you can see: yours + your groupmates'. Standings are computed from steps. */
+export async function listDuels() {
+  const { data, error } = await supabase.from("duels").select("*").order("created_at", { ascending: false });
+  if (error) throw error;
+  return data ?? [];
+}
+
+/** Cancel/remove a duel (either participant may). */
+export async function deleteDuel(id) {
+  const { error } = await supabase.from("duels").delete().eq("id", id);
+  if (error) throw error;
+}
+
 /* ---------- security question (password reset without email) ---------- */
 
 /** Signed-in user sets/changes their reset question + answer (answer is hashed server-side). */
