@@ -37,7 +37,7 @@ const SEED_EXERCISES = [
   ["Close-Grip Bench Press",["Triceps"],["Chest"]],["Triceps Dip",["Triceps"],["Chest"]],
   // shoulders
   ["Overhead Press",["Shoulders"],["Triceps"]],["Dumbbell Shoulder Press",["Shoulders"],["Triceps"]],
-  ["Arnold Press",["Shoulders"],["Triceps"]],["Lateral Raise",["Shoulders"]],["Rear Delt Fly",["Shoulders"]],
+  ["Arnold Press",["Shoulders"],["Triceps"]],["Lateral Raise",["Shoulders"]],["Single-Arm Cable Side Raise",["Shoulders"]],["Rear Delt Fly",["Shoulders"]],
   ["Face Pull",["Shoulders"],["Back"]],["Upright Row",["Shoulders"],["Back"]],
   // back
   ["Deadlift",["Back","Legs"]],["Sumo Deadlift",["Legs"],["Back"]],
