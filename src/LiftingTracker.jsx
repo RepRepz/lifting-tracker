@@ -481,6 +481,13 @@ export default function LiftingTracker({ user }) {
         .navicon.on { transform:translateY(-1px) scale(1.16); }
         @media(prefers-reduced-motion:reduce){ *{transition:none!important;animation:none!important} }
 
+        /* settings sheet: a bottom sheet on phones, a centered dialog on desktop */
+        @media(min-width:640px){
+          .sheet-wrap { align-items:center !important; padding:24px; }
+          .sheet { border-radius:18px !important; border:1px solid ${T.line} !important; max-height:86vh !important;
+            animation:calPop .2s cubic-bezier(.22,1,.36,1) both !important; }
+        }
+
         /* ---- custom date picker ---- */
         .cal-pop { animation:calPop .16s cubic-bezier(.22,1,.36,1) both; transform-origin:top left; }
         @keyframes calPop { from { opacity:0; transform:translateY(-6px) scale(.97); } to { opacity:1; transform:none; } }
@@ -1224,12 +1231,12 @@ function LogTab({ data, exMap, setData, routinesOn }) {
       <input value={histQ} onChange={e=>{setHistQ(e.target.value); setHistLimit(50);}} placeholder="🔍 Filter by exercise…"
         autoCapitalize="none" autoCorrect="off" spellCheck={false} style={{marginBottom:10}} />
       <div style={{overflowX:"auto"}}>
-        <table><thead><tr><th>Date</th><th>Exercise</th><th>Set</th><th>Weight ({uLabel(units)})</th><th>Reps</th><th>Effort</th><th></th></tr></thead>
+        <table><thead><tr><th>Date</th><th>Exercise</th><th style={{textAlign:"center"}}>Set</th><th style={{textAlign:"center"}}>Weight ({uLabel(units)})</th><th style={{textAlign:"center"}}>Reps</th><th>Effort</th><th></th></tr></thead>
           <tbody>{recent.map(e => { const isToday = e.date === todayStr(); return (<Fragment key={e.id}>
             <tr style={isToday ? {background:"rgba(0,200,5,.05)"} : undefined}>
-              <td>{isToday ? <span style={{color:"#00A804", fontWeight:800}}>Today</span> : fmtDate(e.date)}</td><td>{e.exercise}</td><td>{e.set}</td>
-              <td>{e.weight==null ? "BW" : dispW(e.weight, units)}{e.drops?.length ? <span style={{color:T.sub}}>{" ↘ "}{e.drops.map(dr=>dispW(dr.weight, units)).join(" ↘ ")}</span> : null}</td>
-              <td>{e.reps}{e.drops?.length ? <span style={{color:T.sub}}>{" / "}{e.drops.map(dr=>dr.reps).join(" / ")}</span> : null}</td>
+              <td>{isToday ? <span style={{color:"#00A804", fontWeight:800}}>Today</span> : fmtDate(e.date)}</td><td>{e.exercise}</td><td style={{textAlign:"center"}}>{e.set}</td>
+              <td style={{textAlign:"center"}}>{e.weight==null ? "BW" : dispW(e.weight, units)}{e.drops?.length ? <span style={{color:T.sub}}>{" ↘ "}{e.drops.map(dr=>dispW(dr.weight, units)).join(" ↘ ")}</span> : null}</td>
+              <td style={{textAlign:"center"}}>{e.reps}{e.drops?.length ? <span style={{color:T.sub}}>{" / "}{e.drops.map(dr=>dr.reps).join(" / ")}</span> : null}</td>
               <td style={{color:T.sub}}>{e.effort||""}</td>
               <td style={{whiteSpace:"nowrap"}}>
                 {String(e.notes||"").trim() && (
@@ -3096,12 +3103,12 @@ function SettingsModal({ user, username, data, setData, startTab, setStartTab, t
   };
 
   return (
-    <div onClick={onClose} style={{
+    <div onClick={onClose} className="sheet-wrap" style={{
       position:"fixed", inset:0, zIndex:50, background:"rgba(0,0,0,.6)", backdropFilter:"blur(2px)",
       display:"flex", alignItems:"flex-end", justifyContent:"center", touchAction:"none",
       animation:"fadeSwap .18s ease-out both",
     }}>
-      <div ref={sheetRef} onClick={e=>e.stopPropagation()} style={{
+      <div ref={sheetRef} onClick={e=>e.stopPropagation()} className="sheet" style={{
         background:T.card, borderTop:`1px solid ${T.line}`, borderRadius:"18px 18px 0 0",
         width:"100%", maxWidth:520, maxHeight:"88dvh", overflowY:"auto",
         overscrollBehavior:"contain", WebkitOverflowScrolling:"touch", touchAction:"pan-y",
