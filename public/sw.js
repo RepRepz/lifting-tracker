@@ -1,7 +1,7 @@
 /* Offline support: network-first for same-origin files, falling back to
    the last cached copy when there's no signal. Supabase API calls are
    never intercepted. */
-const CACHE = "lifting-tracker-v9";
+const CACHE = "lifting-tracker-v10";
 
 self.addEventListener("install", () => self.skipWaiting());
 

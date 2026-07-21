@@ -264,11 +264,12 @@ export default function LiftingTracker({ user }) {
   const [hunit, setHunit] = useState(() => localStorage.getItem("lt-hunit") || "ftin"); // height: "ftin" | "cm"
   const [routinesOn, setRoutinesOn] = useState(() => localStorage.getItem("lt-routines-on") === "1"); // optional templates feature
   // Lifting is always on for everyone. The full Macros/nutrition feature is built and kept
-  // in the codebase (Nutrition.jsx + the tab wiring below) but PARKED for now — set to off
-  // for every account. To bring it back for testing, flip nutritionOn to true (or gate it on
-  // an account, e.g. username === "dimi"). Nothing else needs to change.
+  // in the codebase (Nutrition.jsx + the tab wiring below) but PARKED for most accounts.
+  // Currently unlocked ONLY for these usernames (a private demo for Anis). Add a name here
+  // to give someone access, or set to `true` to turn it on for everyone.
   const liftingOn = true;
-  const nutritionOn = false;
+  const MACRO_ACCOUNTS = ["dimi", "anisnurkic"];
+  const nutritionOn = MACRO_ACCOUNTS.includes((user.user_metadata?.username || "").toLowerCase());
   const [streaksOn, setStreaksOn] = useState(() => localStorage.getItem("lt-streaks-on") !== "0"); // default on
   const [waterOn, setWaterOn] = useState(() => localStorage.getItem("lt-water-on") !== "0"); // default on
   useEffect(() => { localStorage.setItem("lt-streaks-on", streaksOn ? "1" : "0"); }, [streaksOn]);
@@ -532,6 +533,7 @@ export default function LiftingTracker({ user }) {
           routinesOn={routinesOn} setRoutinesOn={setRoutinesOn}
           streaksOn={streaksOn} setStreaksOn={setStreaksOn}
           waterOn={waterOn} setWaterOn={setWaterOn}
+          nutritionOn={nutritionOn}
           onClose={()=>setShowSettings(false)} />
       )}
 
@@ -2848,7 +2850,7 @@ function SectionHead({ icon, label }) {
   );
 }
 
-function SettingsModal({ user, username, data, startTab, setStartTab, tabs, units, setUnits, hunit, setHunit, routinesOn, setRoutinesOn, streaksOn, setStreaksOn, waterOn, setWaterOn, onClose }) {
+function SettingsModal({ user, username, data, startTab, setStartTab, tabs, units, setUnits, hunit, setHunit, routinesOn, setRoutinesOn, streaksOn, setStreaksOn, waterOn, setWaterOn, nutritionOn, onClose }) {
   const memberSince = user.created_at ? new Date(user.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}) : "—";
   const totalSets = (data.log||[]).length;
 
@@ -2928,7 +2930,13 @@ function SettingsModal({ user, username, data, startTab, setStartTab, tabs, unit
         <FeatureToggle label="Workout routines" on={routinesOn} setOn={setRoutinesOn}
           desc="Adds a Routines section to the Log tab: build templates like “Push Day,” then tap Start to log them exercise-by-exercise. Off by default. Turning it off just hides it — your saved routines stay." />
 
-        {/* Water + Streaks toggles belong to the parked Macros feature — hidden while it's off */}
+        {/* Water + Streaks toggles belong to the Macros feature — shown only when it's unlocked */}
+        {nutritionOn && (<>
+          <FeatureToggle label="Workout streaks" on={streaksOn} setOn={setStreaksOn}
+            desc="Shows your weekly streak (🔥) on the dashboard and in groups. Turning it off just hides the streak counters." />
+          <FeatureToggle label="Water tracking" on={waterOn} setOn={setWaterOn}
+            desc="Adds a daily water-intake tracker to the Macros tab. Turning it off just hides it — anything you logged stays." />
+        </>)}
 
         <SectionHead icon="🔐" label="Keys to the castle" />
         <ChangePasswordCard />
