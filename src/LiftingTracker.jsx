@@ -3619,7 +3619,7 @@ function StepsCard({ user }) {
               </div>
               <JField type="Text" name="p_token" nameId="k-tok" valueCopy={token} valueId="tok" secret valueNote="🔒 Don’t share this with anyone" />
               <JField type="Text" name="p_day" nameId="k-day" valuePick={<>Tap this Value box. A row of blue variables pops up <b>just above the keyboard</b> — tap <b>Formatted Date</b> there (it's the result from block 3).</>} />
-              <JField type="Number" name="p_count" nameId="k-cnt" valuePick={<>Tap this Value box. In that same bar <b>above the keyboard</b>, tap <b>Statistics</b> (the result from block 2).</>} />
+              <JField type="Number" name="p_count" nameId="k-cnt" valuePick={<>Tap this Value box. In that same bar <b>above the keyboard</b>, tap <b>Sum</b> — the result of your “Calculate the Sum of Health Samples” action (block 2).</>} />
               <div style={{ fontSize:10.5, color:T.sub, marginTop:2, lineHeight:1.5 }}>
                 Only <b style={{ color:T.ink }}>p_token</b>’s value is copied. For <b>p_day</b> and <b>p_count</b> the value is a blue variable you <b>pick</b>, not type.
               </div>
