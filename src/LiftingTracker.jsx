@@ -3633,7 +3633,7 @@ function StepsCard({ user }) {
               At the top of the shortcut, tap its <b style={{ color:T.ink }}>name</b> (or the <b>⌄</b> next to it → <b>Rename</b>), erase what's there,
               and paste this <b style={{ color:T.ink }}>exact</b> name — it must match, or the Sync button and automations can't find it:
             </div>
-            <Copy label="Shortcut name — tap Copy, then paste it" value="Sync Steps to The Lab" id="name" />
+            <Copy label="Shortcut name — tap Copy, then paste it" value="The Lab: Steps" id="name" />
             <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55, marginTop:8 }}>Then tap <b style={{ color:T.ink }}>Done</b> (top-right). Your shortcut is built. ✅</div>
           </div>
         </StepBlock>
@@ -3649,28 +3649,28 @@ function StepsCard({ user }) {
         </div>
 
         {/* one-tap manual refresh from inside the app (iOS shortcuts:// scheme) */}
-        <a href={`shortcuts://run-shortcut?name=${encodeURIComponent("Sync Steps to The Lab")}`} style={{
+        <a href={`shortcuts://run-shortcut?name=${encodeURIComponent("The Lab: Steps")}`} style={{
           display:"flex", alignItems:"center", justifyContent:"center", gap:8, background:T.green, color:"#000",
           fontWeight:800, fontSize:14, padding:"12px 16px", borderRadius:10, textDecoration:"none", marginBottom:6 }}>
           🔄 Sync my steps now
         </a>
         <div style={{ fontSize:11, color:T.sub, textAlign:"center", lineHeight:1.5, marginBottom:16 }}>
-          Tap this anytime to refresh (iPhone only). It runs the shortcut you built, so it must be named exactly <b>Sync Steps to The Lab</b>.
+          Tap this anytime to refresh (iPhone only). It runs the shortcut you built, so it must be named exactly <b>The Lab: Steps</b>.
         </div>
 
         {/* make it automatic — Time of Day (the "open the app" trigger can't see a web app) */}
         <div style={{ background:"rgba(0,200,5,.08)", borderRadius:12, padding:"14px 15px", margin:"0 0 14px" }}>
-          <div style={{ fontSize:14.5, fontWeight:800, color:T.ink, marginBottom:6 }}>Make it run on a schedule 🔁</div>
+          <div style={{ fontSize:14.5, fontWeight:800, color:T.ink, marginBottom:6 }}>Make it update on its own 🔁</div>
           <div style={{ fontSize:11.5, color:T.sub, lineHeight:1.55, marginBottom:9 }}>
-            The Lab is a home-screen web app, so iOS <b style={{ color:T.ink }}>can't</b> use the “when I open the app” trigger for it.
-            Instead we set a few daily times — plus the <b>Sync now</b> button above whenever you want it fresh.
+            Right now your steps only update when you tap <b>🔄 Sync now</b>. To make them update <b style={{ color:T.ink }}>automatically</b>,
+            add a few daily times below. (The Lab is a home-screen web app, so iOS can't use an “on open” trigger — a schedule is the way.)
           </div>
           <ol style={{ fontSize:12.5, color:T.ink, lineHeight:1.6, paddingLeft:18, margin:0 }}>
             <li>In Shortcuts, tap the <b>Automation</b> tab (bottom).</li>
             <li>Tap <b>+</b> (top-right). Newer iPhones go straight in — no “Personal / Home” screen.</li>
             <li>In the trigger list, tap <b>Time of Day</b>.</li>
             <li>Pick a time (e.g. <b>12:00 PM</b>), set <b>Repeat: Daily</b> → <b>Next</b>.</li>
-            <li>Choose <b>Run Immediately</b>, then pick your <b>Sync Steps to The Lab</b> shortcut → <b>Done</b>.</li>
+            <li>Choose <b>Run Immediately</b>, then pick your <b>The Lab: Steps</b> shortcut → <b>Done</b>.</li>
             <li>Repeat to add <b>2–3 times</b> (e.g. noon, 6 PM, 10 PM) so it stays current for your groupmates.</li>
           </ol>
         </div>
