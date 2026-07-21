@@ -3709,10 +3709,15 @@ function StepsCard({ user }) {
             <li>Tap the blue <b>New Automation</b> button (or <b>+</b> at top-right).</li>
             <li>In the trigger list, tap <b>Time of Day</b>.</li>
             <li>Set it to <b>12:05 AM</b>, <b>Repeat: Daily</b> → <b>Next</b>.</li>
-            <li>Choose <b>Run Immediately</b>, then pick your <b>The Lab: Steps</b> shortcut → <b>Done</b>.</li>
+            <li>Pick your <b>The Lab: Steps</b> shortcut → <b>Done</b>.</li>
           </ol>
+          <div style={{ display:"flex", gap:9, alignItems:"flex-start", background:"rgba(255,80,0,.10)", border:`1px solid ${T.danger}`, borderRadius:10, padding:"10px 12px", fontSize:11.5, color:T.sub, lineHeight:1.55, marginTop:10 }}>
+            <span style={{ flexShrink:0, fontSize:14 }}>⚡</span>
+            <span><b style={{ color:T.ink }}>Important — turn on “Run Immediately.”</b> On the setup screen, make sure it's set to <b>Run Immediately</b>, not
+              <b> Run After Confirmation</b>. Otherwise it just sends a notification each night that you have to tap — Run Immediately makes it truly automatic.</span>
+          </div>
           <div style={{ fontSize:11.5, color:T.sub, lineHeight:1.55, marginTop:9 }}>
-            That's it — every night at 12:05 AM it logs the day that just ended, exact to Health. Tap <b>🔄 Sync now</b> anytime to pull it on demand.
+            Then every night at 12:05 AM it logs the day that just ended, exact to Health. Tap <b>🔄 Sync now</b> anytime to pull it on demand.
           </div>
         </div>
       </>)}
