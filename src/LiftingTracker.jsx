@@ -3568,8 +3568,13 @@ function StepsCard({ user }) {
             </div>
           </div>
           <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55, marginBottom:9 }}>
-            First row: <b>Type is Steps</b>. Second row: change it to <b>Start Date · is on</b>, then tap the date value and
+            First row: <b>Type is Steps</b>. Second row: change it to <b>Start Date · is on</b>, then tap the empty <b>Date</b> slot and
             <b> pick the <span style={{ color:STEP_BLUE }}>Adjusted Date</span> variable</b> from step 1. That grabs <b style={{ color:T.ink }}>all of yesterday's</b> steps.
+          </div>
+          <div style={{ display:"flex", gap:9, alignItems:"flex-start", background:"rgba(76,155,255,.10)", border:`1px solid ${STEP_BLUE}`, borderRadius:10, padding:"10px 12px", fontSize:11.5, color:T.sub, lineHeight:1.55, marginBottom:9 }}>
+            <span style={{ flexShrink:0 }}>💡</span>
+            <span>In that Date slot <b style={{ color:T.ink }}>don't type the word “adjusted”</b> — just tap and pick the blue <b>Adjusted Date</b> from the variable bar.
+              If a <b>“Value is …”</b> row appears, that's a stray extra filter — tap the <b>⊖</b> on its right to delete it. You want exactly two rows: <b>Type is Steps</b> and <b>Start Date is on Adjusted Date</b>.</span>
           </div>
           <div style={{ display:"flex", gap:9, alignItems:"flex-start", background:"rgba(0,200,5,.08)", borderRadius:10, padding:"10px 12px", fontSize:11.5, color:T.sub, lineHeight:1.55 }}>
             <span style={{ flexShrink:0 }}>🔒</span>
