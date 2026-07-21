@@ -875,11 +875,14 @@ function LogTab({ data, exMap, setData, routinesOn }) {
   }, [exQ, data.exercises]);
 
   const [histQ, setHistQ] = useState("");
-  const recent = useMemo(() => {
+  const [histLimit, setHistLimit] = useState(50); // show newest 50, "Show more" reveals the rest
+  const histFull = useMemo(() => {
     const q = histQ.trim().toLowerCase();
     const src = q ? sorted.filter(e => e.exercise.toLowerCase().includes(q)) : sorted;
-    return [...src].reverse().slice(0, 30);
+    return [...src].reverse(); // full history, newest first — nothing dropped
   }, [sorted, histQ]);
+  const searching = histQ.trim() !== "";
+  const recent = searching ? histFull : histFull.slice(0, histLimit); // filtering shows every match
 
   const [edit, setEdit] = useState(null); // copy of the set being edited
   const editIsBW = edit ? exMap[edit.exercise]?.type === "Bodyweight" : false;
@@ -1070,8 +1073,8 @@ function LogTab({ data, exMap, setData, routinesOn }) {
     </div>
 
     <div className="card">
-      <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:8}}>Recent sets</div>
-      <input value={histQ} onChange={e=>setHistQ(e.target.value)} placeholder="🔍 Filter by exercise…"
+      <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:8}}>Set history</div>
+      <input value={histQ} onChange={e=>{setHistQ(e.target.value); setHistLimit(50);}} placeholder="🔍 Filter by exercise…"
         autoCapitalize="none" autoCorrect="off" spellCheck={false} style={{marginBottom:10}} />
       <div style={{overflowX:"auto"}}>
         <table><thead><tr><th>Date</th><th>Exercise</th><th>Set</th><th>Weight ({uLabel(units)})</th><th>Reps</th><th>Effort</th><th></th></tr></thead>
@@ -1120,10 +1123,18 @@ function LogTab({ data, exMap, setData, routinesOn }) {
               </td></tr>
             )}
           </Fragment>))}
-            {!recent.length && <tr><td colSpan={7} style={{color:T.sub}}>Nothing logged yet — your first set goes here.</td></tr>}
+            {!recent.length && <tr><td colSpan={7} style={{color:T.sub}}>{searching ? "No sets match that exercise." : "Nothing logged yet — your first set goes here."}</td></tr>}
           </tbody>
         </table>
       </div>
+      {!searching && histFull.length > recent.length && (
+        <div style={{display:"flex", gap:8, marginTop:12}}>
+          <button onClick={()=>setHistLimit(l=>l+50)} style={{flex:1, background:T.input, color:T.ink, border:`1px solid ${T.line}`, padding:"10px", fontWeight:700, fontSize:13, borderRadius:10}}>
+            Show more ({histFull.length - recent.length} older)
+          </button>
+          <button onClick={()=>setHistLimit(histFull.length)} style={{background:"none", color:T.sub, padding:"10px 14px", fontWeight:700, fontSize:13}}>Show all</button>
+        </div>
+      )}
     </div>
   </>);
 }
