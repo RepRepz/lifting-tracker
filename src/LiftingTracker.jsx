@@ -3438,18 +3438,39 @@ function StepsCard({ user }) {
     </div>
   );
 
-  // one JSON body field shown as a Key (left) / Value (right) pair
-  const JField = ({ type, name, value }) => (
+  // a small tap-to-copy chip used inline inside the mock pictures
+  const CopyChip = ({ value, id, label, secret, block }) => {
+    const on = copied === id;
+    return (
+      <button onClick={()=>copy(value, id)} title="Tap to copy" style={{
+        display: block ? "flex" : "inline-flex", width: block ? "100%" : "auto",
+        alignItems:"center", gap:6, textAlign:"left", verticalAlign:"middle",
+        background: on ? T.green : T.input, border:`1px solid ${on ? T.green : (secret ? T.green : T.line)}`,
+        borderRadius:7, padding: block ? "9px 11px" : "4px 9px", fontSize:12, fontWeight:700,
+        color: on ? "#000" : STEP_BLUE, fontFamily:"ui-monospace, Menlo, monospace", maxWidth:"100%", overflow:"hidden" }}>
+        <span style={{ flex: block ? 1 : "0 1 auto", minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{label ?? value}</span>
+        <span style={{ flexShrink:0, fontSize:10, fontWeight:700, color: on ? "#000" : T.sub }}>{on ? "✓" : "copy"}</span>
+      </button>
+    );
+  };
+
+  // one JSON body field: copyable Key (left) and either a copyable Value or a "pick a variable" note (right)
+  const JField = ({ type, name, nameId, valueCopy, valueId, valueNote, valuePick, secret }) => (
     <div style={{ background:T.input, border:`1px solid ${T.line}`, borderRadius:10, overflow:"hidden", marginBottom:8 }}>
       <div style={{ fontSize:10, fontWeight:700, color:T.sub, textTransform:"uppercase", letterSpacing:.6, padding:"6px 11px", borderBottom:`1px solid ${T.line}`, background:T.cardAlt }}>Field type: {type}</div>
       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr" }}>
         <div style={{ padding:"8px 11px" }}>
-          <div style={{ fontSize:9.5, fontWeight:700, color:T.sub, textTransform:"uppercase", letterSpacing:.5, marginBottom:3 }}>Key (left)</div>
-          <code style={{ fontSize:13, fontWeight:700, color:STEP_BLUE, fontFamily:"ui-monospace, Menlo, monospace" }}>{name}</code>
+          <div style={{ fontSize:9.5, fontWeight:700, color:T.sub, textTransform:"uppercase", letterSpacing:.5, marginBottom:4 }}>Key (left)</div>
+          <CopyChip value={name} id={nameId} />
         </div>
         <div style={{ padding:"8px 11px", borderLeft:`1px solid ${T.line}` }}>
-          <div style={{ fontSize:9.5, fontWeight:700, color:T.sub, textTransform:"uppercase", letterSpacing:.5, marginBottom:3 }}>Value (right)</div>
-          <div style={{ fontSize:12, color:T.ink, lineHeight:1.4 }}>{value}</div>
+          <div style={{ fontSize:9.5, fontWeight:700, color:T.sub, textTransform:"uppercase", letterSpacing:.5, marginBottom:4 }}>Value (right)</div>
+          {valueCopy != null ? (<>
+            <CopyChip value={valueCopy} id={valueId} secret={secret} block />
+            {valueNote && <div style={{ fontSize:10.5, fontWeight:700, color: secret ? T.danger : T.sub, marginTop:5 }}>{valueNote}</div>}
+          </>) : (
+            <div style={{ fontSize:11.5, color:T.ink, lineHeight:1.4 }}>{valuePick}</div>
+          )}
         </div>
       </div>
     </div>
@@ -3543,70 +3564,63 @@ function StepsCard({ user }) {
 
         <StepBlock n="4" title="Get Contents of URL">
           <SearchBar text="Get Contents of URL" />
-          {/* big labeled picture of the whole expanded action */}
+          <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55, marginBottom:10 }}>
+            Everything here is <b style={{ color:T.ink }}>tap-to-copy right in place</b> — no scrolling around. A blue box = copy it. A grey note = tap that box on your phone and pick a variable.
+          </div>
+          {/* the whole expanded action, with every value copyable in place */}
           <div style={{ background:T.cardAlt, border:`1px solid ${STEP_BLUE}`, borderRadius:12, padding:"12px", margin:"0 0 12px" }}>
             <div style={{ display:"flex", alignItems:"center", gap:10 }}>
               <span style={{ width:29, height:29, borderRadius:8, flexShrink:0, background:STEP_BLUE, display:"flex", alignItems:"center", justifyContent:"center", fontSize:15 }}>🌐</span>
               <span style={{ fontSize:14.5, fontWeight:700, color:T.ink }}>Get Contents of <Tap>URL</Tap></span>
             </div>
-            <div style={{ fontSize:11, color:T.sub, marginTop:6, marginLeft:39 }}>↑ paste the URL here — then tap <b style={{ color:T.ink }}>Show More</b> for everything below</div>
+
+            {/* URL */}
+            <div style={{ marginTop:11, borderTop:`1px solid ${T.line}`, paddingTop:11 }}>
+              <div style={{ fontSize:10.5, fontWeight:700, color:T.sub, textTransform:"uppercase", letterSpacing:.5, marginBottom:6 }}>URL — paste this in the top box, then tap “Show More”</div>
+              <CopyChip value={url} id="url" block />
+            </div>
 
             {/* Method */}
-            <div style={{ marginTop:12, borderTop:`1px solid ${T.line}`, paddingTop:11 }}>
-              <div style={{ fontSize:10.5, fontWeight:700, color:T.sub, textTransform:"uppercase", letterSpacing:.5, marginBottom:6 }}>Method</div>
+            <div style={{ marginTop:13 }}>
+              <div style={{ fontSize:10.5, fontWeight:700, color:T.sub, textTransform:"uppercase", letterSpacing:.5, marginBottom:6 }}>Method — tap POST</div>
               <div style={{ display:"inline-flex", background:T.input, borderRadius:8, padding:3, gap:3 }}>
                 <span style={{ padding:"5px 14px", borderRadius:6, fontSize:12.5, fontWeight:700, color:T.sub }}>GET</span>
                 <span style={{ padding:"5px 14px", borderRadius:6, fontSize:12.5, fontWeight:800, background:T.green, color:"#000" }}>POST</span>
               </div>
             </div>
 
-            {/* Headers */}
+            {/* Headers — both key and value copyable */}
             <div style={{ marginTop:13 }}>
-              <div style={{ fontSize:10.5, fontWeight:700, color:T.sub, textTransform:"uppercase", letterSpacing:.5, marginBottom:6 }}>Headers — add 2</div>
-              <div style={{ display:"flex", alignItems:"center", gap:8, background:T.input, borderRadius:8, padding:"8px 10px", marginBottom:6, fontSize:12.5 }}>
-                <code style={{ color:STEP_BLUE, fontWeight:700, fontFamily:"ui-monospace, Menlo, monospace" }}>apikey</code>
-                <span style={{ color:T.sub }}>→</span><span style={{ color:T.sub }}>your key</span>
+              <div style={{ fontSize:10.5, fontWeight:700, color:T.sub, textTransform:"uppercase", letterSpacing:.5, marginBottom:7 }}>Headers — tap “Add new header” twice</div>
+              <div style={{ display:"flex", alignItems:"center", gap:7, marginBottom:8, flexWrap:"nowrap" }}>
+                <CopyChip value="apikey" id="k-api" />
+                <span style={{ color:T.sub, flexShrink:0 }}>→</span>
+                <div style={{ flex:1, minWidth:0 }}><CopyChip value={apikey} id="v-api" block /></div>
               </div>
-              <div style={{ display:"flex", alignItems:"center", gap:8, background:T.input, borderRadius:8, padding:"8px 10px", fontSize:12.5, flexWrap:"wrap" }}>
-                <code style={{ color:STEP_BLUE, fontWeight:700, fontFamily:"ui-monospace, Menlo, monospace" }}>Content-Type</code>
-                <span style={{ color:T.sub }}>→</span><span style={{ color:T.ink }}>application/json</span>
+              <div style={{ display:"flex", alignItems:"center", gap:7, flexWrap:"nowrap" }}>
+                <CopyChip value="Content-Type" id="k-ct" />
+                <span style={{ color:T.sub, flexShrink:0 }}>→</span>
+                <div style={{ flex:1, minWidth:0 }}><CopyChip value="application/json" id="v-ct" block /></div>
               </div>
+              <div style={{ fontSize:10.5, color:T.sub, marginTop:6 }}>Left chip = the header’s <b style={{ color:T.ink }}>Key</b>, right chip = its <b style={{ color:T.ink }}>Value</b>.</div>
             </div>
 
             {/* Request Body */}
             <div style={{ marginTop:13 }}>
-              <div style={{ fontSize:10.5, fontWeight:700, color:T.sub, textTransform:"uppercase", letterSpacing:.5, marginBottom:6 }}>Request Body</div>
-              <div style={{ display:"inline-flex", background:T.input, borderRadius:8, padding:3, gap:3, marginBottom:8 }}>
+              <div style={{ fontSize:10.5, fontWeight:700, color:T.sub, textTransform:"uppercase", letterSpacing:.5, marginBottom:7 }}>Request Body — tap JSON, then “Add new field” ×3</div>
+              <div style={{ display:"inline-flex", background:T.input, borderRadius:8, padding:3, gap:3, marginBottom:9 }}>
                 <span style={{ padding:"5px 12px", borderRadius:6, fontSize:12.5, fontWeight:700, color:T.sub }}>Form</span>
                 <span style={{ padding:"5px 12px", borderRadius:6, fontSize:12.5, fontWeight:800, background:T.green, color:"#000" }}>JSON</span>
                 <span style={{ padding:"5px 12px", borderRadius:6, fontSize:12.5, fontWeight:700, color:T.sub }}>File</span>
               </div>
-              {[["p_token","Text"],["p_day","Text"],["p_count","Number"]].map(([k,t])=>(
-                <div key={k} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8, background:T.input, borderRadius:8, padding:"8px 10px", marginBottom:6, fontSize:12.5 }}>
-                  <code style={{ color:STEP_BLUE, fontWeight:700, fontFamily:"ui-monospace, Menlo, monospace" }}>{k}</code>
-                  <span style={{ color:T.sub, fontSize:11 }}>{t}</span>
-                </div>
-              ))}
+              <JField type="Text" name="p_token" nameId="k-tok" valueCopy={token} valueId="tok" secret valueNote="🔒 Don’t share this" />
+              <JField type="Text" name="p_day" nameId="k-day" valuePick={<>Tap this box → pick the <b>Formatted Date</b> variable (block 3)</>} />
+              <JField type="Number" name="p_count" nameId="k-cnt" valuePick={<>Tap this box → pick the <b>Statistics</b> variable (block 2)</>} />
+              <div style={{ fontSize:10.5, color:T.sub, marginTop:2, lineHeight:1.5 }}>
+                Only <b style={{ color:T.ink }}>p_token</b>’s value is copied. For <b>p_day</b> and <b>p_count</b> the value is a blue variable you <b>pick</b>, not type.
+              </div>
             </div>
           </div>
-
-          <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55, marginBottom:8 }}>Now fill it in. First paste this into the <b>URL</b> box at the top:</div>
-          <Copy label="URL" value={url} id="url" />
-
-          <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55, margin:"14px 0 8px" }}>Under <b>Headers</b>, tap <b>Add new header</b> twice. Copy each value into the matching one:</div>
-          <Copy label="Key: apikey  →  Value:" value={apikey} id="key" />
-          <Copy label="Key: Content-Type  →  Value:" value="application/json" id="ctype" />
-
-          <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55, margin:"14px 0 8px" }}>
-            Under <b>Request Body</b> (set to JSON), tap <b>Add new field</b> three times. Left box = the <b style={{ color:T.ink }}>name</b>, right box = the <b style={{ color:T.ink }}>value</b>:
-          </div>
-          <JField type="Text" name="p_token" value={<>Paste your <b>secret code</b> from below 👇</>} />
-          <JField type="Text" name="p_day" value={<>Tap the box → pick the <b>Formatted Date</b> variable (block 3)</>} />
-          <JField type="Number" name="p_count" value={<>Tap the box → pick the <b>Statistics</b> variable (block 2)</>} />
-          <div style={{ fontSize:11.5, color:T.sub, lineHeight:1.5, marginBottom:10 }}>
-            For <b>p_day</b> and <b>p_count</b> you don't type the value — tap the box and <b>pick the blue variable</b>. Only <b>p_token</b> gets pasted:
-          </div>
-          <Copy label="p_token — your private code, don't share it" value={token} id="tok" secret />
           <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55 }}>Last thing: tap the name at the top to call it <b>“Sync Steps to The Lab,”</b> then tap <b>Done</b>.</div>
         </StepBlock>
 
