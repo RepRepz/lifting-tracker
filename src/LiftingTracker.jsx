@@ -163,7 +163,7 @@ const defaultData = {
   journal: {}, // { "YYYY-MM-DD": { mood, sleep, text } } — daily notes
   profile: {}, // heightIn (inches) lives here once set
   pins: [],    // pinned dashboard charts (exercise names)
-  libraryV: 6, // bumped when the seed library changes, so existing users get the update once
+  libraryV: 7, // bumped when the seed library changes, so existing users get the update once
 };
 
 /* One-time upgrade of previously saved data: pull in newly added seed exercises and
@@ -186,7 +186,13 @@ function migrateData(d) {
   ];
   const haveAct = new Set((d.cardioActivities || []).map(a => a.name));
   const cardioActivities = [...(d.cardioActivities || []), ...SEED_CARDIO.filter(a => !haveAct.has(a.name))];
-  return { ...d, exercises, cardioActivities, libraryV: defaultData.libraryV };
+  // one-off cleanup: fold any "Low to High Side Raise" (a custom name) into the seed
+  // "Single-Arm Cable Side Raise" — rename its log entries and drop the old library entry.
+  const norm = (s) => (s || "").toLowerCase().replace(/-/g, " ").replace(/\s+/g, " ").trim();
+  const isOldSideRaise = (name) => { const n = norm(name); return n.includes("low to high") && n.includes("side raise"); };
+  const log = (d.log || []).map(e => isOldSideRaise(e.exercise) ? { ...e, exercise: "Single-Arm Cable Side Raise" } : e);
+  const cleanedExercises = exercises.filter(x => !isOldSideRaise(x.name));
+  return { ...d, log, exercises: cleanedExercises, cardioActivities, libraryV: defaultData.libraryV };
 }
 
 /* weekly streak (lifting OR cardio) with mid-week protection */
@@ -268,7 +274,7 @@ export default function LiftingTracker({ user }) {
   // Currently unlocked ONLY for these usernames (a private demo for Anis). Add a name here
   // to give someone access, or set to `true` to turn it on for everyone.
   const liftingOn = true;
-  const MACRO_ACCOUNTS = ["dimi", "anisnurkic"];
+  const MACRO_ACCOUNTS = ["dimi", "ancenurkic"];
   const nutritionOn = MACRO_ACCOUNTS.includes((user.user_metadata?.username || "").toLowerCase());
   const [streaksOn, setStreaksOn] = useState(() => localStorage.getItem("lt-streaks-on") !== "0"); // default on
   const [waterOn, setWaterOn] = useState(() => localStorage.getItem("lt-water-on") !== "0"); // default on
