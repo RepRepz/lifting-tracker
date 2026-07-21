@@ -3699,20 +3699,20 @@ function StepsCard({ user }) {
 
         {/* make it automatic — Time of Day (the "open the app" trigger can't see a web app) */}
         <div style={{ background:"rgba(0,200,5,.08)", borderRadius:12, padding:"14px 15px", margin:"0 0 14px" }}>
-          <div style={{ fontSize:14.5, fontWeight:800, color:T.ink, marginBottom:6 }}>Make it run each morning 🔁</div>
+          <div style={{ fontSize:14.5, fontWeight:800, color:T.ink, marginBottom:6 }}>Make it run right after midnight 🔁</div>
           <div style={{ fontSize:11.5, color:T.sub, lineHeight:1.55, marginBottom:9 }}>
-            Because it logs <b style={{ color:T.ink }}>yesterday's</b> finished day, one run a day is all you need — no juggling multiple times.
-            (The Lab is a home-screen web app, so iOS can't use an “on open” trigger — a scheduled time is the way.)
+            Because it logs <b style={{ color:T.ink }}>yesterday's</b> finished day, run it just after midnight — the moment a day ends, its final
+            total gets logged. One run a day, no midnight-boundary risk. (The Lab is a home-screen web app, so iOS can't use an “on open” trigger.)
           </div>
           <ol style={{ fontSize:12.5, color:T.ink, lineHeight:1.6, paddingLeft:18, margin:0 }}>
             <li>In Shortcuts, tap the <b>Automation</b> tab (bottom).</li>
-            <li>Tap <b>+</b> (top-right). Newer iPhones go straight in — no “Personal / Home” screen.</li>
+            <li>Tap the blue <b>New Automation</b> button (or <b>+</b> at top-right).</li>
             <li>In the trigger list, tap <b>Time of Day</b>.</li>
-            <li>Set a <b>morning</b> time (e.g. <b>8:00 AM</b>), <b>Repeat: Daily</b> → <b>Next</b>.</li>
+            <li>Set it to <b>12:05 AM</b>, <b>Repeat: Daily</b> → <b>Next</b>.</li>
             <li>Choose <b>Run Immediately</b>, then pick your <b>The Lab: Steps</b> shortcut → <b>Done</b>.</li>
           </ol>
           <div style={{ fontSize:11.5, color:T.sub, lineHeight:1.55, marginTop:9 }}>
-            That's it — one run each morning logs the previous day, exact to Health. Tap <b>🔄 Sync now</b> anytime to pull it on demand.
+            That's it — every night at 12:05 AM it logs the day that just ended, exact to Health. Tap <b>🔄 Sync now</b> anytime to pull it on demand.
           </div>
         </div>
       </>)}
