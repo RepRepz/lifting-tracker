@@ -3632,11 +3632,11 @@ function StepsCard({ user }) {
         <div style={{ background:"rgba(0,200,5,.08)", borderRadius:12, padding:"14px 15px", margin:"6px 0 14px" }}>
           <div style={{ fontSize:14.5, fontWeight:800, color:T.ink, marginBottom:8 }}>Make it run by itself 🔁</div>
           <ol style={{ fontSize:12.5, color:T.ink, lineHeight:1.6, paddingLeft:18, margin:0 }}>
-            <li>In Shortcuts, tap the <b>Automation</b> tab.</li>
-            <li>Tap <b>+</b> → <b>Create Personal Automation</b>.</li>
-            <li>Choose <b>App</b> → pick <b>The Lab</b> → check <b>Is Opened</b>.</li>
-            <li>Tap <b>Next</b> → choose your <b>Sync Steps to The Lab</b> shortcut.</li>
-            <li>Turn <b>off</b> “Ask Before Running,” then <b>Done</b>.</li>
+            <li>In Shortcuts, tap the <b>Automation</b> tab (bottom).</li>
+            <li>Tap <b>+</b> (top-right). On newer iPhones it goes straight in — <b>there's no “Personal / Home” screen</b>. (Older iPhones: tap <b>Create Personal Automation</b>.)</li>
+            <li>In the trigger list, scroll to or search <b>App</b> → tap it.</li>
+            <li>Tap <b>Choose</b> → pick <b>The Lab</b> → make sure <b>Is Opened</b> is checked → <b>Next</b>.</li>
+            <li>Choose <b>Run Immediately</b> (so it won't ask each time), then pick your <b>Sync Steps to The Lab</b> shortcut → <b>Done</b>.</li>
           </ol>
           <div style={{ fontSize:11.5, color:T.sub, lineHeight:1.5, marginTop:9 }}>
             <b>Can't find The Lab in the app list?</b> Instead pick <b>Time of Day</b> and make two or three (noon, 6 PM, 10 PM).
