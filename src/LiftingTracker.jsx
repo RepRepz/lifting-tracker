@@ -3483,7 +3483,7 @@ function StepsCard({ user }) {
               <span style={{ fontSize:14.5, fontWeight:700, color:T.ink }}>Find All <Tap>Health Samples</Tap></span>
             </div>
             <div style={{ marginTop:11, borderTop:`1px solid ${T.line}`, paddingTop:11 }}>
-              <div style={{ fontSize:11, fontWeight:700, color:T.sub, textTransform:"uppercase", letterSpacing:.5, marginBottom:9 }}>where — add these two filters:</div>
+              <div style={{ fontSize:11, fontWeight:700, color:T.sub, textTransform:"uppercase", letterSpacing:.5, marginBottom:9 }}>where — these two rows should say:</div>
               <div style={{ display:"flex", gap:7, alignItems:"center", background:T.input, borderRadius:9, padding:"9px 11px", marginBottom:8 }}>
                 <Tap>Type</Tap><span style={{ color:T.sub, fontSize:13 }}>is</span><Tap>Steps</Tap>
               </div>
@@ -3496,8 +3496,9 @@ function StepsCard({ user }) {
             </div>
           </div>
           <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55, marginBottom:9 }}>
-            Tap the blue <b>＋ Add Filter</b> button and pick <b>Type → is → Steps</b>. Tap <b>＋ Add Filter</b> again
-            and pick <b>Start Date → is → Today</b>. Now it reads only <b style={{ color:T.ink }}>today's</b> steps.
+            These two rows usually appear on their own — just <b style={{ color:T.ink }}>check they say exactly</b> <b>Type is Steps</b> and
+            <b> Start Date is Today</b> (tap a row to change it if it's different). Only if a row is missing, tap the blue <b>＋ Add Filter</b> to add it.
+            Together they make it read only <b style={{ color:T.ink }}>today's</b> steps.
           </div>
           <div style={{ display:"flex", gap:9, alignItems:"flex-start", background:"rgba(0,200,5,.08)", borderRadius:10, padding:"10px 12px", fontSize:11.5, color:T.sub, lineHeight:1.55 }}>
             <span style={{ flexShrink:0 }}>🔒</span>
