@@ -8,6 +8,10 @@ export const SECURITY_QUESTIONS = [
   "What was your first car?",
   "What elementary school did you go to?",
   "What's your go-to gym machine?",
+  // harder to guess — the answers below aren't on anyone's social media
+  "What's a nickname only your family calls you?",
+  "What was the name of your childhood stuffed animal or toy?",
+  "What's an inside joke word only your closest friends would get?",
 ];
 
 const C = {
