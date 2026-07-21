@@ -2501,6 +2501,20 @@ const dAdd = (ds,n)=>{ const d=new Date(ds+"T00:00"); d.setDate(d.getDate()+n);
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
 const stepAvg = (a)=> a.length ? Math.round(a.reduce((x,y)=>x+y,0)/a.length) : 0;
 
+/* Merge auto-synced steps (steps table) with manually-logged cardio "Steps" entries into
+   one day->count map, plus a day->source map ("auto" | "manual" | "both"). */
+function mergeSteps(autoMap, cardio) {
+  const map = { ...(autoMap || {}) };
+  const meta = {};
+  for (const d in map) meta[d] = "auto";
+  for (const c of (cardio || [])) {
+    if (!c.steps || !c.date) continue;
+    if (map[c.date] != null) { map[c.date] += c.steps; meta[c.date] = meta[c.date]==="manual" ? "manual" : "both"; }
+    else { map[c.date] = c.steps; meta[c.date] = "manual"; }
+  }
+  return { map, meta };
+}
+
 /* Build W/M/6M/Y/5Y bars from a day->count map. Pure — reused by the tab and popups. */
 function computeStepChart(m, range) {
   const today = todayStr(); const yStr = dAdd(today,-1); let bars=[]; let every=1; const isAvg = !(range==="W"||range==="M");
@@ -2509,7 +2523,7 @@ function computeStepChart(m, range) {
     for (let i=n-1;i>=0;i--){ const d=dAdd(today,-i); const dt=new Date(d+"T00:00");
       bars.push({ label: range==="W" ? dt.toLocaleDateString("en-US",{weekday:"narrow"}) : String(dt.getDate()),
         full: d===yStr ? "Yesterday" : d===today ? "Today" : dt.toLocaleDateString("en-US",{weekday:"short", month:"short", day:"numeric"}),
-        value: m[d]||0, has: m[d]!=null, mark: d===yStr }); }
+        day: d, value: m[d]||0, has: m[d]!=null, mark: d===yStr }); }
   } else if (range==="6M") {
     every = 4; const ws = weekStart(today);
     for (let i=25;i>=0;i--){ const start=dAdd(ws,-7*i); const days=[]; for(let k=0;k<7;k++){ const d=dAdd(start,k); if(m[d]!=null) days.push(m[d]); }
@@ -2572,10 +2586,12 @@ function useSteps(user, sinceDays) {
 
 /* Reusable goal ring + Apple-Health-style ranged chart for a single person's step map.
    Powers both your own tab and the tap-to-view popup for any groupmate. */
-function StepRingChart({ map, goal }) {
+function StepRingChart({ map, goal, meta }) {
   const [range, setRange] = useState("M");
   const [sel, setSel] = useState(null);
   const plotRef = useRef(null);
+  const hasManual = meta && Object.values(meta).some(v => v !== "auto");
+  const srcLabel = { manual:"✍️ manual entry", both:"Apple Health + manual", auto:"Apple Health" };
   const m = map || {};
   const yStr = dAdd(todayStr(), -1);
   const yCount = m[yStr] || 0;
@@ -2623,7 +2639,11 @@ function StepRingChart({ map, goal }) {
       </div>
 
       {sel!=null && chart.bars[sel] ? (<>
-        <div style={{fontSize:11, fontWeight:800, color:T.green, textTransform:"uppercase", letterSpacing:.6}}>{chart.bars[sel].full}</div>
+        <div style={{fontSize:11, fontWeight:800, color:T.green, textTransform:"uppercase", letterSpacing:.6}}>
+          {chart.bars[sel].full}
+          {(() => { const s = meta && chart.bars[sel].day && chart.bars[sel].has ? meta[chart.bars[sel].day] : null;
+            return s ? <span style={{color: s==="manual"?T.down:T.sub, marginLeft:6}}>· {srcLabel[s]}</span> : null; })()}
+        </div>
         <div style={{display:"flex", alignItems:"baseline", gap:6}}>
           <span style={{fontSize:27, fontWeight:800, color:T.ink, fontVariantNumeric:"tabular-nums"}}>{chart.bars[sel].has ? chart.bars[sel].value.toLocaleString() : "—"}</span>
           <span style={{fontSize:13, color:T.sub}}>{chart.bars[sel].has ? (chart.isAvg ? "steps/day" : "steps") : "no data"}</span>
@@ -2646,12 +2666,19 @@ function StepRingChart({ map, goal }) {
           <div key={i} style={{flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:5, minWidth:0, pointerEvents:"none"}}>
             <div className="vbar" style={{width:"100%", maxWidth: range==="W"?30:14, borderRadius:"4px 4px 2px 2px",
               height: b.has&&b.value>0 ? Math.max(4, (b.value/chart.max)*100) : 3,
-              background: sel===i ? "#fff" : b.mark ? T.green : b.has ? "rgba(0,200,5,.6)" : T.line,
+              background: sel===i ? "#fff" : (meta && b.day && meta[b.day]==="manual") ? T.down : b.mark ? T.green : b.has ? "rgba(0,200,5,.6)" : T.line,
               animationDelay:`${i*0.02}s`, transition:"background .12s ease"}} />
             <span style={{fontSize:9, color: (sel===i||b.mark)?T.green:T.sub, fontWeight: (sel===i||b.mark)?800:400, whiteSpace:"nowrap"}}>{(i%chart.every===0 || i===chart.bars.length-1) ? b.label : ""}</span>
           </div>
         ))}
       </div>
+      {hasManual && (
+        <div style={{display:"flex", gap:14, marginTop:10, fontSize:11, color:T.sub, flexWrap:"wrap"}}>
+          <span style={{display:"flex", alignItems:"center", gap:5}}><span style={{width:9, height:9, borderRadius:2, background:T.green}} /> Apple Health (auto)</span>
+          <span style={{display:"flex", alignItems:"center", gap:5}}><span style={{width:9, height:9, borderRadius:2, background:T.down}} /> manually entered</span>
+          <span>· hover a bar to check</span>
+        </div>
+      )}
     </div>
   </>);
 }
@@ -2757,6 +2784,7 @@ function StepsTab({ user, data, setData }) {
   const goal = (data.profile?.stepGoal) || 10000;
   const { mine, all, nameOf, board, celebrate, dismiss, yStr, myId } = useSteps(user, 5*365 + 40);
   const myName = nameOf[myId] || (user.user_metadata?.username || "you");
+  const merged = useMemo(() => mergeSteps(mine || {}, data.cardio), [mine, data.cardio]);
   const [editGoal, setEditGoal] = useState(false);
   const [goalInput, setGoalInput] = useState(String(goal));
   const [view, setView] = useState(null); // { id, name } groupmate graph popup
@@ -2788,7 +2816,7 @@ function StepsTab({ user, data, setData }) {
 
   if (mine === undefined) return <div className="card"><div className="skeleton" style={{height:220, borderRadius:12}} /></div>;
 
-  if (!Object.keys(mine).length) {
+  if (!Object.keys(merged.map).length) {
     return (
       <div className="card" style={{textAlign:"center"}}>
         <div style={{fontSize:40, marginBottom:8}}>👟</div>
@@ -2827,7 +2855,7 @@ function StepsTab({ user, data, setData }) {
       )}
     </div>
 
-    <StepRingChart map={mine} goal={goal} />
+    <StepRingChart map={merged.map} goal={goal} meta={merged.meta} />
 
     {race.length > 1 && (
       <div className="card">
@@ -4890,8 +4918,12 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
               </div>
             )}
             {profileSteps === undefined ? <div className="card"><div className="skeleton" style={{height:220, borderRadius:12}} /></div>
-            : Object.keys(profileSteps).length ? <StepRingChart map={profileSteps} goal={10000} />
-            : <div className="card" style={{textAlign:"center", color:T.sub, padding:"26px 16px"}}><div style={{fontSize:34, marginBottom:8}}>👟</div>{profile.username} hasn't synced any steps yet.</div>}
+            : (() => {
+                const mg = mergeSteps(profileSteps, pdata.cardio);
+                return Object.keys(mg.map).length
+                  ? <StepRingChart map={mg.map} goal={10000} meta={mg.meta} />
+                  : <div className="card" style={{textAlign:"center", color:T.sub, padding:"26px 16px"}}><div style={{fontSize:34, marginBottom:8}}>👟</div>{profile.username} hasn't logged any steps yet.</div>;
+              })()}
           </>)}
 
           {tab==="macros" && nutritionOn && (
