@@ -163,7 +163,7 @@ const defaultData = {
   journal: {}, // { "YYYY-MM-DD": { mood, sleep, text } } — daily notes
   profile: {}, // heightIn (inches) lives here once set
   pins: [],    // pinned dashboard charts (exercise names)
-  libraryV: 5, // bumped when the seed library changes, so existing users get the update once
+  libraryV: 6, // bumped when the seed library changes, so existing users get the update once
 };
 
 /* One-time upgrade of previously saved data: pull in newly added seed exercises and
