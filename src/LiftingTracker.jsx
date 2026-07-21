@@ -2585,6 +2585,16 @@ function StepsTab({ user }) {
     return { bars, avg: avgOf(wd.map(b=>b.value)), max: Math.max(1, ...bars.map(b=>b.value)), every, isAvg };
   }, [mine, range]);
 
+  // scrubber: map the pointer's X to the bar directly under it (single tap, drag to scan)
+  const plotRef = useRef(null);
+  const scrub = (clientX) => {
+    const el = plotRef.current; if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const n = chart.bars.length; if (!n) return;
+    const idx = Math.floor((clientX - rect.left) / rect.width * n);
+    setSel(Math.max(0, Math.min(n-1, idx)));
+  };
+
   const rangeSub = { W:"Past week", M:"Past 30 days", "6M":"Past 6 months", Y:"Past year", "5Y":"Past 5 years" };
   const dayLabel = (d) => d===yStr ? "yesterday" : d===todayStr() ? "today" : new Date(d+"T00:00").toLocaleDateString("en-US",{weekday:"short"});
 
@@ -2667,10 +2677,12 @@ function StepsTab({ user }) {
         <div style={{fontSize:12, color:T.sub, marginBottom:14}}>{rangeSub[range]} · <span style={{color:T.green}}>tap a bar for details</span></div>
       </>)}
 
-      <div style={{display:"flex", alignItems:"flex-end", gap: range==="W"?8:3, height:130}} onMouseLeave={()=>setSel(null)}>
+      <div ref={plotRef}
+        onPointerDown={e=>scrub(e.clientX)} onPointerMove={e=>{ if (e.pointerType==="mouse" || e.buttons) scrub(e.clientX); }}
+        onMouseLeave={()=>setSel(null)}
+        style={{display:"flex", alignItems:"flex-end", gap: range==="W"?8:3, height:130, touchAction:"pan-y", cursor:"crosshair"}}>
         {chart.bars.map((b,i)=>(
-          <div key={i} onMouseEnter={()=>setSel(i)} onClick={()=>setSel(s=>s===i?null:i)}
-            style={{flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:5, minWidth:0, cursor:"pointer"}}>
+          <div key={i} style={{flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:5, minWidth:0, pointerEvents:"none"}}>
             <div className="vbar" style={{width:"100%", maxWidth: range==="W"?30:14, borderRadius:"4px 4px 2px 2px",
               height: b.has&&b.value>0 ? Math.max(4, (b.value/chart.max)*100) : 3,
               background: sel===i ? "#fff" : b.mark ? T.green : b.has ? "rgba(0,200,5,.6)" : T.line,
