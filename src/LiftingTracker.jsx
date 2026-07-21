@@ -3368,15 +3368,29 @@ function MockCard({ glyph, glyphBg, title, rows }) {
     </div>
   );
 }
-/* numbered wrapper: "① Find Health Samples · search this" + its card + notes */
-function StepBlock({ n, title, find, children }) {
+/* the "Search Actions" bar at the bottom of the Shortcuts editor — how you add
+   every action. Shown big at the top of each step so it can't be missed. */
+function SearchBar({ text }) {
   return (
-    <div style={{ marginBottom:16 }}>
-      <div style={{ display:"flex", alignItems:"center", gap:9, marginBottom:1 }}>
-        <span style={{ width:24, height:24, borderRadius:7, flexShrink:0, background:T.green, color:"#000", fontWeight:800, fontSize:13, display:"flex", alignItems:"center", justifyContent:"center" }}>{n}</span>
-        <span style={{ fontSize:15, fontWeight:800, color:T.ink }}>{title}</span>
+    <div style={{ margin:"2px 0 12px" }}>
+      <div style={{ fontSize:12, color:STEP_BLUE, fontWeight:700, marginBottom:6 }}>Tap “Search Actions” at the very bottom, then type:</div>
+      <div style={{ display:"flex", alignItems:"center", gap:10, background:T.input, border:`1.5px solid ${STEP_BLUE}`, borderRadius:99, padding:"11px 16px" }}>
+        <span style={{ fontSize:15, color:T.sub }}>🔍</span>
+        <span style={{ fontSize:14.5, color:T.ink, fontWeight:700 }}>{text}</span>
       </div>
-      <div style={{ fontSize:11.5, color:T.sub, marginLeft:33, marginBottom:4 }}>{find}</div>
+      <div style={{ fontSize:11.5, color:T.sub, marginTop:6 }}>…then tap it in the results to add it. It looks like this:</div>
+    </div>
+  );
+}
+
+/* numbered wrapper: big number + title, then the search bar + card + notes */
+function StepBlock({ n, title, children }) {
+  return (
+    <div style={{ marginBottom:20, paddingTop:14, borderTop:`1px solid ${T.line}` }}>
+      <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:10 }}>
+        <span style={{ width:26, height:26, borderRadius:8, flexShrink:0, background:T.green, color:"#000", fontWeight:800, fontSize:14, display:"flex", alignItems:"center", justifyContent:"center" }}>{n}</span>
+        <span style={{ fontSize:16.5, fontWeight:800, color:T.ink }}>{title}</span>
+      </div>
       {children}
     </div>
   );
@@ -3475,9 +3489,10 @@ function StepsCard({ user }) {
           </div>
         </div>
 
-        <StepBlock n="1" title="Find Health Samples" find="Search “Find Health Samples” and tap it to add it">
-          {/* custom mock: shows the whole "where" block with BOTH filters + the Add Filter button */}
-          <div style={{ background:T.cardAlt, border:`1px solid ${STEP_BLUE}`, borderRadius:12, padding:"12px", margin:"8px 0 10px" }}>
+        <StepBlock n="1" title="Find Health Samples">
+          <SearchBar text="Find Health Samples" />
+          {/* mock: the action with its two filter rows */}
+          <div style={{ background:T.cardAlt, border:`1px solid ${STEP_BLUE}`, borderRadius:12, padding:"12px", margin:"0 0 10px" }}>
             <div style={{ display:"flex", alignItems:"center", gap:10 }}>
               <span style={{ width:29, height:29, borderRadius:8, flexShrink:0, background:"#FF2D55", display:"flex", alignItems:"center", justifyContent:"center", fontSize:15 }}>❤️</span>
               <span style={{ fontSize:14.5, fontWeight:700, color:T.ink }}>Find All <Tap>Health Samples</Tap></span>
@@ -3493,58 +3508,106 @@ function StepsCard({ user }) {
             </div>
           </div>
           <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55, marginBottom:9 }}>
-            These two rows usually appear on their own — just <b style={{ color:T.ink }}>check they say exactly</b> <b>Type is Steps</b> and
-            <b> Start Date is Today</b> (tap a row to change it if it's different). Only if a row is missing, tap the blue <b>＋ Add Filter</b> to add it.
-            Together they make it read only <b style={{ color:T.ink }}>today's</b> steps.
+            Those two rows usually appear on their own — just <b style={{ color:T.ink }}>check they say exactly</b> <b>Type is Steps</b> and
+            <b> Start Date is Today</b> (tap a row to change it if it's different). Together they make it read only <b style={{ color:T.ink }}>today's</b> steps.
           </div>
           <div style={{ display:"flex", gap:9, alignItems:"flex-start", background:"rgba(0,200,5,.08)", borderRadius:10, padding:"10px 12px", fontSize:11.5, color:T.sub, lineHeight:1.55 }}>
             <span style={{ flexShrink:0 }}>🔒</span>
-            <span>Keep <b style={{ color:T.ink }}>Start Date is Today</b> so the count is just today. And don't worry about old data —
-              The Lab <b style={{ color:T.ink }}>only ever writes to today's date</b>. Even if a filter were set wider (like last 7 days),
+            <span>Don't worry about old data — The Lab <b style={{ color:T.ink }}>only ever writes to today's date</b>. Even if a filter were set wider,
               nobody can flood your history with weeks of past logs; it would just make today's number too high.</span>
           </div>
         </StepBlock>
 
-        <StepBlock n="2" title="Calculate Statistics" find="Search “Calculate Statistics” — add it BELOW block 1">
+        <StepBlock n="2" title="Calculate Statistics">
+          <SearchBar text="Calculate Statistics" />
           <MockCard glyph="📊" glyphBg={STEP_BLUE} title={<>Calculate the <Tap>Sum</Tap> of <Var>Health Samples</Var></>} />
-          <div style={{ fontSize:12, color:T.sub, lineHeight:1.5, marginBottom:9 }}>It starts as “<b>Average</b> of <b>Input</b>.” Tap <b>Average</b> → pick <b>Sum</b>. Tap <b>Input</b> → pick <b>Health Samples</b>. That adds all your steps into one number.</div>
+          <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55, marginBottom:9 }}>It starts as “<b>Average</b> of <b>Input</b>.” Tap <b>Average</b> → pick <b>Sum</b>. Tap <b>Input</b> → pick <b>Health Samples</b>. That adds all your steps into one number.</div>
           <div style={{ display:"flex", gap:9, alignItems:"flex-start", background:"rgba(76,155,255,.10)", border:`1px solid ${STEP_BLUE}`, borderRadius:10, padding:"10px 12px", fontSize:11.5, color:T.sub, lineHeight:1.55 }}>
             <span style={{ flexShrink:0 }}>⚠️</span>
-            <span>Don't see <b style={{ color:T.ink }}>Health Samples</b> in the list (only Clipboard, Current Date, etc.)? That means block 1 isn't
-              <b style={{ color:T.ink }}> above</b> this action. Order must be <b style={{ color:T.ink }}>Find Health Samples first, then Calculate Statistics.</b>
-              {" "}Add block 1, or press-and-hold this action and drag it below block 1 — then tap <b>Input</b> again and it'll be there.</span>
+            <span>Don't see <b style={{ color:T.ink }}>Health Samples</b> when you tap Input (only Clipboard, Current Date, etc.)? Then block 1 isn't
+              <b style={{ color:T.ink }}> above</b> this one. It has to go <b style={{ color:T.ink }}>Find Health Samples first, then Calculate Statistics.</b>
+              {" "}Press-and-hold this action and drag it under block 1, then tap <b>Input</b> again.</span>
           </div>
         </StepBlock>
 
-        <StepBlock n="3" title="Format Date" find="Search “Format Date”">
+        <StepBlock n="3" title="Format Date">
+          <SearchBar text="Format Date" />
           <MockCard glyph="📅" glyphBg="#FF9500" title={<>Format <Var>Current Date</Var></>}
-            rows={[["Date Format", <Tap key="a">Custom</Tap>], ["Format String", <code key="b" style={{ fontFamily:"ui-monospace, Menlo, monospace", color:T.ink }}>yyyy-MM-dd</code>]]} />
-          <div style={{ fontSize:12, color:T.sub, lineHeight:1.5, marginBottom:8 }}>Tap the date slot → pick <b>Current Date</b>. Tap <b>Short</b> → pick <b>Custom</b> → type this in the Format String box:</div>
-          <Copy label="Format String" value="yyyy-MM-dd" id="fmt" />
+            rows={[["Date Format", <Tap key="a">Custom</Tap>]]} />
+          <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55, marginBottom:8 }}>
+            Tap the date slot → pick <b>Current Date</b>. Tap <b>Short</b> next to Date Format → pick <b>Custom</b>.
+            A <b>Format String</b> box appears — tap <b>Copy</b> below and paste it in there:
+          </div>
+          <Copy label="Paste into the Format String box" value="yyyy-MM-dd" id="fmt" />
         </StepBlock>
 
-        <StepBlock n="4" title="Get Contents of URL" find="Search “Get Contents of URL” · this one sends it in">
-          <MockCard glyph="🌐" glyphBg={STEP_BLUE} title={<>Get Contents of <Tap>URL</Tap></>}
-            rows={[["Method", <Tap key="a">POST</Tap>], ["Request Body", <Tap key="b">JSON</Tap>]]} />
-          <div style={{ fontSize:12, color:T.sub, lineHeight:1.5, marginBottom:8 }}>Paste this into the <b>URL</b> slot, then tap <b>Show More</b> to reveal Method, Headers and Body:</div>
+        <StepBlock n="4" title="Get Contents of URL">
+          <SearchBar text="Get Contents of URL" />
+          {/* big labeled picture of the whole expanded action */}
+          <div style={{ background:T.cardAlt, border:`1px solid ${STEP_BLUE}`, borderRadius:12, padding:"12px", margin:"0 0 12px" }}>
+            <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+              <span style={{ width:29, height:29, borderRadius:8, flexShrink:0, background:STEP_BLUE, display:"flex", alignItems:"center", justifyContent:"center", fontSize:15 }}>🌐</span>
+              <span style={{ fontSize:14.5, fontWeight:700, color:T.ink }}>Get Contents of <Tap>URL</Tap></span>
+            </div>
+            <div style={{ fontSize:11, color:T.sub, marginTop:6, marginLeft:39 }}>↑ paste the URL here — then tap <b style={{ color:T.ink }}>Show More</b> for everything below</div>
+
+            {/* Method */}
+            <div style={{ marginTop:12, borderTop:`1px solid ${T.line}`, paddingTop:11 }}>
+              <div style={{ fontSize:10.5, fontWeight:700, color:T.sub, textTransform:"uppercase", letterSpacing:.5, marginBottom:6 }}>Method</div>
+              <div style={{ display:"inline-flex", background:T.input, borderRadius:8, padding:3, gap:3 }}>
+                <span style={{ padding:"5px 14px", borderRadius:6, fontSize:12.5, fontWeight:700, color:T.sub }}>GET</span>
+                <span style={{ padding:"5px 14px", borderRadius:6, fontSize:12.5, fontWeight:800, background:T.green, color:"#000" }}>POST</span>
+              </div>
+            </div>
+
+            {/* Headers */}
+            <div style={{ marginTop:13 }}>
+              <div style={{ fontSize:10.5, fontWeight:700, color:T.sub, textTransform:"uppercase", letterSpacing:.5, marginBottom:6 }}>Headers — add 2</div>
+              <div style={{ display:"flex", alignItems:"center", gap:8, background:T.input, borderRadius:8, padding:"8px 10px", marginBottom:6, fontSize:12.5 }}>
+                <code style={{ color:STEP_BLUE, fontWeight:700, fontFamily:"ui-monospace, Menlo, monospace" }}>apikey</code>
+                <span style={{ color:T.sub }}>→</span><span style={{ color:T.sub }}>your key</span>
+              </div>
+              <div style={{ display:"flex", alignItems:"center", gap:8, background:T.input, borderRadius:8, padding:"8px 10px", fontSize:12.5, flexWrap:"wrap" }}>
+                <code style={{ color:STEP_BLUE, fontWeight:700, fontFamily:"ui-monospace, Menlo, monospace" }}>Content-Type</code>
+                <span style={{ color:T.sub }}>→</span><span style={{ color:T.ink }}>application/json</span>
+              </div>
+            </div>
+
+            {/* Request Body */}
+            <div style={{ marginTop:13 }}>
+              <div style={{ fontSize:10.5, fontWeight:700, color:T.sub, textTransform:"uppercase", letterSpacing:.5, marginBottom:6 }}>Request Body</div>
+              <div style={{ display:"inline-flex", background:T.input, borderRadius:8, padding:3, gap:3, marginBottom:8 }}>
+                <span style={{ padding:"5px 12px", borderRadius:6, fontSize:12.5, fontWeight:700, color:T.sub }}>Form</span>
+                <span style={{ padding:"5px 12px", borderRadius:6, fontSize:12.5, fontWeight:800, background:T.green, color:"#000" }}>JSON</span>
+                <span style={{ padding:"5px 12px", borderRadius:6, fontSize:12.5, fontWeight:700, color:T.sub }}>File</span>
+              </div>
+              {[["p_token","Text"],["p_day","Text"],["p_count","Number"]].map(([k,t])=>(
+                <div key={k} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8, background:T.input, borderRadius:8, padding:"8px 10px", marginBottom:6, fontSize:12.5 }}>
+                  <code style={{ color:STEP_BLUE, fontWeight:700, fontFamily:"ui-monospace, Menlo, monospace" }}>{k}</code>
+                  <span style={{ color:T.sub, fontSize:11 }}>{t}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55, marginBottom:8 }}>Now fill it in. First paste this into the <b>URL</b> box at the top:</div>
           <Copy label="URL" value={url} id="url" />
 
-          <div style={{ fontSize:12, color:T.sub, lineHeight:1.5, margin:"12px 0 8px" }}>Set <b>Method → POST</b>. Under <b>Headers</b>, tap <b>Add new header</b> twice and add these two:</div>
-          <Copy label="Header 1 · Key: apikey · Value:" value={apikey} id="key" />
-          <Copy label="Header 2 · Key: Content-Type · Value:" value="application/json" id="ctype" />
+          <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55, margin:"14px 0 8px" }}>Under <b>Headers</b>, tap <b>Add new header</b> twice. Copy each value into the matching one:</div>
+          <Copy label="Key: apikey  →  Value:" value={apikey} id="key" />
+          <Copy label="Key: Content-Type  →  Value:" value="application/json" id="ctype" />
 
-          <div style={{ fontSize:12, color:T.sub, lineHeight:1.5, margin:"12px 0 8px" }}>
-            Set <b>Request Body → JSON</b>, then tap <b>Add new field</b> three times. Each field has two boxes:
-            a <b style={{ color:T.ink }}>Key</b> on the left (the name) and a <b style={{ color:T.ink }}>Value</b> on the right. Fill them exactly like this:
+          <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55, margin:"14px 0 8px" }}>
+            Under <b>Request Body</b> (set to JSON), tap <b>Add new field</b> three times. Left box = the <b style={{ color:T.ink }}>name</b>, right box = the <b style={{ color:T.ink }}>value</b>:
           </div>
           <JField type="Text" name="p_token" value={<>Paste your <b>secret code</b> from below 👇</>} />
           <JField type="Text" name="p_day" value={<>Tap the box → pick the <b>Formatted Date</b> variable (block 3)</>} />
           <JField type="Number" name="p_count" value={<>Tap the box → pick the <b>Statistics</b> variable (block 2)</>} />
           <div style={{ fontSize:11.5, color:T.sub, lineHeight:1.5, marginBottom:10 }}>
-            For <b>p_day</b> and <b>p_count</b> you don't type the value — you tap the box and <b>pick the blue variable</b> from the list. Only <b>p_token</b> is pasted:
+            For <b>p_day</b> and <b>p_count</b> you don't type the value — tap the box and <b>pick the blue variable</b>. Only <b>p_token</b> gets pasted:
           </div>
           <Copy label="p_token — your private code, don't share it" value={token} id="tok" secret />
-          <div style={{ fontSize:12, color:T.sub, lineHeight:1.5 }}>Tap the name at the top to call it <b>“Sync Steps to The Lab,”</b> then tap <b>Done</b>.</div>
+          <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55 }}>Last thing: tap the name at the top to call it <b>“Sync Steps to The Lab,”</b> then tap <b>Done</b>.</div>
         </StepBlock>
 
         {/* make it automatic */}
