@@ -2741,14 +2741,6 @@ function StepsTab({ user, data, setData }) {
       </div>
     )}
 
-    {board.length > 0 && (
-      <div className="card">
-        <div className="h" style={{fontSize:16, color:T.tealDk, marginBottom:2}}>Yesterday's steps</div>
-        <div style={{fontSize:12, color:T.sub, marginBottom:6}}>Everyone who's synced yesterday · tap to open their graph.</div>
-        {board.map((r,i)=><Row key={r.id} r={r} i={i} value={r.steps} />)}
-      </div>
-    )}
-
     {/* groupmate graph popup */}
     {view && (
       <div onClick={()=>setView(null)} style={{position:"fixed", inset:0, zIndex:55, background:"rgba(0,0,0,.6)", backdropFilter:"blur(2px)", display:"flex", alignItems:"flex-end", justifyContent:"center", animation:"fadeSwap .18s ease-out both"}}>
@@ -4431,8 +4423,21 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
   const [customEmoji, setCustomEmoji] = useState("");
   const [feedN, setFeedN] = useState(null); // null = auto (3, or the whole latest day if bigger)
   const [recap, setRecap] = useState(null); // end-of-month recap popup: { pmKey, monthLabel, rows } | null
+  const [profileTab, setProfileTab] = useState("lifting"); // sub-tab inside a member profile
+  const [profileSteps, setProfileSteps] = useState(undefined); // open profile's step map (separate steps table)
   const myName = user.user_metadata?.username || "you";
   const isOwner = active?.created_by === user.id;
+
+  // load the open profile's steps (they live in the `steps` table, not user_state)
+  useEffect(() => {
+    if (!profile) { setProfileSteps(undefined); setProfileTab("lifting"); return; }
+    let alive = true;
+    (async () => {
+      try { const s = await stepsFor([profile.user_id], dAdd(todayStr(), -5*365 - 40)); if (alive) setProfileSteps(s[profile.user_id] || {}); }
+      catch { if (alive) setProfileSteps({}); }
+    })();
+    return () => { alive = false; };
+  }, [profile?.user_id]);
 
   const saveEmoji = async (e) => {
     if (!e || !active) return;
@@ -4708,30 +4713,56 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
       </div>
       {!pdata ? (
         <div className="card" style={{color:T.sub}}>They haven't logged anything yet.</div>
-      ) : (<>
-        <Dashboard data={pdata} exMap={pexMap} setData={()=>{}} own={false} />
-        {nutritionOn && (pdata.foods || []).length > 0 && (
-          <MacroCalendar data={pdata} title={`🥗 ${profile.username}'s nutrition`} />
-        )}
-        <RecordsTab data={pdata} exMap={pexMap} />
-        <MemberLog pdata={pdata} who={profile.username} />
-        <GoalCard data={pdata} setData={()=>{}} current={bw.length ? bw[bw.length-1] : null} rows={bw}
-          readOnly who={`${profile.username} hasn't`} />
-        <div className="card" style={{display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, textAlign:"center"}}>
-          <div><div style={kpiN}>{bw.length ? dispW(bw[bw.length-1].weight, units) : "—"}</div><div style={kpiL}>Body wt ({uLabel(units)})</div></div>
-          <div><div style={kpiN}>{bw.length ? (b=>{const c=dispW(bw[bw.length-1].weight-bw[0].weight, units); return (c>0?"+":"")+c;})() : "—"}</div><div style={kpiL}>Change ({uLabel(units)})</div></div>
-          <div><div style={kpiN}>{pdata.cardio.length}</div><div style={kpiL}>Cardio sessions</div></div>
-        </div>
-        {recentCardio.length > 0 && (
-          <div className="card">
-            <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:8}}>Recent cardio</div>
-            <table><thead><tr><th>Date</th><th>Activity</th><th>Min</th><th>Cal</th></tr></thead>
-              <tbody>{recentCardio.map(e=>(
-                <tr key={e.id}><td>{fmtDate(e.date)}</td><td>{e.activity}</td><td>{e.duration}</td><td>{e.calories ?? "—"}</td></tr>
-              ))}</tbody></table>
+      ) : (() => {
+        // Sub-tabs: Lifting + Steps always; Macros only when nutrition is unlocked (built,
+        // hidden for everyone else — the layout already accounts for it).
+        const ptabs = [["lifting","Lifting","🏋️"], ["steps","Steps","👟"], ...(nutritionOn ? [["macros","Macros","🥗"]] : [])];
+        const tab = ptabs.some(t=>t[0]===profileTab) ? profileTab : "lifting";
+        return (<>
+          <div className="card" style={{padding:6, marginBottom:14}}>
+            <div style={{display:"flex", gap:4}}>
+              {ptabs.map(([id,label,icon])=>(
+                <button key={id} onClick={()=>setProfileTab(id)} style={{flex:1, padding:"9px 0", borderRadius:8, fontWeight:800, fontSize:13,
+                  background: tab===id?T.green:"none", color: tab===id?"#000":T.sub}}>{icon} {label}</button>
+              ))}
+            </div>
           </div>
-        )}
-      </>)}
+
+          {tab==="lifting" && (<>
+            <Dashboard data={pdata} exMap={pexMap} setData={()=>{}} own={false} />
+            <RecordsTab data={pdata} exMap={pexMap} />
+            <MemberLog pdata={pdata} who={profile.username} />
+            <GoalCard data={pdata} setData={()=>{}} current={bw.length ? bw[bw.length-1] : null} rows={bw}
+              readOnly who={`${profile.username} hasn't`} />
+            <div className="card" style={{display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, textAlign:"center"}}>
+              <div><div style={kpiN}>{bw.length ? dispW(bw[bw.length-1].weight, units) : "—"}</div><div style={kpiL}>Body wt ({uLabel(units)})</div></div>
+              <div><div style={kpiN}>{bw.length ? (b=>{const c=dispW(bw[bw.length-1].weight-bw[0].weight, units); return (c>0?"+":"")+c;})() : "—"}</div><div style={kpiL}>Change ({uLabel(units)})</div></div>
+              <div><div style={kpiN}>{pdata.cardio.length}</div><div style={kpiL}>Cardio sessions</div></div>
+            </div>
+            {recentCardio.length > 0 && (
+              <div className="card">
+                <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:8}}>Recent cardio</div>
+                <table><thead><tr><th>Date</th><th>Activity</th><th style={{textAlign:"center"}}>Min</th><th style={{textAlign:"center"}}>Cal</th></tr></thead>
+                  <tbody>{recentCardio.map(e=>(
+                    <tr key={e.id}><td>{fmtDate(e.date)}</td><td>{e.activity}</td><td style={{textAlign:"center"}}>{e.duration}</td><td style={{textAlign:"center"}}>{e.calories ?? "—"}</td></tr>
+                  ))}</tbody></table>
+              </div>
+            )}
+          </>)}
+
+          {tab==="steps" && (
+            profileSteps === undefined ? <div className="card"><div className="skeleton" style={{height:220, borderRadius:12}} /></div>
+            : Object.keys(profileSteps).length ? <StepRingChart map={profileSteps} goal={10000} />
+            : <div className="card" style={{textAlign:"center", color:T.sub, padding:"26px 16px"}}><div style={{fontSize:34, marginBottom:8}}>👟</div>{profile.username} hasn't synced any steps yet.</div>
+          )}
+
+          {tab==="macros" && nutritionOn && (
+            (pdata.foods || []).length > 0
+              ? <MacroCalendar data={pdata} title={`🥗 ${profile.username}'s nutrition`} />
+              : <div className="card" style={{color:T.sub}}>No nutrition logged yet.</div>
+          )}
+        </>);
+      })()}
     </>);
   }
 
@@ -4832,23 +4863,26 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
         </div>
 
         <div className="card">
-          <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:8}}>🏁 This week</div>
-          <table><thead><tr><th>Member</th><th>Workouts</th><th>Streak (wks)</th><th></th></tr></thead>
-            <tbody>{consistency.map((r,i)=>(
-              <tr key={r.uid}>
-                <td style={{fontWeight: r.uid===user.id?700:400}}>{i===0 && r.workouts>0 ? "👑 " : ""}{r.user}{r.uid===user.id?" (you)":""}</td>
-                <td style={{minWidth:96}}>
-                  <div style={{display:"flex", alignItems:"center", gap:7}}>
-                    <div style={{flex:1, height:7, background:T.input, borderRadius:99, overflow:"hidden"}}>
-                      <div style={{width:`${Math.min(r.workouts,7)/7*100}%`, height:"100%", background:T.green, borderRadius:99, transition:"width .5s ease"}} />
-                    </div>
-                    <b style={{color: r.workouts>0?T.green:T.sub, fontSize:13}}>{r.workouts}</b>
-                  </div>
-                </td>
-                <td style={{textAlign:"center"}}>{r.streak}</td>
-                <td><button onClick={()=>setProfile(members.find(m=>m.user_id===r.uid))} style={{background:"none", color:T.green, fontSize:12.5, textDecoration:"underline"}}>View profile</button></td>
-              </tr>
-            ))}</tbody></table>
+          <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:2}}>🏁 This week</div>
+          <div style={{fontSize:12, color:T.sub, marginBottom:6}}>Workouts Mon–Sun{streaksOn ? " · 🔥 = week streak" : ""} · tap to view a profile.</div>
+          {consistency.map((r,i)=>{
+            const isMe = r.uid===user.id;
+            return (
+              <button key={r.uid} onClick={()=>setProfile(members.find(m=>m.user_id===r.uid))}
+                style={{width:"100%", textAlign:"left", background:"none", display:"flex", alignItems:"center", gap:10, padding:"10px 2px", borderTop: i===0?"none":`1px solid ${T.creamLine}`}}>
+                <span style={{width:22, textAlign:"center", fontWeight:800, fontSize:14, color: i===0&&r.workouts>0?T.green:T.sub}}>{i===0&&r.workouts>0?"👑":i+1}</span>
+                <span style={{flex:1, minWidth:0, fontWeight:isMe?800:600, color:isMe?T.green:T.ink, fontSize:14, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{r.user}{isMe?" (you)":""}</span>
+                <span style={{width:78, display:"flex", alignItems:"center", gap:6, flexShrink:0}}>
+                  <span style={{flex:1, height:6, background:T.input, borderRadius:99, overflow:"hidden"}}>
+                    <span style={{display:"block", width:`${Math.min(r.workouts,7)/7*100}%`, height:"100%", background:T.green, borderRadius:99}} />
+                  </span>
+                  <b style={{color: r.workouts>0?T.green:T.sub, fontSize:13, width:12, textAlign:"right"}}>{r.workouts}</b>
+                </span>
+                {streaksOn && <span style={{width:40, textAlign:"center", fontSize:13, fontWeight:700, color: r.streak>0?T.ink:T.sub, flexShrink:0}}>{r.streak>0?`🔥${r.streak}`:"—"}</span>}
+                <span style={{color:T.sub, fontSize:15, flexShrink:0}}>›</span>
+              </button>
+            );
+          })}
         </div>
 
         {stepBoard.length > 0 && (
