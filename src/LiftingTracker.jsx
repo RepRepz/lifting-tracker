@@ -3337,10 +3337,55 @@ function DayStartCard({ data, setData }) {
   );
 }
 
+/* Small visual bits that make the walkthrough look like the Shortcuts app. */
+const STEP_BLUE = "#4C9BFF", STEP_BLUEBG = "rgba(76,155,255,.16)";
+/* a word you tap in Shortcuts */
+function Tap({ children }) {
+  return <span style={{ display:"inline-block", color:STEP_BLUE, background:STEP_BLUEBG, borderRadius:6, padding:"1px 7px", fontWeight:700, whiteSpace:"nowrap" }}>{children}</span>;
+}
+/* a Shortcuts "magic variable" pill */
+function Var({ children }) {
+  return <span style={{ display:"inline-flex", alignItems:"center", gap:4, color:"#fff", background:STEP_BLUE, borderRadius:6, padding:"1px 7px 1px 6px", fontWeight:700, fontSize:12.5, whiteSpace:"nowrap" }}><span style={{ fontSize:9, opacity:.85 }}>◈</span>{children}</span>;
+}
+/* a mock of one action block as it appears on the phone */
+function MockCard({ glyph, glyphBg, title, rows }) {
+  return (
+    <div style={{ background:T.cardAlt, border:`1px solid ${T.line}`, borderRadius:12, padding:"11px 12px", margin:"8px 0 10px" }}>
+      <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+        <span style={{ width:27, height:27, borderRadius:7, flexShrink:0, background:glyphBg, display:"flex", alignItems:"center", justifyContent:"center", fontSize:14 }}>{glyph}</span>
+        <span style={{ fontSize:13.5, fontWeight:600, color:T.ink, lineHeight:1.4 }}>{title}</span>
+      </div>
+      {rows && rows.length > 0 && (
+        <div style={{ marginTop:9, borderTop:`1px solid ${T.line}`, paddingTop:9, display:"flex", flexDirection:"column", gap:8 }}>
+          {rows.map((r, i) => (
+            <div key={i} style={{ display:"flex", justifyContent:"space-between", gap:10, alignItems:"center", fontSize:13 }}>
+              <span style={{ color:T.sub }}>{r[0]}</span>
+              <span style={{ display:"flex", gap:5, flexWrap:"wrap", justifyContent:"flex-end", alignItems:"center" }}>{r[1]}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+/* numbered wrapper: "① Find Health Samples · search this" + its card + notes */
+function StepBlock({ n, title, find, children }) {
+  return (
+    <div style={{ marginBottom:16 }}>
+      <div style={{ display:"flex", alignItems:"center", gap:9, marginBottom:1 }}>
+        <span style={{ width:24, height:24, borderRadius:7, flexShrink:0, background:T.green, color:"#000", fontWeight:800, fontSize:13, display:"flex", alignItems:"center", justifyContent:"center" }}>{n}</span>
+        <span style={{ fontSize:15, fontWeight:800, color:T.ink }}>{title}</span>
+      </div>
+      <div style={{ fontSize:11.5, color:T.sub, marginLeft:33, marginBottom:4 }}>{find}</div>
+      {children}
+    </div>
+  );
+}
+
 /* Apple Health steps: a website can't read Health directly (Apple only allows native
    apps), so an iPhone Shortcut reads today's steps and POSTs them to log_steps() using
-   this user's secret code. The card generates that code, shows the exact setup values,
-   and displays today's synced count so you can tell it's working. */
+   this user's secret code. The card generates that code, shows every setup value as a
+   copy button, walks the whole Shortcut with mock action cards, and shows today's count. */
 function StepsCard({ user }) {
   const [token, setToken] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -3367,16 +3412,31 @@ function StepsCard({ user }) {
     setCopied(label); setTimeout(() => setCopied(c => c === label ? "" : c), 1400);
   };
 
-  const CopyRow = ({ label, value, id }) => (
-    <div style={{ marginBottom:10 }}>
-      <div style={{ fontSize:11.5, fontWeight:700, color:T.sub, marginBottom:4, textTransform:"uppercase", letterSpacing:.4 }}>{label}</div>
-      <div style={{ display:"flex", gap:6, alignItems:"stretch" }}>
-        <code style={{ flex:1, minWidth:0, background:T.input, borderRadius:8, padding:"8px 10px", fontSize:12,
-          color:T.ink, overflowWrap:"anywhere", fontFamily:"ui-monospace, Menlo, monospace" }}>{value}</code>
-        <button onClick={()=>copy(value, id)} style={{ flexShrink:0, background: copied===id ? T.green : T.input,
-          color: copied===id ? "#000" : T.ink, border:`1px solid ${T.line}`, borderRadius:8, padding:"0 12px", fontSize:12.5, fontWeight:700 }}>
-          {copied===id ? "Copied" : "Copy"}
-        </button>
+  // one copyable value (the whole box is tappable to copy)
+  const Copy = ({ label, value, id, secret }) => (
+    <div style={{ marginBottom:9 }}>
+      <div style={{ fontSize:10.5, fontWeight:700, color: secret ? T.green : T.sub, marginBottom:4, textTransform:"uppercase", letterSpacing:.5 }}>{label}</div>
+      <button onClick={()=>copy(value, id)} style={{ display:"flex", gap:8, alignItems:"center", width:"100%", textAlign:"left",
+        background:T.input, border:`1px solid ${copied===id ? T.green : (secret ? T.green : T.line)}`, borderRadius:9, padding:"9px 11px" }}>
+        <code style={{ flex:1, minWidth:0, fontSize:12, color:T.ink, overflowWrap:"anywhere", fontFamily:"ui-monospace, Menlo, monospace" }}>{value}</code>
+        <span style={{ flexShrink:0, fontSize:12, fontWeight:700, color: copied===id ? T.green : STEP_BLUE }}>{copied===id ? "Copied ✓" : "Copy"}</span>
+      </button>
+    </div>
+  );
+
+  // one JSON body field shown as a Key (left) / Value (right) pair
+  const JField = ({ type, name, value }) => (
+    <div style={{ background:T.input, border:`1px solid ${T.line}`, borderRadius:10, overflow:"hidden", marginBottom:8 }}>
+      <div style={{ fontSize:10, fontWeight:700, color:T.sub, textTransform:"uppercase", letterSpacing:.6, padding:"6px 11px", borderBottom:`1px solid ${T.line}`, background:T.cardAlt }}>Field type: {type}</div>
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr" }}>
+        <div style={{ padding:"8px 11px" }}>
+          <div style={{ fontSize:9.5, fontWeight:700, color:T.sub, textTransform:"uppercase", letterSpacing:.5, marginBottom:3 }}>Key (left)</div>
+          <code style={{ fontSize:13, fontWeight:700, color:STEP_BLUE, fontFamily:"ui-monospace, Menlo, monospace" }}>{name}</code>
+        </div>
+        <div style={{ padding:"8px 11px", borderLeft:`1px solid ${T.line}` }}>
+          <div style={{ fontSize:9.5, fontWeight:700, color:T.sub, textTransform:"uppercase", letterSpacing:.5, marginBottom:3 }}>Value (right)</div>
+          <div style={{ fontSize:12, color:T.ink, lineHeight:1.4 }}>{value}</div>
+        </div>
       </div>
     </div>
   );
@@ -3405,27 +3465,81 @@ function StepsCard({ user }) {
           {busy ? "Setting up…" : "Connect Apple Health"}
         </button>
       ) : (<>
-        <div style={{ fontSize:12.5, color:T.ink, fontWeight:700, marginBottom:8 }}>
-          Build a Shortcut on your iPhone with these 4 actions, using the values below:
+        {/* the one trick: all actions come from the same search box */}
+        <div style={{ display:"flex", gap:11, alignItems:"flex-start", background:T.cardAlt, border:`1px solid ${T.line}`, borderRadius:12, padding:"12px 13px", margin:"4px 0 16px" }}>
+          <span style={{ fontSize:20, flexShrink:0, lineHeight:1.1 }}>💡</span>
+          <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55 }}>
+            The trick: <b style={{ color:T.ink }}>every action comes from the same place.</b> Open the
+            <b style={{ color:T.ink }}> Shortcuts</b> app → <b style={{ color:T.ink }}>+</b> to make a new one →
+            tap the search bar, type a name, tap the result. Do it four times; they stack like LEGO. Blue words = things you tap.
+          </div>
         </div>
-        <ol style={{ fontSize:12.5, color:T.sub, lineHeight:1.6, paddingLeft:18, margin:"0 0 12px" }}>
-          <li><b>Find Health Samples</b> — Type: <i>Steps</i>, add filter <i>Start Date · is · Today</i>.</li>
-          <li><b>Calculate Statistics</b> — Operation: <i>Sum</i>, over those samples.</li>
-          <li><b>Format Date</b> — Date: <i>Current Date</i>, custom format <code>yyyy-MM-dd</code>.</li>
-          <li><b>Get Contents of URL</b> — set it up with the boxes below (Method: POST, JSON body).</li>
-        </ol>
-        <CopyRow label="URL" value={url} id="url" />
-        <CopyRow label={'Header · apikey'} value={apikey} id="key" />
-        <div style={{ fontSize:11.5, color:T.sub, marginBottom:10, lineHeight:1.5 }}>
-          Also add header <b>Content-Type</b> = <code>application/json</code>. Then set the Request Body to
-          <b> JSON</b> with three fields: <code>p_token</code> (Text, below), <code>p_day</code> (the
-          Formatted Date from step 3), and <code>p_count</code> (Number, the Statistics result).
+
+        <StepBlock n="1" title="Find Health Samples" find="Search “Find Health Samples”">
+          <MockCard glyph="❤️" glyphBg="#FF2D55" title={<>Find All <Tap>Health Samples</Tap></>}
+            rows={[["Type", <Tap key="a">Steps</Tap>], ["Filter", <><Tap key="b">Start Date</Tap><Tap key="c">is</Tap><Tap key="d">Today</Tap></>]]} />
+          <div style={{ fontSize:12, color:T.sub, lineHeight:1.5 }}>Tap <b>Add Filter</b> to get the Start Date · is · Today row — this grabs only <b>today's</b> steps.</div>
+        </StepBlock>
+
+        <StepBlock n="2" title="Calculate Statistics" find="Search “Calculate Statistics”">
+          <MockCard glyph="📊" glyphBg={STEP_BLUE} title={<>Calculate the <Tap>Sum</Tap> of <Var>Health Samples</Var></>} />
+          <div style={{ fontSize:12, color:T.sub, lineHeight:1.5 }}>It starts as “<b>Average</b> of <b>Input</b>.” Tap <b>Average</b> → pick <b>Sum</b>. Tap <b>Input</b> → pick <b>Health Samples</b>. That adds all your steps into one number.</div>
+        </StepBlock>
+
+        <StepBlock n="3" title="Format Date" find="Search “Format Date”">
+          <MockCard glyph="📅" glyphBg="#FF9500" title={<>Format <Var>Current Date</Var></>}
+            rows={[["Date Format", <Tap key="a">Custom</Tap>], ["Format String", <code key="b" style={{ fontFamily:"ui-monospace, Menlo, monospace", color:T.ink }}>yyyy-MM-dd</code>]]} />
+          <div style={{ fontSize:12, color:T.sub, lineHeight:1.5, marginBottom:8 }}>Tap the date slot → pick <b>Current Date</b>. Tap <b>Short</b> → pick <b>Custom</b> → type this in the Format String box:</div>
+          <Copy label="Format String" value="yyyy-MM-dd" id="fmt" />
+        </StepBlock>
+
+        <StepBlock n="4" title="Get Contents of URL" find="Search “Get Contents of URL” · this one sends it in">
+          <MockCard glyph="🌐" glyphBg={STEP_BLUE} title={<>Get Contents of <Tap>URL</Tap></>}
+            rows={[["Method", <Tap key="a">POST</Tap>], ["Request Body", <Tap key="b">JSON</Tap>]]} />
+          <div style={{ fontSize:12, color:T.sub, lineHeight:1.5, marginBottom:8 }}>Paste this into the <b>URL</b> slot, then tap <b>Show More</b> to reveal Method, Headers and Body:</div>
+          <Copy label="URL" value={url} id="url" />
+
+          <div style={{ fontSize:12, color:T.sub, lineHeight:1.5, margin:"12px 0 8px" }}>Set <b>Method → POST</b>. Under <b>Headers</b>, tap <b>Add new header</b> twice and add these two:</div>
+          <Copy label="Header 1 · Key: apikey · Value:" value={apikey} id="key" />
+          <Copy label="Header 2 · Key: Content-Type · Value:" value="application/json" id="ctype" />
+
+          <div style={{ fontSize:12, color:T.sub, lineHeight:1.5, margin:"12px 0 8px" }}>
+            Set <b>Request Body → JSON</b>, then tap <b>Add new field</b> three times. Each field has two boxes:
+            a <b style={{ color:T.ink }}>Key</b> on the left (the name) and a <b style={{ color:T.ink }}>Value</b> on the right. Fill them exactly like this:
+          </div>
+          <JField type="Text" name="p_token" value={<>Paste your <b>secret code</b> from below 👇</>} />
+          <JField type="Text" name="p_day" value={<>Tap the box → pick the <b>Formatted Date</b> variable (block 3)</>} />
+          <JField type="Number" name="p_count" value={<>Tap the box → pick the <b>Statistics</b> variable (block 2)</>} />
+          <div style={{ fontSize:11.5, color:T.sub, lineHeight:1.5, marginBottom:10 }}>
+            For <b>p_day</b> and <b>p_count</b> you don't type the value — you tap the box and <b>pick the blue variable</b> from the list. Only <b>p_token</b> is pasted:
+          </div>
+          <Copy label="p_token — your private code, don't share it" value={token} id="tok" secret />
+          <div style={{ fontSize:12, color:T.sub, lineHeight:1.5 }}>Tap the name at the top to call it <b>“Sync Steps to The Lab,”</b> then tap <b>Done</b>.</div>
+        </StepBlock>
+
+        {/* make it automatic */}
+        <div style={{ background:"rgba(0,200,5,.08)", borderRadius:12, padding:"14px 15px", margin:"6px 0 14px" }}>
+          <div style={{ fontSize:14.5, fontWeight:800, color:T.ink, marginBottom:8 }}>Make it run by itself 🔁</div>
+          <ol style={{ fontSize:12.5, color:T.ink, lineHeight:1.6, paddingLeft:18, margin:0 }}>
+            <li>In Shortcuts, tap the <b>Automation</b> tab.</li>
+            <li>Tap <b>+</b> → <b>Create Personal Automation</b>.</li>
+            <li>Choose <b>App</b> → pick <b>The Lab</b> → check <b>Is Opened</b>.</li>
+            <li>Tap <b>Next</b> → choose your <b>Sync Steps to The Lab</b> shortcut.</li>
+            <li>Turn <b>off</b> “Ask Before Running,” then <b>Done</b>.</li>
+          </ol>
+          <div style={{ fontSize:11.5, color:T.sub, lineHeight:1.5, marginTop:9 }}>
+            <b>Can't find The Lab in the app list?</b> Instead pick <b>Time of Day</b> and make two or three (noon, 6 PM, 10 PM).
+          </div>
         </div>
-        <CopyRow label="p_token (your secret — don't share it)" value={token} id="tok" />
-        <div style={{ fontSize:11.5, color:T.sub, lineHeight:1.5 }}>
-          Last step: in Shortcuts → <b>Automation</b> → new <b>Personal Automation</b> → <b>App</b> →
-          pick <b>The Lab</b> → <i>Is Opened</i> → Run this shortcut (turn off “Ask Before Running”). If
-          The Lab isn't in the app list, use a few <b>Time of Day</b> automations instead.
+
+        {/* test it */}
+        <div style={{ display:"flex", gap:11, alignItems:"flex-start", background:T.cardAlt, border:`1px solid ${T.line}`, borderRadius:12, padding:"12px 13px" }}>
+          <span style={{ width:30, height:30, borderRadius:99, background:T.green, color:"#000", flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, paddingLeft:2 }}>▶</span>
+          <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55 }}>
+            To test it now, open the shortcut and tap the <b style={{ color:T.ink }}>play button</b> once. iPhone will ask to read
+            Health and send data — tap <b style={{ color:T.ink }}>Allow</b>. Then come back here and you'll see
+            <b style={{ color:T.green }}> “X steps synced today ✓.”</b>
+          </div>
         </div>
       </>)}
     </div>
