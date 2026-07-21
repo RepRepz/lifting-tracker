@@ -3412,14 +3412,24 @@ function StepsCard({ user }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
   const [copied, setCopied] = useState("");
-  const [today, setToday] = useState(undefined); // undefined = loading, null = none
+  const [latest, setLatest] = useState(undefined); // undefined = loading, null = none, else { day, count }
   const url = (import.meta.env.VITE_SUPABASE_URL || "") + "/rest/v1/rpc/log_steps";
   const apikey = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
 
-  // show today's synced steps (if the Shortcut has already run)
+  const addDays = (ds, n) => { const d = new Date(ds + "T00:00"); d.setDate(d.getDate() + n);
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
+  const yStr = addDays(todayStr(), -1);
+  const dayLabel = (day) => day === todayStr() ? "today" : day === yStr ? "yesterday" : fmtDate(day);
+
+  // show the most recent day that has synced steps (the Shortcut logs the finished previous day)
   useEffect(() => { (async () => {
-    try { const s = await stepsFor([user.id], todayStr()); setToday(s[user.id]?.[todayStr()] ?? null); }
-    catch { setToday(null); }
+    try {
+      const s = await stepsFor([user.id], addDays(todayStr(), -4));
+      const mine = s[user.id] || {};
+      const days = Object.keys(mine).sort();
+      const last = days[days.length - 1];
+      setLatest(last ? { day: last, count: mine[last] } : null);
+    } catch { setLatest(null); }
   })(); }, [user.id]);
 
   const connect = async () => {
@@ -3495,11 +3505,11 @@ function StepsCard({ user }) {
         iPhone to send your daily steps in — refreshing each time you open The Lab. A one-time, ~2-minute setup.
       </div>
 
-      {today !== undefined && today !== null && (
+      {latest !== undefined && latest !== null && (
         <div style={{ display:"flex", alignItems:"baseline", gap:8, background:"rgba(0,200,5,.10)", border:`1px solid ${T.green}`,
           borderRadius:10, padding:"9px 12px", marginBottom:10 }}>
-          <span style={{ fontSize:22, fontWeight:800, color:T.green, fontVariantNumeric:"tabular-nums" }}>{today.toLocaleString()}</span>
-          <span style={{ fontSize:12.5, color:T.sub }}>steps synced today ✓</span>
+          <span style={{ fontSize:22, fontWeight:800, color:T.green, fontVariantNumeric:"tabular-nums" }}>{latest.count.toLocaleString()}</span>
+          <span style={{ fontSize:12.5, color:T.sub }}>steps · {dayLabel(latest.day)} ✓</span>
         </div>
       )}
 
@@ -3511,69 +3521,86 @@ function StepsCard({ user }) {
           {busy ? "Setting up…" : "Connect Apple Health"}
         </button>
       ) : (<>
-        {/* the one trick: all actions come from the same search box */}
-        <div style={{ display:"flex", gap:11, alignItems:"flex-start", background:T.cardAlt, border:`1px solid ${T.line}`, borderRadius:12, padding:"12px 13px", margin:"4px 0 16px" }}>
+        {/* how it works + why yesterday */}
+        <div style={{ display:"flex", gap:11, alignItems:"flex-start", background:T.cardAlt, border:`1px solid ${T.line}`, borderRadius:12, padding:"12px 13px", margin:"4px 0 12px" }}>
           <span style={{ fontSize:20, flexShrink:0, lineHeight:1.1 }}>💡</span>
           <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55 }}>
-            The trick: <b style={{ color:T.ink }}>every action comes from the same place.</b> Open the
-            <b style={{ color:T.ink }}> Shortcuts</b> app → <b style={{ color:T.ink }}>+</b> to make a new one →
-            tap the search bar, type a name, tap the result. Do it four times; they stack like LEGO. Blue words = things you tap.
+            Open the <b style={{ color:T.ink }}>Shortcuts</b> app → <b style={{ color:T.ink }}>+</b> → then add these <b style={{ color:T.ink }}>5 actions</b>,
+            each from the search bar at the bottom. They stack like LEGO. Blue words = things you tap.
           </div>
         </div>
+        <div style={{ display:"flex", gap:9, alignItems:"flex-start", background:"rgba(0,200,5,.08)", border:`1px solid ${T.green}`, borderRadius:10, padding:"10px 12px", fontSize:11.5, color:T.sub, lineHeight:1.55, marginBottom:16 }}>
+          <span style={{ flexShrink:0 }}>🎯</span>
+          <span>This logs <b style={{ color:T.ink }}>yesterday's</b> steps, not today's. A finished day can't change, so your number
+            always <b style={{ color:T.ink }}>matches the Health app exactly</b> — and it runs once each morning, no midnight timing to worry about.</span>
+        </div>
 
-        <StepBlock n="1" title="Find Health Samples">
+        <StepBlock n="1" title="Adjust Date  (get yesterday)">
+          <SearchBar text="Adjust Date" />
+          <MockCard glyph="📅" glyphBg="#FF9500" title={<>Adjust <Var>Current Date</Var></>}
+            rows={[["Operation", <Tap key="a">Subtract</Tap>], ["Amount", <span key="b" style={{ display:"flex", gap:5 }}><Tap>1</Tap><Tap>Day</Tap></span>]]} />
+          <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55, marginBottom:9 }}>
+            Set <b>Date</b> = <b>Current Date</b>. It starts on “Add” — tap <b>Add</b> and switch it to <b>Subtract</b>. Set the amount to <b>1</b> and the unit to <b>Days</b>.
+            This makes <b style={{ color:T.ink }}>yesterday</b> (its result is called <b>Adjusted Date</b>).
+          </div>
+          <div style={{ display:"flex", gap:9, alignItems:"flex-start", background:"rgba(76,155,255,.10)", border:`1px solid ${STEP_BLUE}`, borderRadius:10, padding:"10px 12px", fontSize:11.5, color:T.sub, lineHeight:1.55 }}>
+            <span style={{ flexShrink:0 }}>ℹ️</span>
+            <span>Why yesterday? Today isn't over, so its step count keeps changing. Yesterday is finished and final — that's what makes it line up perfectly with Health.</span>
+          </div>
+        </StepBlock>
+
+        <StepBlock n="2" title="Find Health Samples">
           <SearchBar text="Find Health Samples" />
-          {/* mock: the action with its two filter rows */}
+          {/* mock: the action with its two filter rows (Start Date is on yesterday) */}
           <div style={{ background:T.cardAlt, border:`1px solid ${STEP_BLUE}`, borderRadius:12, padding:"12px", margin:"0 0 10px" }}>
             <div style={{ display:"flex", alignItems:"center", gap:10 }}>
               <span style={{ width:29, height:29, borderRadius:8, flexShrink:0, background:"#FF2D55", display:"flex", alignItems:"center", justifyContent:"center", fontSize:15 }}>❤️</span>
               <span style={{ fontSize:14.5, fontWeight:700, color:T.ink }}>Find All <Tap>Health Samples</Tap></span>
             </div>
             <div style={{ marginTop:11, borderTop:`1px solid ${T.line}`, paddingTop:11 }}>
-              <div style={{ fontSize:11, fontWeight:700, color:T.sub, textTransform:"uppercase", letterSpacing:.5, marginBottom:9 }}>where — these two rows should say:</div>
+              <div style={{ fontSize:11, fontWeight:700, color:T.sub, textTransform:"uppercase", letterSpacing:.5, marginBottom:9 }}>where — set these two filter rows:</div>
               <div style={{ display:"flex", gap:7, alignItems:"center", background:T.input, borderRadius:9, padding:"9px 11px", marginBottom:8 }}>
                 <Tap>Type</Tap><span style={{ color:T.sub, fontSize:13 }}>is</span><Tap>Steps</Tap>
               </div>
-              <div style={{ display:"flex", gap:7, alignItems:"center", background:T.input, borderRadius:9, padding:"9px 11px" }}>
-                <Tap>Start Date</Tap><span style={{ color:T.sub, fontSize:13 }}>is</span><Tap>Today</Tap>
+              <div style={{ display:"flex", gap:7, alignItems:"center", flexWrap:"wrap", background:T.input, borderRadius:9, padding:"9px 11px" }}>
+                <Tap>Start Date</Tap><span style={{ color:T.sub, fontSize:13 }}>is on</span><Var>Adjusted Date</Var>
               </div>
             </div>
           </div>
           <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55, marginBottom:9 }}>
-            Those two rows usually appear on their own — just <b style={{ color:T.ink }}>check they say exactly</b> <b>Type is Steps</b> and
-            <b> Start Date is Today</b> (tap a row to change it if it's different). Together they make it read only <b style={{ color:T.ink }}>today's</b> steps.
+            First row: <b>Type is Steps</b>. Second row: change it to <b>Start Date · is on</b>, then tap the date value and
+            <b> pick the <span style={{ color:STEP_BLUE }}>Adjusted Date</span> variable</b> from step 1. That grabs <b style={{ color:T.ink }}>all of yesterday's</b> steps.
           </div>
           <div style={{ display:"flex", gap:9, alignItems:"flex-start", background:"rgba(0,200,5,.08)", borderRadius:10, padding:"10px 12px", fontSize:11.5, color:T.sub, lineHeight:1.55 }}>
             <span style={{ flexShrink:0 }}>🔒</span>
-            <span>Don't worry about old data — The Lab <b style={{ color:T.ink }}>only ever writes to today's date</b>. Even if a filter were set wider,
-              nobody can flood your history with weeks of past logs; it would just make today's number too high.</span>
+            <span>The Lab <b style={{ color:T.ink }}>only writes to the one date you send</b>, so nobody can flood your history with old logs.</span>
           </div>
         </StepBlock>
 
-        <StepBlock n="2" title="Calculate Statistics">
+        <StepBlock n="3" title="Calculate Statistics">
           <SearchBar text="Calculate Statistics" />
           <MockCard glyph="📊" glyphBg={STEP_BLUE} title={<>Calculate the <Tap>Sum</Tap> of <Var>Health Samples</Var></>} />
-          <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55, marginBottom:9 }}>It starts as “<b>Average</b> of <b>Input</b>.” Tap <b>Average</b> → pick <b>Sum</b>. Tap <b>Input</b> → pick <b>Health Samples</b>. That adds all your steps into one number.</div>
+          <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55, marginBottom:9 }}>It starts as “<b>Average</b> of <b>Input</b>.” Tap <b>Average</b> → pick <b>Sum</b>. Tap <b>Input</b> → pick <b>Health Samples</b>. That adds all of yesterday's steps into one number.</div>
           <div style={{ display:"flex", gap:9, alignItems:"flex-start", background:"rgba(76,155,255,.10)", border:`1px solid ${STEP_BLUE}`, borderRadius:10, padding:"10px 12px", fontSize:11.5, color:T.sub, lineHeight:1.55 }}>
             <span style={{ flexShrink:0 }}>⚠️</span>
-            <span>Don't see <b style={{ color:T.ink }}>Health Samples</b> when you tap Input (only Clipboard, Current Date, etc.)? Then block 1 isn't
+            <span>Don't see <b style={{ color:T.ink }}>Health Samples</b> when you tap Input (only Clipboard, Current Date, etc.)? Then block 2 isn't
               <b style={{ color:T.ink }}> above</b> this one. It has to go <b style={{ color:T.ink }}>Find Health Samples first, then Calculate Statistics.</b>
-              {" "}Press-and-hold this action and drag it under block 1, then tap <b>Input</b> again.</span>
+              {" "}Press-and-hold this action and drag it under block 2, then tap <b>Input</b> again.</span>
           </div>
         </StepBlock>
 
-        <StepBlock n="3" title="Format Date">
+        <StepBlock n="4" title="Format Date">
           <SearchBar text="Format Date" />
-          <MockCard glyph="📅" glyphBg="#FF9500" title={<>Format <Var>Current Date</Var></>}
+          <MockCard glyph="📅" glyphBg="#FF9500" title={<>Format <Var>Adjusted Date</Var></>}
             rows={[["Date Format", <Tap key="a">Custom</Tap>]]} />
           <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55, marginBottom:8 }}>
-            Tap the date slot → pick <b>Current Date</b>. Tap <b>Short</b> next to Date Format → pick <b>Custom</b>.
-            A <b>Format String</b> box appears — tap <b>Copy</b> below and paste it in there:
+            Tap the date slot → pick <b style={{ color:STEP_BLUE }}>Adjusted Date</b> (the yesterday from step 1 — <b>not</b> Current Date).
+            Tap <b>Short</b> next to Date Format → pick <b>Custom</b>. A <b>Format String</b> box appears — tap <b>Copy</b> below and paste it in there:
           </div>
           <Copy label="Paste into the Format String box" value="yyyy-MM-dd" id="fmt" />
         </StepBlock>
 
-        <StepBlock n="4" title="Get Contents of URL">
+        <StepBlock n="5" title="Get Contents of URL">
           <SearchBar text="Get Contents of URL" />
           <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55, marginBottom:10 }}>
             Everything here is <b style={{ color:T.ink }}>tap-to-copy right in place</b> — no scrolling around. A blue box = copy it. A grey note = tap that box on your phone and pick a variable.
@@ -3625,8 +3652,8 @@ function StepsCard({ user }) {
                 <span style={{ padding:"5px 12px", borderRadius:6, fontSize:12.5, fontWeight:700, color:T.sub }}>File</span>
               </div>
               <JField type="Text" name="p_token" nameId="k-tok" valueCopy={token} valueId="tok" secret valueNote="🔒 Don’t share this with anyone" />
-              <JField type="Text" name="p_day" nameId="k-day" valuePick={<>Tap this Value box. A row of blue variables pops up <b>just above the keyboard</b> — tap <b>Formatted Date</b> there (it's the result from block 3).</>} />
-              <JField type="Number" name="p_count" nameId="k-cnt" valuePick={<>Tap this Value box. In the variable bar <b>above the keyboard</b>, <b>swipe to the right</b> (past Formatted Date) to find <b>Sum</b> and tap it — that's the result of your “Calculate the Sum of Health Samples” action (block 2).</>} />
+              <JField type="Text" name="p_day" nameId="k-day" valuePick={<>Tap this Value box. A row of blue variables pops up <b>just above the keyboard</b> — tap <b>Formatted Date</b> there (the result from step 4).</>} />
+              <JField type="Number" name="p_count" nameId="k-cnt" valuePick={<>Tap this Value box. In the variable bar <b>above the keyboard</b>, find <b>Sum</b> and tap it — that's the result of your “Calculate the Sum of Health Samples” action (step 3).</>} />
               <div style={{ fontSize:10.5, color:T.sub, marginTop:2, lineHeight:1.5 }}>
                 Only <b style={{ color:T.ink }}>p_token</b>’s value is copied. For <b>p_day</b> and <b>p_count</b> the value is a blue variable you <b>pick</b>, not type.
               </div>
@@ -3634,7 +3661,7 @@ function StepsCard({ user }) {
           </div>
         </StepBlock>
 
-        <StepBlock n="5" title="Name it & save">
+        <StepBlock n="6" title="Name it & save">
           <div style={{ background:"rgba(0,200,5,.08)", border:`1px solid ${T.green}`, borderRadius:12, padding:"13px 14px" }}>
             <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55, marginBottom:9 }}>
               At the top of the shortcut, tap its <b style={{ color:T.ink }}>name</b> (or the <b>⌄</b> next to it → <b>Rename</b>), erase what's there,
@@ -3651,7 +3678,7 @@ function StepsCard({ user }) {
           <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55 }}>
             <b style={{ color:T.ink }}>Test it first:</b> open the shortcut and tap its <b style={{ color:T.ink }}>play button</b> once. iPhone will ask to read
             Health and send data — tap <b style={{ color:T.ink }}>Allow</b>. Then come back here and you'll see
-            <b style={{ color:T.green }}> “X steps synced today ✓.”</b>
+            <b style={{ color:T.green }}> yesterday's step total</b> appear at the top ✓.
           </div>
         </div>
 
@@ -3667,19 +3694,21 @@ function StepsCard({ user }) {
 
         {/* make it automatic — Time of Day (the "open the app" trigger can't see a web app) */}
         <div style={{ background:"rgba(0,200,5,.08)", borderRadius:12, padding:"14px 15px", margin:"0 0 14px" }}>
-          <div style={{ fontSize:14.5, fontWeight:800, color:T.ink, marginBottom:6 }}>Make it update on its own 🔁</div>
+          <div style={{ fontSize:14.5, fontWeight:800, color:T.ink, marginBottom:6 }}>Make it run each morning 🔁</div>
           <div style={{ fontSize:11.5, color:T.sub, lineHeight:1.55, marginBottom:9 }}>
-            Right now your steps only update when you tap <b>🔄 Sync now</b>. To make them update <b style={{ color:T.ink }}>automatically</b>,
-            add a few daily times below. (The Lab is a home-screen web app, so iOS can't use an “on open” trigger — a schedule is the way.)
+            Because it logs <b style={{ color:T.ink }}>yesterday's</b> finished day, one run a day is all you need — no juggling multiple times.
+            (The Lab is a home-screen web app, so iOS can't use an “on open” trigger — a scheduled time is the way.)
           </div>
           <ol style={{ fontSize:12.5, color:T.ink, lineHeight:1.6, paddingLeft:18, margin:0 }}>
             <li>In Shortcuts, tap the <b>Automation</b> tab (bottom).</li>
             <li>Tap <b>+</b> (top-right). Newer iPhones go straight in — no “Personal / Home” screen.</li>
             <li>In the trigger list, tap <b>Time of Day</b>.</li>
-            <li>Pick a time (e.g. <b>12:00 PM</b>), set <b>Repeat: Daily</b> → <b>Next</b>.</li>
+            <li>Set a <b>morning</b> time (e.g. <b>8:00 AM</b>), <b>Repeat: Daily</b> → <b>Next</b>.</li>
             <li>Choose <b>Run Immediately</b>, then pick your <b>The Lab: Steps</b> shortcut → <b>Done</b>.</li>
-            <li>Repeat to add <b>2–3 times</b> (e.g. noon, 6 PM, 10 PM) so it stays current for your groupmates.</li>
           </ol>
+          <div style={{ fontSize:11.5, color:T.sub, lineHeight:1.55, marginTop:9 }}>
+            That's it — one run each morning logs the previous day, exact to Health. Tap <b>🔄 Sync now</b> anytime to pull it on demand.
+          </div>
         </div>
       </>)}
     </div>
