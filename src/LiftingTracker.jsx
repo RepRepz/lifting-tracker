@@ -661,7 +661,7 @@ export default function LiftingTracker({ user }) {
           {tab==="macros" && nutritionOn && <MacroTab data={data} setData={setData} streaksOn={streaksOn} waterOn={waterOn} />}
           {tab==="body" && liftingOn && <BodyTab data={data} setData={setData} hunit={hunit} />}
           {tab==="cardio" && liftingOn && <CardioTab data={data} setData={setData} latestBW={latestBW} user={user} stepsOn={stepsOn} />}
-          {tab==="steps" && liftingOn && stepsOn && <StepsTab user={user} />}
+          {tab==="steps" && liftingOn && stepsOn && <StepsTab user={user} data={data} setData={setData} />}
           {tab==="ex" && liftingOn && <ExercisesTab data={data} setData={setData} />}
         </div>
       </main>
@@ -2496,33 +2496,66 @@ function BodyTab({ data, setData, hunit }) {
 }
 
 /* ================= CARDIO ================= */
-/* Shared loader for step data: returns { mine (day->count map), board (yesterday
-   leaderboard across groupmates), celebrate (group name if everyone logged), dismiss }.
-   Reads the `steps` table (RLS gives you yourself + groupmates). */
+/* ---- step helpers (module-level so the tab and member popups share them) ---- */
+const dAdd = (ds,n)=>{ const d=new Date(ds+"T00:00"); d.setDate(d.getDate()+n);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
+const stepAvg = (a)=> a.length ? Math.round(a.reduce((x,y)=>x+y,0)/a.length) : 0;
+
+/* Build W/M/6M/Y/5Y bars from a day->count map. Pure — reused by the tab and popups. */
+function computeStepChart(m, range) {
+  const today = todayStr(); const yStr = dAdd(today,-1); let bars=[]; let every=1; const isAvg = !(range==="W"||range==="M");
+  if (range==="W" || range==="M") {
+    const n = range==="W"?7:30; every = range==="W"?1:5;
+    for (let i=n-1;i>=0;i--){ const d=dAdd(today,-i); const dt=new Date(d+"T00:00");
+      bars.push({ label: range==="W" ? dt.toLocaleDateString("en-US",{weekday:"narrow"}) : String(dt.getDate()),
+        full: d===yStr ? "Yesterday" : d===today ? "Today" : dt.toLocaleDateString("en-US",{weekday:"short", month:"short", day:"numeric"}),
+        value: m[d]||0, has: m[d]!=null, mark: d===yStr }); }
+  } else if (range==="6M") {
+    every = 4; const ws = weekStart(today);
+    for (let i=25;i>=0;i--){ const start=dAdd(ws,-7*i); const days=[]; for(let k=0;k<7;k++){ const d=dAdd(start,k); if(m[d]!=null) days.push(m[d]); }
+      bars.push({ label: new Date(start+"T00:00").toLocaleDateString("en-US",{month:"short"}),
+        full: "Week of " + new Date(start+"T00:00").toLocaleDateString("en-US",{month:"short", day:"numeric"}),
+        value: stepAvg(days), has: days.length>0 }); }
+  } else if (range==="Y") {
+    every = 1; const [yy,mm] = today.split("-").map(Number);
+    for (let i=11;i>=0;i--){ const dt=new Date(yy, mm-1-i, 1); const key=`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}`;
+      const days=Object.keys(m).filter(d=>d.startsWith(key)).map(d=>m[d]);
+      bars.push({ label: dt.toLocaleDateString("en-US",{month:"narrow"}), full: dt.toLocaleDateString("en-US",{month:"long", year:"numeric"}), value: stepAvg(days), has: days.length>0 }); }
+  } else { // 5Y
+    every=1; const yy=Number(today.slice(0,4));
+    for (let i=4;i>=0;i--){ const year=yy-i; const days=Object.keys(m).filter(d=>d.startsWith(String(year))).map(d=>m[d]);
+      bars.push({ label:String(year), full:String(year), value: stepAvg(days), has: days.length>0 }); }
+  }
+  const wd = bars.filter(b=>b.has);
+  return { bars, avg: stepAvg(wd.map(b=>b.value)), max: Math.max(1, ...bars.map(b=>b.value)), every, isAvg };
+}
+
+/* Shared loader: returns everyone's step maps (yourself + groupmates) plus a yesterday
+   leaderboard and the all-logged-today flag. Reads the `steps` table (RLS-scoped). */
 function useSteps(user, sinceDays) {
-  const addDays = (ds,n)=>{ const d=new Date(ds+"T00:00"); d.setDate(d.getDate()+n);
-    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
-  const yStr = addDays(todayStr(), -1);
+  const yStr = dAdd(todayStr(), -1);
   const [mine, setMine] = useState(undefined);
+  const [all, setAll] = useState({});
+  const [nameOf, setNameOf] = useState({});
   const [board, setBoard] = useState([]);
   const [celebrate, setCelebrate] = useState(null);
   useEffect(()=>{ let alive=true; (async()=>{
     try {
-      const since = addDays(todayStr(), -sinceDays);
+      const since = dAdd(todayStr(), -sinceDays);
       let groups=[]; try { groups = await listMyGroups(); } catch {}
-      const nameOf = {}; const gm = [];
+      const nm = {}; const gm = [];
       for (const g of groups) { try {
         const mems = await listMembers(g.id);
         gm.push({ name:g.name, ids: mems.map(m=>m.user_id) });
-        mems.forEach(m => { nameOf[m.user_id] = m.username; });
+        mems.forEach(m => { nm[m.user_id] = m.username; });
       } catch {} }
       const myName = user.user_metadata?.username || "you";
-      nameOf[user.id] = nameOf[user.id] || myName;
-      const ids = Array.from(new Set([user.id, ...Object.keys(nameOf)]));
+      nm[user.id] = nm[user.id] || myName;
+      const ids = Array.from(new Set([user.id, ...Object.keys(nm)]));
       const s = await stepsFor(ids, since);
       if (!alive) return;
-      setMine(s[user.id] || {});
-      const bd = ids.map(id => ({ id, name: id===user.id ? myName : (nameOf[id]||"?"), me: id===user.id, steps: s[id]?.[yStr] ?? null }))
+      setMine(s[user.id] || {}); setAll(s); setNameOf(nm);
+      const bd = ids.map(id => ({ id, name: id===user.id ? myName : (nm[id]||"?"), me: id===user.id, steps: s[id]?.[yStr] ?? null }))
         .filter(r => r.steps != null).sort((a,b)=> b.steps - a.steps);
       setBoard(bd);
       for (const g of gm) {
@@ -2534,100 +2567,30 @@ function useSteps(user, sinceDays) {
     } catch { if (alive) setMine({}); }
   })(); return ()=>{ alive=false; }; }, [user.id, sinceDays]);
   const dismiss = () => { localStorage.setItem(`lt-allin-${yStr}`, "1"); setCelebrate(null); };
-  return { mine, board, celebrate, dismiss, yStr, addDays };
+  return { mine, all, nameOf, board, celebrate, dismiss, yStr, myId: user.id };
 }
 
-/* Full Steps tab (Apple Health, auto-synced): goal ring, an Apple-Health-style ranged
-   bar chart (W/M/6M/Y/5Y with a daily-average readout), and a group leaderboard, plus a
-   once-a-day celebration when a whole group has logged. Read-only. */
-function StepsTab({ user }) {
-  const GOAL = 10000;
+/* Reusable goal ring + Apple-Health-style ranged chart for a single person's step map.
+   Powers both your own tab and the tap-to-view popup for any groupmate. */
+function StepRingChart({ map, goal }) {
   const [range, setRange] = useState("M");
-  const [sel, setSel] = useState(null); // hovered/tapped bar index
-  const { mine, board, celebrate, dismiss, yStr, addDays } = useSteps(user, 5*365 + 40);
-  const avgOf = (arr)=> arr.length ? Math.round(arr.reduce((a,b)=>a+b,0)/arr.length) : 0;
-
-  const yCount = (mine && mine[yStr]) || 0;
-  const pct = Math.min(1, yCount/GOAL);
-  const R=52, C=2*Math.PI*R;
-  const hero = useMemo(()=>{
-    const m = mine || {};
-    const seven = []; for (let i=1;i<=7;i++){ const v=m[addDays(todayStr(),-i)]; if (v!=null) seven.push(v); }
-    const all = Object.values(m);
-    return { avg: avgOf(seven), best: all.length ? Math.max(...all) : 0 };
-  }, [mine]);
-
-  const chart = useMemo(()=>{
-    const m = mine || {}; const today = todayStr(); let bars=[]; let every=1; const isAvg = !(range==="W"||range==="M");
-    if (range==="W" || range==="M") {
-      const n = range==="W"?7:30; every = range==="W"?1:5;
-      for (let i=n-1;i>=0;i--){ const d=addDays(today,-i); const dt=new Date(d+"T00:00");
-        bars.push({ label: range==="W" ? dt.toLocaleDateString("en-US",{weekday:"narrow"}) : String(dt.getDate()),
-          full: d===yStr ? "Yesterday" : d===today ? "Today" : dt.toLocaleDateString("en-US",{weekday:"short", month:"short", day:"numeric"}),
-          value: m[d]||0, has: m[d]!=null, mark: d===yStr }); }
-    } else if (range==="6M") {
-      every = 4; const ws = weekStart(today);
-      for (let i=25;i>=0;i--){ const start=addDays(ws,-7*i); const days=[]; for(let k=0;k<7;k++){ const d=addDays(start,k); if(m[d]!=null) days.push(m[d]); }
-        bars.push({ label: new Date(start+"T00:00").toLocaleDateString("en-US",{month:"short"}),
-          full: "Week of " + new Date(start+"T00:00").toLocaleDateString("en-US",{month:"short", day:"numeric"}),
-          value: avgOf(days), has: days.length>0 }); }
-    } else if (range==="Y") {
-      every = 1; const [yy,mm] = today.split("-").map(Number);
-      for (let i=11;i>=0;i--){ const dt=new Date(yy, mm-1-i, 1); const key=`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}`;
-        const days=Object.keys(m).filter(d=>d.startsWith(key)).map(d=>m[d]);
-        bars.push({ label: dt.toLocaleDateString("en-US",{month:"narrow"}), full: dt.toLocaleDateString("en-US",{month:"long", year:"numeric"}), value: avgOf(days), has: days.length>0 }); }
-    } else { // 5Y
-      every=1; const yy=Number(today.slice(0,4));
-      for (let i=4;i>=0;i--){ const year=yy-i; const days=Object.keys(m).filter(d=>d.startsWith(String(year))).map(d=>m[d]);
-        bars.push({ label:String(year), full:String(year), value: avgOf(days), has: days.length>0 }); }
-    }
-    const wd = bars.filter(b=>b.has);
-    return { bars, avg: avgOf(wd.map(b=>b.value)), max: Math.max(1, ...bars.map(b=>b.value)), every, isAvg };
-  }, [mine, range]);
-
-  // scrubber: map the pointer's X to the bar directly under it (single tap, drag to scan)
+  const [sel, setSel] = useState(null);
   const plotRef = useRef(null);
-  const scrub = (clientX) => {
-    const el = plotRef.current; if (!el) return;
-    const rect = el.getBoundingClientRect();
-    const n = chart.bars.length; if (!n) return;
-    const idx = Math.floor((clientX - rect.left) / rect.width * n);
-    setSel(Math.max(0, Math.min(n-1, idx)));
-  };
-
+  const m = map || {};
+  const yStr = dAdd(todayStr(), -1);
+  const yCount = m[yStr] || 0;
+  const pct = Math.min(1, yCount/goal);
+  const R=52, C=2*Math.PI*R;
+  const hero = useMemo(()=>{ const seven=[]; for(let i=1;i<=7;i++){ const v=m[dAdd(todayStr(),-i)]; if(v!=null) seven.push(v); }
+    const vals=Object.values(m); return { avg:stepAvg(seven), best:vals.length?Math.max(...vals):0 }; }, [map]);
+  const chart = useMemo(()=>computeStepChart(m, range), [map, range]);
+  const scrub = (x)=>{ const el=plotRef.current; if(!el) return; const r=el.getBoundingClientRect();
+    const n=chart.bars.length; if(!n) return; const idx=Math.floor((x-r.left)/r.width*n); setSel(Math.max(0,Math.min(n-1,idx))); };
   const rangeSub = { W:"Past week", M:"Past 30 days", "6M":"Past 6 months", Y:"Past year", "5Y":"Past 5 years" };
-  const dayLabel = (d) => d===yStr ? "yesterday" : d===todayStr() ? "today" : new Date(d+"T00:00").toLocaleDateString("en-US",{weekday:"short"});
-
-  if (mine === undefined) return <div className="card"><div className="skeleton" style={{height:220, borderRadius:12}} /></div>;
-
-  if (!Object.keys(mine).length) {
-    return (
-      <div className="card" style={{textAlign:"center"}}>
-        <div style={{fontSize:40, marginBottom:8}}>👟</div>
-        <div className="h" style={{fontSize:19, color:T.tealDk, marginBottom:6}}>No steps yet</div>
-        <div style={{fontSize:13, color:T.sub, lineHeight:1.55, maxWidth:340, margin:"0 auto"}}>
-          Your steps sync automatically once you finish the one-time setup in <b style={{color:T.ink}}>Settings → 🚶 Apple Health steps</b>.
-          After the first sync your ring, charts, and group board fill in here.
-        </div>
-      </div>
-    );
-  }
+  const goalK = goal % 1000 === 0 ? `${goal/1000}k` : goal.toLocaleString();
 
   return (<>
-    {celebrate && (
-      <div onClick={dismiss} style={{position:"fixed", inset:0, zIndex:60, background:"rgba(0,0,0,.6)", backdropFilter:"blur(2px)", display:"flex", alignItems:"center", justifyContent:"center", padding:24, animation:"fadeSwap .2s ease-out both"}}>
-        <div onClick={e=>e.stopPropagation()} style={{background:T.card, border:`1px solid ${T.green}`, borderRadius:18, padding:"26px 22px", maxWidth:340, textAlign:"center", animation:"calPop .28s cubic-bezier(.34,1.56,.64,1) both"}}>
-          <div style={{fontSize:44, marginBottom:8}}>🎉</div>
-          <div className="h" style={{fontSize:20, color:T.green, marginBottom:6}}>Whole squad logged!</div>
-          <div style={{fontSize:13.5, color:T.sub, lineHeight:1.55, marginBottom:16}}>Everyone in <b style={{color:T.ink}}>{celebrate}</b> got their steps in for {dayLabel(yStr)}. Momentum. 🔥</div>
-          <button onClick={dismiss} style={{background:T.green, color:"#000", fontWeight:800, fontSize:15, padding:"11px 20px", borderRadius:10, width:"100%"}}>Let's go</button>
-        </div>
-      </div>
-    )}
-
-    {/* hero ring */}
     <div className="card">
-      <div className="h" style={{fontSize:19, color:T.tealDk, marginBottom:14}}>👟 Steps</div>
       <div style={{display:"flex", alignItems:"center", gap:20}}>
         <div style={{position:"relative", width:120, height:120, flexShrink:0}}>
           <svg width="120" height="120">
@@ -2637,12 +2600,12 @@ function StepsTab({ user }) {
           </svg>
           <div style={{position:"absolute", inset:0, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center"}}>
             <div style={{fontSize:22, fontWeight:800, color:T.ink, fontVariantNumeric:"tabular-nums", lineHeight:1}}>{yCount.toLocaleString()}</div>
-            <div style={{fontSize:10.5, color:T.sub, marginTop:3}}>{Math.round(pct*100)}% of {GOAL/1000}k</div>
+            <div style={{fontSize:10.5, color:T.sub, marginTop:3}}>{Math.round(pct*100)}% of {goalK}</div>
           </div>
         </div>
         <div style={{flex:1, minWidth:0}}>
           <div style={{fontSize:12.5, color:T.sub}}>Yesterday</div>
-          <div style={{fontSize:15, fontWeight:700, color:T.ink, marginBottom:12}}>{yCount>=GOAL ? "Goal smashed 💪" : yCount>0 ? "Keep it moving" : "No steps yet"}</div>
+          <div style={{fontSize:15, fontWeight:700, color:T.ink, marginBottom:12}}>{yCount>=goal ? "Goal smashed 💪" : yCount>0 ? "Keep it moving" : "No steps yet"}</div>
           <div style={{display:"flex", gap:18}}>
             <div><div style={{fontSize:17, fontWeight:800, color:T.ink}}>{hero.avg.toLocaleString()}</div><div style={{fontSize:10.5, color:T.sub}}>7-day avg</div></div>
             <div><div style={{fontSize:17, fontWeight:800, color:T.ink}}>{hero.best.toLocaleString()}</div><div style={{fontSize:10.5, color:T.sub}}>best day</div></div>
@@ -2651,7 +2614,6 @@ function StepsTab({ user }) {
       </div>
     </div>
 
-    {/* ranged chart (Apple-Health style) with a hover/tap readout */}
     <div className="card">
       <div style={{display:"flex", background:T.input, borderRadius:10, padding:3, gap:2, marginBottom:14}}>
         {["W","M","6M","Y","5Y"].map(r=>(
@@ -2660,7 +2622,6 @@ function StepsTab({ user }) {
         ))}
       </div>
 
-      {/* headline: the selected bar's exact figure, or the period average */}
       {sel!=null && chart.bars[sel] ? (<>
         <div style={{fontSize:11, fontWeight:800, color:T.green, textTransform:"uppercase", letterSpacing:.6}}>{chart.bars[sel].full}</div>
         <div style={{display:"flex", alignItems:"baseline", gap:6}}>
@@ -2692,19 +2653,112 @@ function StepsTab({ user }) {
         ))}
       </div>
     </div>
+  </>);
+}
 
-    {/* group leaderboard */}
+/* Full Steps tab: editable daily goal, your ring+chart, a weekly race and a yesterday
+   board (tap anyone to open their graph), and a once-a-day whole-group celebration. */
+function StepsTab({ user, data, setData }) {
+  const goal = (data.profile?.stepGoal) || 10000;
+  const { mine, all, nameOf, board, celebrate, dismiss, yStr, myId } = useSteps(user, 5*365 + 40);
+  const [editGoal, setEditGoal] = useState(false);
+  const [goalInput, setGoalInput] = useState(String(goal));
+  const [view, setView] = useState(null); // { id, name } groupmate graph popup
+  const dayLabel = (d) => d===yStr ? "yesterday" : d===todayStr() ? "today" : new Date(d+"T00:00").toLocaleDateString("en-US",{weekday:"short"});
+
+  const race = useMemo(()=>{
+    const ws = weekStart(todayStr());
+    return Object.keys(all).map(id => {
+      const mm = all[id]||{}; let sum=0;
+      for (const d in mm) if (weekStart(d)===ws) sum += mm[d];
+      return { id, name: nameOf[id] || (id===myId?"you":"?"), me:id===myId, sum };
+    }).filter(r=>r.sum>0).sort((a,b)=>b.sum-a.sum);
+  }, [all, nameOf, myId]);
+
+  const saveGoal = () => {
+    const g = Math.max(1000, Math.min(100000, parseInt(goalInput)||10000));
+    setData(d=>({ ...d, profile:{ ...(d.profile||{}), stepGoal:g } }));
+    setEditGoal(false);
+  };
+
+  const Row = ({ r, i, value }) => (
+    <button onClick={()=>setView({ id:r.id, name:r.name })} style={{width:"100%", textAlign:"left", background:"none", display:"flex", alignItems:"center", gap:10, padding:"9px 2px", borderTop: i===0?"none":`1px solid ${T.creamLine}`}}>
+      <span style={{width:24, textAlign:"center", fontWeight:800, color: i===0?T.green:T.sub, fontSize:14}}>{i===0?"👑":i+1}</span>
+      <span style={{flex:1, fontWeight: r.me?800:600, color: r.me?T.green:T.ink, fontSize:14, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{r.name}{r.me?" (you)":""}</span>
+      <span style={{fontSize:14, fontWeight:800, color:T.ink, fontVariantNumeric:"tabular-nums"}}>{value.toLocaleString()}</span>
+      <span style={{color:T.sub, fontSize:15}}>›</span>
+    </button>
+  );
+
+  if (mine === undefined) return <div className="card"><div className="skeleton" style={{height:220, borderRadius:12}} /></div>;
+
+  if (!Object.keys(mine).length) {
+    return (
+      <div className="card" style={{textAlign:"center"}}>
+        <div style={{fontSize:40, marginBottom:8}}>👟</div>
+        <div className="h" style={{fontSize:19, color:T.tealDk, marginBottom:6}}>No steps yet</div>
+        <div style={{fontSize:13, color:T.sub, lineHeight:1.55, maxWidth:340, margin:"0 auto"}}>
+          Your steps sync automatically once you finish the one-time setup in <b style={{color:T.ink}}>Settings → 🚶 Apple Health steps</b>.
+          After the first sync your ring, charts, and group board fill in here.
+        </div>
+      </div>
+    );
+  }
+
+  return (<>
+    {celebrate && (
+      <div onClick={dismiss} style={{position:"fixed", inset:0, zIndex:60, background:"rgba(0,0,0,.6)", backdropFilter:"blur(2px)", display:"flex", alignItems:"center", justifyContent:"center", padding:24, animation:"fadeSwap .2s ease-out both"}}>
+        <div onClick={e=>e.stopPropagation()} style={{background:T.card, border:`1px solid ${T.green}`, borderRadius:18, padding:"26px 22px", maxWidth:340, textAlign:"center", animation:"calPop .28s cubic-bezier(.34,1.56,.64,1) both"}}>
+          <div style={{fontSize:44, marginBottom:8}}>🎉</div>
+          <div className="h" style={{fontSize:20, color:T.green, marginBottom:6}}>Whole squad logged!</div>
+          <div style={{fontSize:13.5, color:T.sub, lineHeight:1.55, marginBottom:16}}>Everyone in <b style={{color:T.ink}}>{celebrate}</b> got their steps in for {dayLabel(yStr)}. Momentum. 🔥</div>
+          <button onClick={dismiss} style={{background:T.green, color:"#000", fontWeight:800, fontSize:15, padding:"11px 20px", borderRadius:10, width:"100%"}}>Let's go</button>
+        </div>
+      </div>
+    )}
+
+    {/* header + editable goal */}
+    <div className="card" style={{display:"flex", alignItems:"center", justifyContent:"space-between", gap:10, flexWrap:"wrap"}}>
+      <div className="h" style={{fontSize:19, color:T.tealDk}}>👟 Steps</div>
+      {!editGoal ? (
+        <button onClick={()=>{ setGoalInput(String(goal)); setEditGoal(true); }} style={{background:T.input, color:T.ink, border:`1px solid ${T.line}`, borderRadius:99, padding:"7px 13px", fontSize:12.5, fontWeight:700}}>🎯 Goal {goal.toLocaleString()} · Edit</button>
+      ) : (
+        <div style={{display:"flex", gap:6, alignItems:"center"}}>
+          <input type="number" inputMode="numeric" value={goalInput} onChange={e=>setGoalInput(e.target.value)} style={{width:96}} />
+          <button onClick={saveGoal} style={{background:T.green, color:"#000", fontWeight:700, padding:"8px 13px", fontSize:13}}>Save</button>
+          <button onClick={()=>setEditGoal(false)} style={{background:T.input, color:T.sub, padding:"8px 11px", fontSize:13}}>✕</button>
+        </div>
+      )}
+    </div>
+
+    <StepRingChart map={mine} goal={goal} />
+
+    {race.length > 1 && (
+      <div className="card">
+        <div className="h" style={{fontSize:16, color:T.tealDk, marginBottom:2}}>🏁 This week's race</div>
+        <div style={{fontSize:12, color:T.sub, marginBottom:6}}>Most steps Mon–Sun · tap anyone to see their graph.</div>
+        {race.map((r,i)=><Row key={r.id} r={r} i={i} value={r.sum} />)}
+      </div>
+    )}
+
     {board.length > 0 && (
       <div className="card">
-        <div className="h" style={{fontSize:16, color:T.tealDk, marginBottom:2}}>Group steps — yesterday</div>
-        <div style={{fontSize:12, color:T.sub, marginBottom:8}}>Everyone in your groups who's synced yesterday.</div>
-        {board.map((r,i)=>(
-          <div key={r.id} style={{display:"flex", alignItems:"center", gap:10, padding:"9px 0", borderTop: i===0?"none":`1px solid ${T.creamLine}`}}>
-            <span style={{width:24, textAlign:"center", fontWeight:800, color: i===0?T.green:T.sub, fontSize:14}}>{i===0?"👑":i+1}</span>
-            <span style={{flex:1, fontWeight: r.me?800:600, color: r.me?T.green:T.ink, fontSize:14, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{r.name}{r.me?" (you)":""}</span>
-            <span style={{fontSize:14, fontWeight:800, color:T.ink, fontVariantNumeric:"tabular-nums"}}>{r.steps.toLocaleString()}</span>
+        <div className="h" style={{fontSize:16, color:T.tealDk, marginBottom:2}}>Yesterday's steps</div>
+        <div style={{fontSize:12, color:T.sub, marginBottom:6}}>Everyone who's synced yesterday · tap to open their graph.</div>
+        {board.map((r,i)=><Row key={r.id} r={r} i={i} value={r.steps} />)}
+      </div>
+    )}
+
+    {/* groupmate graph popup */}
+    {view && (
+      <div onClick={()=>setView(null)} style={{position:"fixed", inset:0, zIndex:55, background:"rgba(0,0,0,.6)", backdropFilter:"blur(2px)", display:"flex", alignItems:"flex-end", justifyContent:"center", animation:"fadeSwap .18s ease-out both"}}>
+        <div onClick={e=>e.stopPropagation()} style={{background:T.bg, borderTop:`1px solid ${T.line}`, borderRadius:"18px 18px 0 0", width:"100%", maxWidth:520, maxHeight:"88dvh", overflowY:"auto", overscrollBehavior:"contain", padding:"16px 14px calc(20px + env(safe-area-inset-bottom))", animation:"sheetUp .26s cubic-bezier(.22,1,.36,1) both"}}>
+          <div style={{display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12}}>
+            <div className="h" style={{fontSize:18, color:T.tealDk}}>👟 {view.name}{view.id===myId?" (you)":""}</div>
+            <button onClick={()=>setView(null)} style={{background:T.input, color:T.sub, width:32, height:32, borderRadius:99, fontSize:15}}>✕</button>
           </div>
-        ))}
+          <StepRingChart map={all[view.id] || {}} goal={goal} />
+        </div>
       </div>
     )}
   </>);
@@ -2712,7 +2766,7 @@ function StepsTab({ user }) {
 
 /* One-line steps recap shown on the Cardio tab (only when the Steps feature is on). */
 function CardioStepsRecap({ user }) {
-  const { mine, yStr, addDays } = useSteps(user, 8);
+  const { mine, yStr } = useSteps(user, 8);
   if (!mine || !Object.keys(mine).length) return null;
   const y = mine[yStr]; const t = mine[todayStr()];
   const show = t != null ? { n:t, when:"today" } : y != null ? { n:y, when:"yesterday" } : null;
