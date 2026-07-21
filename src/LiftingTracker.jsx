@@ -654,7 +654,7 @@ export default function LiftingTracker({ user }) {
           {tab==="friends" && <FriendsTab user={user} nutritionOn={nutritionOn} streaksOn={streaksOn} />}
           {tab==="macros" && nutritionOn && <MacroTab data={data} setData={setData} streaksOn={streaksOn} waterOn={waterOn} />}
           {tab==="body" && liftingOn && <BodyTab data={data} setData={setData} hunit={hunit} />}
-          {tab==="cardio" && liftingOn && <CardioTab data={data} setData={setData} latestBW={latestBW} />}
+          {tab==="cardio" && liftingOn && <CardioTab data={data} setData={setData} latestBW={latestBW} user={user} />}
           {tab==="ex" && liftingOn && <ExercisesTab data={data} setData={setData} />}
         </div>
       </main>
@@ -2489,7 +2489,149 @@ function BodyTab({ data, setData, hunit }) {
 }
 
 /* ================= CARDIO ================= */
-function CardioTab({ data, setData, latestBW }) {
+/* Steps dashboard (Apple Health, auto-synced) — the top section of the Cardio tab.
+   Reads the `steps` table for the user + groupmates: goal ring, 14-day bar chart,
+   weekly stats, group leaderboard, and a once-a-day celebration when a whole group
+   has logged the same day. Read-only — steps arrive via the phone Shortcut. */
+function StepsPanel({ user }) {
+  const GOAL = 10000;
+  const addDays = (ds,n)=>{ const d=new Date(ds+"T00:00"); d.setDate(d.getDate()+n);
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
+  const yStr = addDays(todayStr(), -1);
+  const [mine, setMine] = useState(undefined);
+  const [board, setBoard] = useState([]);
+  const [celebrate, setCelebrate] = useState(null);
+
+  useEffect(()=>{ let alive=true; (async()=>{
+    try {
+      const since = addDays(todayStr(), -14);
+      let groups=[]; try { groups = await listMyGroups(); } catch {}
+      const nameOf = {}; const gm = [];
+      for (const g of groups) { try {
+        const mems = await listMembers(g.id);
+        gm.push({ name:g.name, ids: mems.map(m=>m.user_id) });
+        mems.forEach(m => { nameOf[m.user_id] = m.username; });
+      } catch {} }
+      const myName = user.user_metadata?.username || "you";
+      nameOf[user.id] = nameOf[user.id] || myName;
+      const ids = Array.from(new Set([user.id, ...Object.keys(nameOf)]));
+      const s = await stepsFor(ids, since);
+      if (!alive) return;
+      setMine(s[user.id] || {});
+      const bd = ids.map(id => ({ id, name: id===user.id ? myName : (nameOf[id]||"?"), me: id===user.id, steps: s[id]?.[yStr] ?? null }))
+        .filter(r => r.steps != null).sort((a,b)=> b.steps - a.steps);
+      setBoard(bd);
+      for (const g of gm) {
+        if (g.ids.length >= 2 && g.ids.every(id => s[id]?.[yStr] != null)) {
+          if (localStorage.getItem(`lt-allin-${yStr}`) !== "1") setCelebrate(g.name);
+          break;
+        }
+      }
+    } catch { if (alive) setMine({}); }
+  })(); return ()=>{ alive=false; }; }, [user.id]);
+
+  const dismissCelebrate = () => { localStorage.setItem(`lt-allin-${yStr}`, "1"); setCelebrate(null); };
+
+  const series = []; for (let i=13;i>=0;i--){ const d=addDays(todayStr(),-i); series.push({ day:d, count:(mine&&mine[d])||0 }); }
+  const yCount = (mine && mine[yStr]) || 0;
+  const chartMax = Math.max(GOAL, ...series.map(s=>s.count), 1);
+  const last7 = series.slice(-8, -1);
+  const withData = last7.filter(s=>s.count>0);
+  const weekTotal = withData.reduce((a,s)=>a+s.count,0);
+  const avg = withData.length ? Math.round(weekTotal/withData.length) : 0;
+  const best = Math.max(0, ...series.map(s=>s.count));
+  const pct = Math.min(1, yCount/GOAL);
+  const R=52, C=2*Math.PI*R;
+  const dayLabel = (d) => d===yStr ? "yesterday" : d===todayStr() ? "today" : new Date(d+"T00:00").toLocaleDateString("en-US",{weekday:"short"});
+
+  if (mine === undefined) return <div className="card"><div className="skeleton" style={{height:180, borderRadius:12}} /></div>;
+
+  if (!Object.keys(mine).length) {
+    return (
+      <div className="card" style={{textAlign:"center"}}>
+        <div style={{fontSize:34, marginBottom:6}}>👟</div>
+        <div className="h" style={{fontSize:18, color:T.tealDk, marginBottom:6}}>Auto-track your steps</div>
+        <div style={{fontSize:13, color:T.sub, lineHeight:1.55, maxWidth:340, margin:"0 auto"}}>
+          Connect Apple Health once and your daily steps show up here on their own — goal ring, weekly stats, and a group leaderboard.
+          Set it up in <b style={{color:T.ink}}>Settings → 🚶 Apple Health steps</b>.
+        </div>
+      </div>
+    );
+  }
+
+  return (<>
+    {celebrate && (
+      <div onClick={dismissCelebrate} style={{position:"fixed", inset:0, zIndex:60, background:"rgba(0,0,0,.6)", backdropFilter:"blur(2px)", display:"flex", alignItems:"center", justifyContent:"center", padding:24, animation:"fadeSwap .2s ease-out both"}}>
+        <div onClick={e=>e.stopPropagation()} style={{background:T.card, border:`1px solid ${T.green}`, borderRadius:18, padding:"26px 22px", maxWidth:340, textAlign:"center", animation:"calPop .28s cubic-bezier(.34,1.56,.64,1) both"}}>
+          <div style={{fontSize:44, marginBottom:8}}>🎉</div>
+          <div className="h" style={{fontSize:20, color:T.green, marginBottom:6}}>Whole squad logged!</div>
+          <div style={{fontSize:13.5, color:T.sub, lineHeight:1.55, marginBottom:16}}>Everyone in <b style={{color:T.ink}}>{celebrate}</b> got their steps in for {dayLabel(yStr)}. Momentum. 🔥</div>
+          <button onClick={dismissCelebrate} style={{background:T.green, color:"#000", fontWeight:800, fontSize:15, padding:"11px 20px", borderRadius:10, width:"100%"}}>Let's go</button>
+        </div>
+      </div>
+    )}
+
+    <div className="card">
+      <div style={{display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14}}>
+        <div className="h" style={{fontSize:19, color:T.tealDk}}>👟 Steps</div>
+        <a href={`shortcuts://run-shortcut?name=${encodeURIComponent("The Lab: Steps")}`} style={{fontSize:12.5, fontWeight:700, color:T.green, textDecoration:"none", background:T.mint, padding:"6px 12px", borderRadius:99}}>🔄 Sync now</a>
+      </div>
+      <div style={{display:"flex", alignItems:"center", gap:20}}>
+        <div style={{position:"relative", width:120, height:120, flexShrink:0}}>
+          <svg width="120" height="120">
+            <circle cx="60" cy="60" r={R} fill="none" stroke={T.line} strokeWidth="10" />
+            <circle cx="60" cy="60" r={R} fill="none" stroke={T.green} strokeWidth="10" strokeLinecap="round"
+              strokeDasharray={C} strokeDashoffset={C*(1-pct)} transform="rotate(-90 60 60)" style={{transition:"stroke-dashoffset .8s cubic-bezier(.22,1,.36,1)"}} />
+          </svg>
+          <div style={{position:"absolute", inset:0, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center"}}>
+            <div style={{fontSize:22, fontWeight:800, color:T.ink, fontVariantNumeric:"tabular-nums", lineHeight:1}}>{yCount.toLocaleString()}</div>
+            <div style={{fontSize:10.5, color:T.sub, marginTop:3}}>{Math.round(pct*100)}% of {GOAL/1000}k</div>
+          </div>
+        </div>
+        <div style={{flex:1, minWidth:0}}>
+          <div style={{fontSize:12.5, color:T.sub}}>Yesterday</div>
+          <div style={{fontSize:15, fontWeight:700, color:T.ink, marginBottom:12}}>{yCount>=GOAL ? "Goal smashed 💪" : yCount>0 ? "Keep it moving" : "No steps yet"}</div>
+          <div style={{display:"flex", gap:18}}>
+            <div><div style={{fontSize:17, fontWeight:800, color:T.ink}}>{avg.toLocaleString()}</div><div style={{fontSize:10.5, color:T.sub}}>daily avg</div></div>
+            <div><div style={{fontSize:17, fontWeight:800, color:T.ink}}>{best.toLocaleString()}</div><div style={{fontSize:10.5, color:T.sub}}>best day</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div className="card">
+      <div className="h" style={{fontSize:16, color:T.tealDk, marginBottom:2}}>Last 14 days</div>
+      <div style={{fontSize:12, color:T.sub, marginBottom:12}}>Green bars hit your {GOAL/1000}k goal.</div>
+      <div style={{display:"flex", alignItems:"flex-end", gap:4, height:116}}>
+        {series.map((s,i)=>(
+          <div key={s.day} style={{flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:4, minWidth:0}}>
+            <div className="vbar" style={{width:"100%", maxWidth:16, borderRadius:"4px 4px 2px 2px",
+              height: s.count>0 ? Math.max(4, (s.count/chartMax)*90) : 3,
+              background: s.count>=GOAL ? T.green : s.count>0 ? "rgba(0,200,5,.5)" : T.line,
+              animationDelay:`${i*0.03}s`}} />
+            <span style={{fontSize:9, color: s.day===yStr?T.green:T.sub, fontWeight: s.day===yStr?800:400}}>{new Date(s.day+"T00:00").getDate()}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+
+    {board.length > 0 && (
+      <div className="card">
+        <div className="h" style={{fontSize:16, color:T.tealDk, marginBottom:2}}>Group steps — yesterday</div>
+        <div style={{fontSize:12, color:T.sub, marginBottom:8}}>Everyone in your groups who's synced yesterday.</div>
+        {board.map((r,i)=>(
+          <div key={r.id} style={{display:"flex", alignItems:"center", gap:10, padding:"9px 0", borderTop: i===0?"none":`1px solid ${T.creamLine}`}}>
+            <span style={{width:24, textAlign:"center", fontWeight:800, color: i===0?T.green:T.sub, fontSize:14}}>{i===0?"👑":i+1}</span>
+            <span style={{flex:1, fontWeight: r.me?800:600, color: r.me?T.green:T.ink, fontSize:14, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{r.name}{r.me?" (you)":""}</span>
+            <span style={{fontSize:14, fontWeight:800, color:T.ink, fontVariantNumeric:"tabular-nums"}}>{r.steps.toLocaleString()}</span>
+          </div>
+        ))}
+      </div>
+    )}
+  </>);
+}
+
+function CardioTab({ data, setData, latestBW, user }) {
   const units = useUnit();
   const [date, setDate] = useState(todayStr());
   const [activity, setActivity] = useState("");
@@ -2586,6 +2728,8 @@ function CardioTab({ data, setData, latestBW }) {
   };
 
   return (<>
+    <StepsPanel user={user} />
+
     <div className="card">
       <div className="h" style={{fontSize:19, color:T.tealDk, marginBottom:4}}>🏃 Log cardio</div>
       <div style={{fontSize:12.5, color:T.sub, marginBottom:10}}>
