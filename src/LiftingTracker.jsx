@@ -2543,6 +2543,7 @@ function useSteps(user, sinceDays) {
 function StepsTab({ user }) {
   const GOAL = 10000;
   const [range, setRange] = useState("M");
+  const [sel, setSel] = useState(null); // hovered/tapped bar index
   const { mine, board, celebrate, dismiss, yStr, addDays } = useSteps(user, 5*365 + 40);
   const avgOf = (arr)=> arr.length ? Math.round(arr.reduce((a,b)=>a+b,0)/arr.length) : 0;
 
@@ -2557,28 +2558,31 @@ function StepsTab({ user }) {
   }, [mine]);
 
   const chart = useMemo(()=>{
-    const m = mine || {}; const today = todayStr(); let bars=[]; let every=1;
+    const m = mine || {}; const today = todayStr(); let bars=[]; let every=1; const isAvg = !(range==="W"||range==="M");
     if (range==="W" || range==="M") {
       const n = range==="W"?7:30; every = range==="W"?1:5;
-      for (let i=n-1;i>=0;i--){ const d=addDays(today,-i);
-        bars.push({ label: range==="W" ? new Date(d+"T00:00").toLocaleDateString("en-US",{weekday:"narrow"}) : String(new Date(d+"T00:00").getDate()),
+      for (let i=n-1;i>=0;i--){ const d=addDays(today,-i); const dt=new Date(d+"T00:00");
+        bars.push({ label: range==="W" ? dt.toLocaleDateString("en-US",{weekday:"narrow"}) : String(dt.getDate()),
+          full: d===yStr ? "Yesterday" : d===today ? "Today" : dt.toLocaleDateString("en-US",{weekday:"short", month:"short", day:"numeric"}),
           value: m[d]||0, has: m[d]!=null, mark: d===yStr }); }
     } else if (range==="6M") {
       every = 4; const ws = weekStart(today);
       for (let i=25;i>=0;i--){ const start=addDays(ws,-7*i); const days=[]; for(let k=0;k<7;k++){ const d=addDays(start,k); if(m[d]!=null) days.push(m[d]); }
-        bars.push({ label: new Date(start+"T00:00").toLocaleDateString("en-US",{month:"short"}), value: avgOf(days), has: days.length>0 }); }
+        bars.push({ label: new Date(start+"T00:00").toLocaleDateString("en-US",{month:"short"}),
+          full: "Week of " + new Date(start+"T00:00").toLocaleDateString("en-US",{month:"short", day:"numeric"}),
+          value: avgOf(days), has: days.length>0 }); }
     } else if (range==="Y") {
       every = 1; const [yy,mm] = today.split("-").map(Number);
       for (let i=11;i>=0;i--){ const dt=new Date(yy, mm-1-i, 1); const key=`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}`;
         const days=Object.keys(m).filter(d=>d.startsWith(key)).map(d=>m[d]);
-        bars.push({ label: dt.toLocaleDateString("en-US",{month:"narrow"}), value: avgOf(days), has: days.length>0 }); }
+        bars.push({ label: dt.toLocaleDateString("en-US",{month:"narrow"}), full: dt.toLocaleDateString("en-US",{month:"long", year:"numeric"}), value: avgOf(days), has: days.length>0 }); }
     } else { // 5Y
       every=1; const yy=Number(today.slice(0,4));
       for (let i=4;i>=0;i--){ const year=yy-i; const days=Object.keys(m).filter(d=>d.startsWith(String(year))).map(d=>m[d]);
-        bars.push({ label:String(year), value: avgOf(days), has: days.length>0 }); }
+        bars.push({ label:String(year), full:String(year), value: avgOf(days), has: days.length>0 }); }
     }
     const wd = bars.filter(b=>b.has);
-    return { bars, avg: avgOf(wd.map(b=>b.value)), max: Math.max(1, ...bars.map(b=>b.value)), every };
+    return { bars, avg: avgOf(wd.map(b=>b.value)), max: Math.max(1, ...bars.map(b=>b.value)), every, isAvg };
   }, [mine, range]);
 
   const rangeSub = { W:"Past week", M:"Past 30 days", "6M":"Past 6 months", Y:"Past year", "5Y":"Past 5 years" };
@@ -2637,27 +2641,41 @@ function StepsTab({ user }) {
       </div>
     </div>
 
-    {/* ranged chart (Apple-Health style) */}
+    {/* ranged chart (Apple-Health style) with a hover/tap readout */}
     <div className="card">
       <div style={{display:"flex", background:T.input, borderRadius:10, padding:3, gap:2, marginBottom:14}}>
         {["W","M","6M","Y","5Y"].map(r=>(
-          <button key={r} onClick={()=>setRange(r)} style={{flex:1, padding:"7px 0", borderRadius:8, fontSize:12.5, fontWeight:800,
+          <button key={r} onClick={()=>{setRange(r); setSel(null);}} style={{flex:1, padding:"7px 0", borderRadius:8, fontSize:12.5, fontWeight:800,
             background: range===r?T.green:"none", color: range===r?"#000":T.sub}}>{r}</button>
         ))}
       </div>
-      <div style={{fontSize:11, fontWeight:700, color:T.sub, textTransform:"uppercase", letterSpacing:.6}}>Daily average</div>
-      <div style={{display:"flex", alignItems:"baseline", gap:6}}>
-        <span style={{fontSize:27, fontWeight:800, color:T.ink, fontVariantNumeric:"tabular-nums"}}>{chart.avg.toLocaleString()}</span>
-        <span style={{fontSize:13, color:T.sub}}>steps/day</span>
-      </div>
-      <div style={{fontSize:12, color:T.sub, marginBottom:14}}>{rangeSub[range]}</div>
-      <div style={{display:"flex", alignItems:"flex-end", gap: range==="W"?8:3, height:130}}>
+
+      {/* headline: the selected bar's exact figure, or the period average */}
+      {sel!=null && chart.bars[sel] ? (<>
+        <div style={{fontSize:11, fontWeight:800, color:T.green, textTransform:"uppercase", letterSpacing:.6}}>{chart.bars[sel].full}</div>
+        <div style={{display:"flex", alignItems:"baseline", gap:6}}>
+          <span style={{fontSize:27, fontWeight:800, color:T.ink, fontVariantNumeric:"tabular-nums"}}>{chart.bars[sel].has ? chart.bars[sel].value.toLocaleString() : "—"}</span>
+          <span style={{fontSize:13, color:T.sub}}>{chart.bars[sel].has ? (chart.isAvg ? "steps/day" : "steps") : "no data"}</span>
+        </div>
+        <div style={{fontSize:12, color:T.sub, marginBottom:14}}>{rangeSub[range]}</div>
+      </>) : (<>
+        <div style={{fontSize:11, fontWeight:700, color:T.sub, textTransform:"uppercase", letterSpacing:.6}}>Daily average</div>
+        <div style={{display:"flex", alignItems:"baseline", gap:6}}>
+          <span style={{fontSize:27, fontWeight:800, color:T.ink, fontVariantNumeric:"tabular-nums"}}>{chart.avg.toLocaleString()}</span>
+          <span style={{fontSize:13, color:T.sub}}>steps/day</span>
+        </div>
+        <div style={{fontSize:12, color:T.sub, marginBottom:14}}>{rangeSub[range]} · <span style={{color:T.green}}>tap a bar for details</span></div>
+      </>)}
+
+      <div style={{display:"flex", alignItems:"flex-end", gap: range==="W"?8:3, height:130}} onMouseLeave={()=>setSel(null)}>
         {chart.bars.map((b,i)=>(
-          <div key={i} style={{flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:5, minWidth:0}}>
+          <div key={i} onMouseEnter={()=>setSel(i)} onClick={()=>setSel(s=>s===i?null:i)}
+            style={{flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:5, minWidth:0, cursor:"pointer"}}>
             <div className="vbar" style={{width:"100%", maxWidth: range==="W"?30:14, borderRadius:"4px 4px 2px 2px",
               height: b.has&&b.value>0 ? Math.max(4, (b.value/chart.max)*100) : 3,
-              background: b.mark ? T.green : b.has ? "rgba(0,200,5,.6)" : T.line, animationDelay:`${i*0.02}s`}} />
-            <span style={{fontSize:9, color: b.mark?T.green:T.sub, fontWeight: b.mark?800:400, whiteSpace:"nowrap"}}>{(i%chart.every===0 || i===chart.bars.length-1) ? b.label : ""}</span>
+              background: sel===i ? "#fff" : b.mark ? T.green : b.has ? "rgba(0,200,5,.6)" : T.line,
+              animationDelay:`${i*0.02}s`, transition:"background .12s ease"}} />
+            <span style={{fontSize:9, color: (sel===i||b.mark)?T.green:T.sub, fontWeight: (sel===i||b.mark)?800:400, whiteSpace:"nowrap"}}>{(i%chart.every===0 || i===chart.bars.length-1) ? b.label : ""}</span>
           </div>
         ))}
       </div>
