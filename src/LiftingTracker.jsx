@@ -3475,10 +3475,36 @@ function StepsCard({ user }) {
           </div>
         </div>
 
-        <StepBlock n="1" title="Find Health Samples" find="Search “Find Health Samples”">
-          <MockCard glyph="❤️" glyphBg="#FF2D55" title={<>Find All <Tap>Health Samples</Tap></>}
-            rows={[["Type", <Tap key="a">Steps</Tap>], ["Filter", <><Tap key="b">Start Date</Tap><Tap key="c">is</Tap><Tap key="d">Today</Tap></>]]} />
-          <div style={{ fontSize:12, color:T.sub, lineHeight:1.5 }}>Tap <b>Add Filter</b> to get the Start Date · is · Today row — this grabs only <b>today's</b> steps.</div>
+        <StepBlock n="1" title="Find Health Samples" find="Search “Find Health Samples” and tap it to add it">
+          {/* custom mock: shows the whole "where" block with BOTH filters + the Add Filter button */}
+          <div style={{ background:T.cardAlt, border:`1px solid ${STEP_BLUE}`, borderRadius:12, padding:"12px", margin:"8px 0 10px" }}>
+            <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+              <span style={{ width:29, height:29, borderRadius:8, flexShrink:0, background:"#FF2D55", display:"flex", alignItems:"center", justifyContent:"center", fontSize:15 }}>❤️</span>
+              <span style={{ fontSize:14.5, fontWeight:700, color:T.ink }}>Find All <Tap>Health Samples</Tap></span>
+            </div>
+            <div style={{ marginTop:11, borderTop:`1px solid ${T.line}`, paddingTop:11 }}>
+              <div style={{ fontSize:11, fontWeight:700, color:T.sub, textTransform:"uppercase", letterSpacing:.5, marginBottom:9 }}>where — add these two filters:</div>
+              <div style={{ display:"flex", gap:7, alignItems:"center", background:T.input, borderRadius:9, padding:"9px 11px", marginBottom:8 }}>
+                <Tap>Type</Tap><span style={{ color:T.sub, fontSize:13 }}>is</span><Tap>Steps</Tap>
+              </div>
+              <div style={{ display:"flex", gap:7, alignItems:"center", background:T.input, borderRadius:9, padding:"9px 11px", marginBottom:11 }}>
+                <Tap>Start Date</Tap><span style={{ color:T.sub, fontSize:13 }}>is</span><Tap>Today</Tap>
+              </div>
+              <div style={{ display:"inline-flex", alignItems:"center", gap:6, border:`1px dashed ${STEP_BLUE}`, color:STEP_BLUE, borderRadius:9, padding:"7px 13px", fontSize:12.5, fontWeight:700 }}>
+                ＋ Add Filter
+              </div>
+            </div>
+          </div>
+          <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55, marginBottom:9 }}>
+            Tap the blue <b>＋ Add Filter</b> button and pick <b>Type → is → Steps</b>. Tap <b>＋ Add Filter</b> again
+            and pick <b>Start Date → is → Today</b>. Now it reads only <b style={{ color:T.ink }}>today's</b> steps.
+          </div>
+          <div style={{ display:"flex", gap:9, alignItems:"flex-start", background:"rgba(0,200,5,.08)", borderRadius:10, padding:"10px 12px", fontSize:11.5, color:T.sub, lineHeight:1.55 }}>
+            <span style={{ flexShrink:0 }}>🔒</span>
+            <span>Keep <b style={{ color:T.ink }}>Start Date is Today</b> so the count is just today. And don't worry about old data —
+              The Lab <b style={{ color:T.ink }}>only ever writes to today's date</b>. Even if a filter were set wider (like last 7 days),
+              nobody can flood your history with weeks of past logs; it would just make today's number too high.</span>
+          </div>
         </StepBlock>
 
         <StepBlock n="2" title="Calculate Statistics" find="Search “Calculate Statistics”">
