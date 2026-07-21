@@ -3568,8 +3568,8 @@ function StepsCard({ user }) {
             </div>
           </div>
           <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55, marginBottom:9 }}>
-            First row: <b>Type is Steps</b>. Second row: change it to <b>Start Date · is on</b>, then tap the empty <b>Date</b> slot and
-            <b> pick the <span style={{ color:STEP_BLUE }}>Adjusted Date</span> variable</b> from step 1. That grabs <b style={{ color:T.ink }}>all of yesterday's</b> steps.
+            First row: <b>Type is Steps</b>. Second row: change it to <b>Start Date · is on</b>. You'll see a <b>greyed-out “Date”</b> box —
+            that grey means it's empty. <b style={{ color:T.ink }}>Tap it</b>, then <b>pick the <span style={{ color:STEP_BLUE }}>Adjusted Date</span> variable</b> from step 1. That grabs <b style={{ color:T.ink }}>all of yesterday's</b> steps.
           </div>
           <div style={{ display:"flex", gap:9, alignItems:"flex-start", background:"rgba(76,155,255,.10)", border:`1px solid ${STEP_BLUE}`, borderRadius:10, padding:"10px 12px", fontSize:11.5, color:T.sub, lineHeight:1.55, marginBottom:9 }}>
             <span style={{ flexShrink:0 }}>💡</span>
