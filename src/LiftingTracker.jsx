@@ -3487,11 +3487,8 @@ function StepsCard({ user }) {
               <div style={{ display:"flex", gap:7, alignItems:"center", background:T.input, borderRadius:9, padding:"9px 11px", marginBottom:8 }}>
                 <Tap>Type</Tap><span style={{ color:T.sub, fontSize:13 }}>is</span><Tap>Steps</Tap>
               </div>
-              <div style={{ display:"flex", gap:7, alignItems:"center", background:T.input, borderRadius:9, padding:"9px 11px", marginBottom:11 }}>
+              <div style={{ display:"flex", gap:7, alignItems:"center", background:T.input, borderRadius:9, padding:"9px 11px" }}>
                 <Tap>Start Date</Tap><span style={{ color:T.sub, fontSize:13 }}>is</span><Tap>Today</Tap>
-              </div>
-              <div style={{ display:"inline-flex", alignItems:"center", gap:6, border:`1px dashed ${STEP_BLUE}`, color:STEP_BLUE, borderRadius:9, padding:"7px 13px", fontSize:12.5, fontWeight:700 }}>
-                ＋ Add Filter
               </div>
             </div>
           </div>
@@ -3508,9 +3505,15 @@ function StepsCard({ user }) {
           </div>
         </StepBlock>
 
-        <StepBlock n="2" title="Calculate Statistics" find="Search “Calculate Statistics”">
+        <StepBlock n="2" title="Calculate Statistics" find="Search “Calculate Statistics” — add it BELOW block 1">
           <MockCard glyph="📊" glyphBg={STEP_BLUE} title={<>Calculate the <Tap>Sum</Tap> of <Var>Health Samples</Var></>} />
-          <div style={{ fontSize:12, color:T.sub, lineHeight:1.5 }}>It starts as “<b>Average</b> of <b>Input</b>.” Tap <b>Average</b> → pick <b>Sum</b>. Tap <b>Input</b> → pick <b>Health Samples</b>. That adds all your steps into one number.</div>
+          <div style={{ fontSize:12, color:T.sub, lineHeight:1.5, marginBottom:9 }}>It starts as “<b>Average</b> of <b>Input</b>.” Tap <b>Average</b> → pick <b>Sum</b>. Tap <b>Input</b> → pick <b>Health Samples</b>. That adds all your steps into one number.</div>
+          <div style={{ display:"flex", gap:9, alignItems:"flex-start", background:"rgba(76,155,255,.10)", border:`1px solid ${STEP_BLUE}`, borderRadius:10, padding:"10px 12px", fontSize:11.5, color:T.sub, lineHeight:1.55 }}>
+            <span style={{ flexShrink:0 }}>⚠️</span>
+            <span>Don't see <b style={{ color:T.ink }}>Health Samples</b> in the list (only Clipboard, Current Date, etc.)? That means block 1 isn't
+              <b style={{ color:T.ink }}> above</b> this action. Order must be <b style={{ color:T.ink }}>Find Health Samples first, then Calculate Statistics.</b>
+              {" "}Add block 1, or press-and-hold this action and drag it below block 1 — then tap <b>Input</b> again and it'll be there.</span>
+          </div>
         </StepBlock>
 
         <StepBlock n="3" title="Format Date" find="Search “Format Date”">
