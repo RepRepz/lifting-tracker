@@ -3986,35 +3986,44 @@ function StepsCard({ user }) {
           {busy ? "Setting up…" : "Connect Apple Health"}
         </button>
       ) : (<>
-        {/* how it works + why yesterday */}
+        {/* how it works + the 14-day loop */}
         <div style={{ display:"flex", gap:11, alignItems:"flex-start", background:T.cardAlt, border:`1px solid ${T.line}`, borderRadius:12, padding:"12px 13px", margin:"4px 0 12px" }}>
           <span style={{ fontSize:20, flexShrink:0, lineHeight:1.1 }}>💡</span>
           <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55 }}>
-            Open the <b style={{ color:T.ink }}>Shortcuts</b> app → <b style={{ color:T.ink }}>+</b> → then add these <b style={{ color:T.ink }}>5 actions</b>,
-            each from the search bar at the bottom. They stack like LEGO. Blue words = things you tap.
+            Open the <b style={{ color:T.ink }}>Shortcuts</b> app → <b style={{ color:T.ink }}>+</b>, then add the actions below from the search bar (blue words = things you tap).
+            This shortcut <b style={{ color:T.ink }}>loops over the last 14 days</b> and sends each one, so a single <b>🔄 Sync now</b> fills any gaps.
           </div>
         </div>
         <div style={{ display:"flex", gap:9, alignItems:"flex-start", background:"rgba(0,200,5,.08)", border:`1px solid ${T.green}`, borderRadius:10, padding:"10px 12px", fontSize:11.5, color:T.sub, lineHeight:1.55, marginBottom:16 }}>
           <span style={{ flexShrink:0 }}>🎯</span>
-          <span>This logs <b style={{ color:T.ink }}>yesterday's</b> steps, not today's. A finished day can't change, so your number
-            always <b style={{ color:T.ink }}>matches the Health app exactly</b> — and it runs once each morning, no midnight timing to worry about.</span>
+          <span>It logs <b style={{ color:T.ink }}>finished days</b> (yesterday going back 14), so your numbers always <b style={{ color:T.ink }}>match Health exactly</b> —
+            and re-syncing never double-counts, because each day just overwrites itself.</span>
         </div>
 
-        <StepBlock n="1" title="Adjust Date  (get yesterday)">
-          <SearchBar text="Adjust Date" />
-          <MockCard glyph="🗓" glyphBg="#E64637" title={<><Tap>Subtract</Tap> <Tap>1</Tap> <Tap>day</Tap> from <Var icon="📅" iconBg="#3B7BEF">Current Date</Var></>} />
+        <StepBlock n="1" title="Repeat  (the 14-day loop)">
+          <SearchBar text="Repeat" />
+          <MockCard glyph="🔁" glyphBg="#8E8E93" title={<>Repeat <Tap>14</Tap> times</>} />
           <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55, marginBottom:9 }}>
-            You've already got <b>Subtract</b>, <b>1</b>, and <b>Day</b> (the blue words). The last empty slot — the
-            <b> “from ___”</b> part — is the date. <b style={{ color:T.ink }}>Tap it and pick <span style={{ color:STEP_BLUE }}>Current Date</span>.</b>
-            {" "}Now it reads <b>Subtract 1 Day from Current Date</b> = <b style={{ color:T.ink }}>yesterday</b> (its result is called <b>Adjusted Date</b>).
+            Add <b>Repeat</b> and change its number to <b style={{ color:T.ink }}>14</b>. It creates a <b>Repeat … End Repeat</b> block.
+            <b style={{ color:T.ink }}> Everything in steps 2–6 must go INSIDE it</b> — between <b>Repeat</b> and <b>End Repeat</b>.
           </div>
           <div style={{ display:"flex", gap:9, alignItems:"flex-start", background:"rgba(76,155,255,.10)", border:`1px solid ${STEP_BLUE}`, borderRadius:10, padding:"10px 12px", fontSize:11.5, color:T.sub, lineHeight:1.55 }}>
             <span style={{ flexShrink:0 }}>ℹ️</span>
-            <span>Why yesterday? Today isn't over, so its step count keeps changing. Yesterday is finished and final — that's what makes it line up perfectly with Health.</span>
+            <span>If an action lands <b>below “End Repeat,”</b> press-and-hold it and drag it up so it's inside the loop. The loop runs 14 times — once per day.</span>
           </div>
         </StepBlock>
 
-        <StepBlock n="2" title="Find Health Samples">
+        <StepBlock n="2" title="Adjust Date  (inside the loop)">
+          <SearchBar text="Adjust Date" />
+          <MockCard glyph="🗓" glyphBg="#E64637" title={<><Tap>Subtract</Tap> <Var icon="🔁" iconBg="#8E8E93">Repeat Index</Var> <Tap>days</Tap> from <Var icon="📅" iconBg="#3B7BEF">Current Date</Var></>} />
+          <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55, marginBottom:9 }}>
+            Set it to <b>Subtract … days from Current Date</b>. For the <b>amount</b>, don't type a number — tap it and pick the
+            <b style={{ color:STEP_BLUE }}> Repeat Index</b> variable. It's 1 on the first loop, 2 on the second… so it steps back day by day
+            (yesterday, 2 days ago, …). Its result is called <b>Adjusted Date</b>.
+          </div>
+        </StepBlock>
+
+        <StepBlock n="3" title="Find Health Samples  (inside the loop)">
           <SearchBar text="Find Health Samples" />
           {/* mock: the action with its two filter rows (Start Date is on yesterday) */}
           <div style={{ background:T.cardAlt, border:`1px solid ${STEP_BLUE}`, borderRadius:12, padding:"12px", margin:"0 0 10px" }}>
@@ -4043,7 +4052,7 @@ function StepsCard({ user }) {
           </div>
           <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55, marginBottom:9 }}>
             First row: <b>Type is Steps</b>. Second row: change it to <b>Start Date · is on</b>. You'll see a <b>greyed-out “Date”</b> box —
-            that grey means it's empty. <b style={{ color:T.ink }}>Tap it</b>, then <b>pick the <span style={{ color:STEP_BLUE }}>Adjusted Date</span> variable</b> from step 1. That grabs <b style={{ color:T.ink }}>all of yesterday's</b> steps.
+            that grey means it's empty. <b style={{ color:T.ink }}>Tap it</b>, then <b>pick the <span style={{ color:STEP_BLUE }}>Adjusted Date</span> variable</b> from step 2. That grabs <b style={{ color:T.ink }}>that day's</b> steps.
           </div>
           <div style={{ display:"flex", gap:9, alignItems:"flex-start", background:"rgba(76,155,255,.10)", border:`1px solid ${STEP_BLUE}`, borderRadius:10, padding:"10px 12px", fontSize:11.5, color:T.sub, lineHeight:1.55, marginBottom:9 }}>
             <span style={{ flexShrink:0 }}>💡</span>
@@ -4056,19 +4065,19 @@ function StepsCard({ user }) {
           </div>
         </StepBlock>
 
-        <StepBlock n="3" title="Calculate Statistics">
+        <StepBlock n="4" title="Calculate Statistics  (inside the loop)">
           <SearchBar text="Calculate Statistics" />
           <MockCard glyph="📊" glyphBg="#8E8E93" title={<>Calculate the <Tap>Sum</Tap> of <Var icon="❤️" iconBg="#fff">Health Samples</Var></>} />
-          <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55, marginBottom:9 }}>It starts as “<b>Average</b> of <b>Input</b>.” Tap <b>Average</b> → pick <b>Sum</b>. Tap <b>Input</b> → pick <b>Health Samples</b>. That adds all of yesterday's steps into one number.</div>
+          <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55, marginBottom:9 }}>It starts as “<b>Average</b> of <b>Input</b>.” Tap <b>Average</b> → pick <b>Sum</b>. Tap <b>Input</b> → pick <b>Health Samples</b>. That adds that day's steps into one number.</div>
           <div style={{ display:"flex", gap:9, alignItems:"flex-start", background:"rgba(76,155,255,.10)", border:`1px solid ${STEP_BLUE}`, borderRadius:10, padding:"10px 12px", fontSize:11.5, color:T.sub, lineHeight:1.55 }}>
             <span style={{ flexShrink:0 }}>⚠️</span>
-            <span>Don't see <b style={{ color:T.ink }}>Health Samples</b> when you tap Input (only Clipboard, Current Date, etc.)? Then block 2 isn't
+            <span>Don't see <b style={{ color:T.ink }}>Health Samples</b> when you tap Input (only Clipboard, Current Date, etc.)? Then step 3 isn't
               <b style={{ color:T.ink }}> above</b> this one. It has to go <b style={{ color:T.ink }}>Find Health Samples first, then Calculate Statistics.</b>
-              {" "}Press-and-hold this action and drag it under block 2, then tap <b>Input</b> again.</span>
+              {" "}Press-and-hold this action and drag it under step 3, then tap <b>Input</b> again.</span>
           </div>
         </StepBlock>
 
-        <StepBlock n="4" title="Format Date">
+        <StepBlock n="5" title="Format Date  (inside the loop)">
           <SearchBar text="Format Date" />
           <MockCard glyph="🗓" glyphBg="#E64637" title={<>Format <Var icon="🗓" iconBg="#E64637">Adjusted Date</Var></>}
             rows={[
@@ -4088,7 +4097,7 @@ function StepsCard({ user }) {
           <Copy label="Paste into the Format String box" value="yyyy-MM-dd" id="fmt" />
         </StepBlock>
 
-        <StepBlock n="5" title="Get Contents of URL">
+        <StepBlock n="6" title="Get Contents of URL  (inside the loop)">
           <SearchBar text="Get Contents of URL" />
           <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55, marginBottom:10 }}>
             Everything here is <b style={{ color:T.ink }}>tap-to-copy right in place</b> — no scrolling around. A blue box = copy it. A grey note = tap that box on your phone and pick a variable.
@@ -4140,8 +4149,8 @@ function StepsCard({ user }) {
                 <span style={{ padding:"5px 12px", borderRadius:6, fontSize:12.5, fontWeight:700, color:T.sub }}>File</span>
               </div>
               <JField type="Text" name="p_token" nameId="k-tok" valueCopy={token} valueId="tok" secret valueNote="🔒 Don’t share this with anyone" />
-              <JField type="Text" name="p_day" nameId="k-day" valuePick={<>Tap this Value box. In the bar <b>above the keyboard</b>, tap <b>Formatted Date</b> (from step 4). When it's set it looks like this: <span style={{ display:"inline-block", verticalAlign:"middle" }}><Var icon="📅" iconBg="#3B7BEF">Formatted Date</Var></span></>} />
-              <JField type="Number" name="p_count" nameId="k-cnt" valuePick={<>Tap this Value box. In the same bar <b>above the keyboard</b>, tap <b>Sum</b> (from step 3). When it's set it looks like this: <span style={{ display:"inline-block", verticalAlign:"middle" }}><Var icon="📊" iconBg="#8E8E93">Sum</Var></span></>} />
+              <JField type="Text" name="p_day" nameId="k-day" valuePick={<>Tap this Value box. In the bar <b>above the keyboard</b>, tap <b>Formatted Date</b> (from step 5). When it's set it looks like this: <span style={{ display:"inline-block", verticalAlign:"middle" }}><Var icon="📅" iconBg="#3B7BEF">Formatted Date</Var></span></>} />
+              <JField type="Number" name="p_count" nameId="k-cnt" valuePick={<>Tap this Value box. In the same bar <b>above the keyboard</b>, tap <b>Sum</b> (from step 4). When it's set it looks like this: <span style={{ display:"inline-block", verticalAlign:"middle" }}><Var icon="📊" iconBg="#8E8E93">Sum</Var></span></>} />
               <div style={{ fontSize:10.5, color:T.sub, marginTop:2, lineHeight:1.5 }}>
                 Only <b style={{ color:T.ink }}>p_token</b>’s value is copied. For <b>p_day</b> and <b>p_count</b> the value is a blue variable you <b>pick</b>, not type — they should end up looking exactly like the chips above.
               </div>
@@ -4149,7 +4158,7 @@ function StepsCard({ user }) {
           </div>
         </StepBlock>
 
-        <StepBlock n="6" title="Name it & save">
+        <StepBlock n="7" title="Name it & save">
           <div style={{ background:"rgba(0,200,5,.08)", border:`1px solid ${T.green}`, borderRadius:12, padding:"13px 14px" }}>
             <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55, marginBottom:9 }}>
               At the top of the shortcut, tap its <b style={{ color:T.ink }}>name</b> (or the <b>⌄</b> next to it → <b>Rename</b>), erase what's there,
