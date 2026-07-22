@@ -66,6 +66,16 @@ export async function stepsFor(userIds, sinceDay) {
   return out;
 }
 
+/* ---------- The Lab Pro (premium flag) ---------- */
+
+/** IDs of Pro members you can see (yourself + groupmates), excluding expired ones. */
+export async function listProUserIds() {
+  const { data, error } = await supabase.from("pro_users").select("user_id, until");
+  if (error) return [];
+  const now = Date.now();
+  return (data || []).filter(r => !r.until || new Date(r.until).getTime() > now).map(r => r.user_id);
+}
+
 /* ---------- step duels (head-to-head) ---------- */
 
 /** Start a duel vs another user (you are the challenger). Instant — no accept needed. */

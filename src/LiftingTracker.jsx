@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, lazy, Suspense, Fragment, createContext, useContext } from "react";
-import { supabase, loadUserState, saveUserState, listMyGroups, listMembers, createGroup, joinGroup, leaveGroup, listReactions, addReaction, removeReaction, setSecurityQuestion, getSecurityQuestion, lastActiveFor, setGroupEmoji, resetInviteCode, listCloudBackups, getCloudBackup, getStepToken, stepsFor, createDuel, listDuels, deleteDuel } from "./lib/storage.js";
+import { supabase, loadUserState, saveUserState, listMyGroups, listMembers, createGroup, joinGroup, leaveGroup, listReactions, addReaction, removeReaction, setSecurityQuestion, getSecurityQuestion, lastActiveFor, setGroupEmoji, resetInviteCode, listCloudBackups, getCloudBackup, getStepToken, stepsFor, createDuel, listDuels, deleteDuel, listProUserIds } from "./lib/storage.js";
 import { SECURITY_QUESTIONS } from "./AuthScreen.jsx";
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
@@ -307,7 +307,11 @@ export default function LiftingTracker({ user }) {
   // to give someone access, or set to `true` to turn it on for everyone.
   const liftingOn = true;
   const MACRO_ACCOUNTS = ["dimi", "ancenurkic"];
-  const nutritionOn = MACRO_ACCOUNTS.includes((user.user_metadata?.username || "").toLowerCase());
+  const [proIds, setProIds] = useState([]);
+  useEffect(() => { listProUserIds().then(setProIds).catch(()=>{}); }, []);
+  const isPro = proIds.includes(user.id);
+  // Nutrition/Macros is a Pro feature now (still on for the legacy demo accounts).
+  const nutritionOn = isPro || MACRO_ACCOUNTS.includes((user.user_metadata?.username || "").toLowerCase());
   const [streaksOn, setStreaksOn] = useState(() => localStorage.getItem("lt-streaks-on") !== "0"); // default on
   const [waterOn, setWaterOn] = useState(() => localStorage.getItem("lt-water-on") !== "0"); // default on
   useEffect(() => { localStorage.setItem("lt-streaks-on", streaksOn ? "1" : "0"); }, [streaksOn]);
@@ -621,7 +625,7 @@ export default function LiftingTracker({ user }) {
           startTab={startTab} setStartTab={setStartTab} tabs={tabs}
           units={units} setUnits={setUnits} hunit={hunit} setHunit={setHunit}
           routinesOn={routinesOn} setRoutinesOn={setRoutinesOn}
-          stepsOn={stepsOn} setStepsOn={setStepsOn}
+          stepsOn={stepsOn} setStepsOn={setStepsOn} isPro={isPro}
           streaksOn={streaksOn} setStreaksOn={setStreaksOn}
           waterOn={waterOn} setWaterOn={setWaterOn}
           nutritionOn={nutritionOn}
@@ -3480,7 +3484,7 @@ function SectionHead({ icon, label }) {
   );
 }
 
-function SettingsModal({ user, username, data, setData, startTab, setStartTab, tabs, units, setUnits, hunit, setHunit, routinesOn, setRoutinesOn, stepsOn, setStepsOn, streaksOn, setStreaksOn, waterOn, setWaterOn, nutritionOn, onClose }) {
+function SettingsModal({ user, username, data, setData, startTab, setStartTab, tabs, units, setUnits, hunit, setHunit, routinesOn, setRoutinesOn, stepsOn, setStepsOn, streaksOn, setStreaksOn, waterOn, setWaterOn, nutritionOn, isPro, onClose }) {
   const memberSince = user.created_at ? new Date(user.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}) : "—";
   const totalSets = (data.log||[]).length;
 
@@ -3545,6 +3549,10 @@ function SettingsModal({ user, username, data, setData, startTab, setStartTab, t
           </div>
           <button onClick={onClose} style={{ background:T.input, color:T.sub, width:34, height:34, borderRadius:99, fontSize:16, flexShrink:0 }}>✕</button>
         </div>
+
+        <SettingsSection icon="✨" title={isPro ? "The Lab Pro — active" : "Go Pro"} desc={isPro ? "You're a Pro member 🎉" : "Nutrition, themes & an AI coach"} defaultOpen={!isPro}>
+          <ProCard isPro={isPro} />
+        </SettingsSection>
 
         {/* the install guide only exists on a phone browser that hasn't installed yet */}
         {IS_MOBILE && !IS_STANDALONE && localStorage.getItem("lt-a2hs-done") !== "1" && (
@@ -4165,6 +4173,58 @@ function StepsCard({ user }) {
             Then every night at 12:05 AM it logs the day that just ended, exact to Health. Tap <b>🔄 Sync now</b> anytime to pull it on demand.
           </div>
         </div>
+      </>)}
+    </div>
+  );
+}
+
+/* The Lab Pro upsell / status card. Payments are a later phase; for now it showcases
+   the plan and reflects whether the account already has Pro (server-granted). */
+function ProCard({ isPro }) {
+  const feats = [
+    ["🥗", "Nutrition & macros", "Full food log, macro goals, water tracking", true],
+    ["🤖", "AI coach", "Auto weight progression + plateau alerts", false],
+    ["🎨", "Themes & Pro badge", "Custom colors, app icon, and a PRO badge in groups", false],
+  ];
+  return (
+    <div style={{ ...sCard, marginBottom:0 }}>
+      {isPro ? (
+        <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:10 }}>
+          <span style={{ fontSize:26 }}>✨</span>
+          <div><div style={{ fontSize:15, fontWeight:800, color:T.green }}>You're a Pro member</div><div style={{ fontSize:12, color:T.sub }}>Thanks for supporting The Lab 🙏</div></div>
+        </div>
+      ) : (
+        <div style={{ marginBottom:10 }}>
+          <div style={{ fontSize:16, fontWeight:800, color:T.ink, marginBottom:2 }}>✨ The Lab Pro</div>
+          <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.5 }}>Level up your training with premium tools.</div>
+        </div>
+      )}
+      {feats.map(([ic,t,d,live])=>(
+        <div key={t} style={{ display:"flex", gap:11, alignItems:"flex-start", padding:"9px 0", borderTop:`1px solid ${T.creamLine}` }}>
+          <span style={{ fontSize:19, flexShrink:0 }}>{ic}</span>
+          <div style={{ flex:1, minWidth:0 }}>
+            <div style={{ fontSize:13.5, fontWeight:700, color:T.ink }}>{t}
+              {live ? <span style={{ fontSize:10, color:T.green, fontWeight:800, marginLeft:6, letterSpacing:.4 }}>{isPro?"UNLOCKED":"INCLUDED"}</span>
+                    : <span style={{ fontSize:10, color:T.sub, fontWeight:800, marginLeft:6, letterSpacing:.4 }}>SOON</span>}
+            </div>
+            <div style={{ fontSize:12, color:T.sub, lineHeight:1.45 }}>{d}</div>
+          </div>
+        </div>
+      ))}
+      {!isPro && (<>
+        <div style={{ display:"flex", gap:8, marginTop:14, marginBottom:10 }}>
+          <div style={{ flex:1, background:T.input, border:`1px solid ${T.line}`, borderRadius:12, padding:"10px 12px", textAlign:"center" }}>
+            <div style={{ fontSize:18, fontWeight:800, color:T.ink }}>$4<span style={{fontSize:12, color:T.sub, fontWeight:600}}>/mo</span></div>
+            <div style={{ fontSize:11, color:T.sub }}>monthly</div>
+          </div>
+          <div style={{ flex:1, background:"rgba(0,200,5,.08)", border:`1px solid ${T.green}`, borderRadius:12, padding:"10px 12px", textAlign:"center" }}>
+            <div style={{ fontSize:18, fontWeight:800, color:T.green }}>$25<span style={{fontSize:12, color:T.sub, fontWeight:600}}>/yr</span></div>
+            <div style={{ fontSize:11, color:T.green, fontWeight:700 }}>save ~48%</div>
+          </div>
+        </div>
+        <button disabled style={{ width:"100%", background:T.input, color:T.sub, border:`1px solid ${T.line}`, fontWeight:700, padding:"11px", borderRadius:10, fontSize:13.5 }}>
+          💳 Payments coming soon
+        </button>
       </>)}
     </div>
   );
