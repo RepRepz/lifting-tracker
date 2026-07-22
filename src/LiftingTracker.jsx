@@ -4015,10 +4015,10 @@ function StepsCard({ user }) {
             ))}
             <div style={{ color:STEP_BLUE, fontWeight:700 }}>End Repeat</div>
           </div>
-          <div style={{ display:"flex", gap:9, alignItems:"flex-start", background:"rgba(255,80,0,.10)", border:`1px solid ${T.danger}`, borderRadius:10, padding:"10px 12px", fontSize:11.5, color:T.sub, lineHeight:1.55 }}>
-            <span style={{ flexShrink:0, fontSize:14 }}>⚠️</span>
-            <span><b style={{ color:T.ink }}>The #1 thing:</b> steps 2–6 must sit <b>between</b> “Repeat 14 Times” and “End Repeat” (indented, like above). When you add each one and it
-              lands <b>below</b> “End Repeat,” press-and-hold the <b>≡</b> grip on its right and <b>drag it up</b> into the loop.</span>
+          <div style={{ display:"flex", gap:9, alignItems:"flex-start", background:"rgba(255,80,0,.10)", border:`1px solid ${T.danger}`, borderRadius:10, padding:"11px 13px", fontSize:12, color:T.sub, lineHeight:1.55 }}>
+            <span style={{ flexShrink:0, fontSize:15 }}>⚠️</span>
+            <span><b style={{ color:T.ink }}>Every action must end up ABOVE the “End Repeat” line.</b> When you add steps 2–6 they'll appear <b>below</b> “End Repeat” by default —
+              press-and-hold the <b>≡</b> grip on the right of each one and <b>drag it up above “End Repeat”</b> so it's inside the loop. Nothing should sit below End Repeat.</span>
           </div>
         </StepBlock>
 
