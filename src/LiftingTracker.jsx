@@ -4152,27 +4152,26 @@ function StepsCard({ user }) {
 
         {/* make it automatic — Time of Day (the "open the app" trigger can't see a web app) */}
         <div style={{ background:"rgba(0,200,5,.08)", borderRadius:12, padding:"14px 15px", margin:"0 0 14px" }}>
-          <div style={{ fontSize:14.5, fontWeight:800, color:T.ink, marginBottom:6 }}>Make it run every morning 🔁</div>
+          <div style={{ fontSize:14.5, fontWeight:800, color:T.ink, marginBottom:6 }}>Keep it updating 🔁</div>
+          <div style={{ display:"flex", gap:9, alignItems:"flex-start", background:"rgba(255,80,0,.10)", border:`1px solid ${T.danger}`, borderRadius:10, padding:"10px 12px", fontSize:11.5, color:T.sub, lineHeight:1.55, marginBottom:10 }}>
+            <span style={{ flexShrink:0, fontSize:14 }}>🔒</span>
+            <span><b style={{ color:T.ink }}>Apple's rule:</b> Health data can only be read while your iPhone is <b style={{ color:T.ink }}>unlocked</b>. A scheduled automation
+              that fires while the phone is locked will silently read nothing — so the <b>🔄 Sync now</b> button (tapped while you're in the app, unlocked)
+              is the most reliable way to update.</span>
+          </div>
           <div style={{ fontSize:11.5, color:T.sub, lineHeight:1.55, marginBottom:9 }}>
-            It logs <b style={{ color:T.ink }}>yesterday's</b> finished day, so it can run any time the next day — same exact number.
-            Pick a <b style={{ color:T.ink }}>morning time when your phone is on and you're using it</b>. Overnight automations often get skipped while
-            the phone is asleep, so a waking-hour time is far more reliable. (The Lab is a home-screen web app, so iOS can't use an “on open” trigger.)
+            You can still add a <b style={{ color:T.ink }}>Time of Day</b> automation as a bonus — it logs yesterday's finished day, so any time works —
+            but pick a time you're usually <b style={{ color:T.ink }}>using your phone unlocked</b> (e.g. mid-morning), not overnight:
           </div>
           <ol style={{ fontSize:12.5, color:T.ink, lineHeight:1.6, paddingLeft:18, margin:0 }}>
             <li>In Shortcuts, tap the <b>Automation</b> tab (bottom).</li>
             <li>Tap the blue <b>New Automation</b> button (or <b>+</b> at top-right).</li>
             <li>In the trigger list, tap <b>Time of Day</b>.</li>
-            <li>Set a <b>morning</b> time you're usually up (e.g. <b>8:00 AM</b>), <b>Repeat: Daily</b> → <b>Next</b>.</li>
-            <li>Pick your <b>The Lab: Steps</b> shortcut → <b>Done</b>.</li>
+            <li>Set a time you're usually on your phone (e.g. <b>9:00 AM</b>), <b>Repeat: Daily</b> → <b>Next</b>.</li>
+            <li>Choose <b>Run Immediately</b>, then pick your <b>The Lab: Steps</b> shortcut → <b>Done</b>.</li>
           </ol>
-          <div style={{ display:"flex", gap:9, alignItems:"flex-start", background:"rgba(255,80,0,.10)", border:`1px solid ${T.danger}`, borderRadius:10, padding:"10px 12px", fontSize:11.5, color:T.sub, lineHeight:1.55, marginTop:10 }}>
-            <span style={{ flexShrink:0, fontSize:14 }}>⚡</span>
-            <span><b style={{ color:T.ink }}>Important — turn on “Run Immediately.”</b> On the setup screen, make sure it's set to <b>Run Immediately</b>, not
-              <b> Run After Confirmation</b>. Otherwise it just sends a notification you have to tap — Run Immediately makes it truly automatic.
-              <b> Avoid overnight times</b> (like 12 AM) — the phone's usually asleep then and iOS skips the run.</span>
-          </div>
           <div style={{ fontSize:11.5, color:T.sub, lineHeight:1.55, marginTop:9 }}>
-            Each morning it logs the previous day, exact to Health. Missed a run? Tap <b>🔄 Sync now</b> anytime to pull it on demand.
+            If the automation ever misses (phone was locked when it fired), just tap <b>🔄 Sync now</b> — it catches up instantly.
           </div>
         </div>
       </>)}
