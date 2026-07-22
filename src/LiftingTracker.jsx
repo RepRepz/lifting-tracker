@@ -4000,6 +4000,22 @@ function StepsCard({ user }) {
             and re-syncing never double-counts, because each day just overwrites itself.</span>
         </div>
 
+        {/* the one setting that unblocks Health sending — do this FIRST */}
+        <div style={{ background:"rgba(64,156,255,.10)", border:`1px solid ${STEP_BLUE}`, borderRadius:12, padding:"13px 14px", marginBottom:16 }}>
+          <div style={{ fontSize:13.5, fontWeight:800, color:T.ink, marginBottom:6 }}>⚙️ First — flip one iPhone setting (required)</div>
+          <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.6, marginBottom:8 }}>
+            Apple blocks shortcuts from sending Health data until you allow it. Turn this on once, or the sync fails with a “can't share Health items” error:
+          </div>
+          <div style={{ display:"flex", flexDirection:"column", gap:4, background:T.input, borderRadius:10, padding:"11px 13px" }}>
+            {[["1","Open the iPhone", "Settings app"],["2","Tap", "Shortcuts"],["3","Tap", "Advanced"],["4","Turn ON", "Allow Sharing Large Amounts of Data"]].map(([n,pre,bold])=>(
+              <div key={n} style={{ display:"flex", gap:8, alignItems:"baseline", fontSize:13, lineHeight:1.5 }}>
+                <span style={{ color:STEP_BLUE, fontWeight:800, minWidth:14 }}>{n}.</span>
+                <span style={{ color:T.sub }}>{pre} <b style={{ color:T.ink }}>{bold}</b></span>
+              </div>
+            ))}
+          </div>
+        </div>
+
         <StepBlock n="1" title="Repeat  (the 14-day loop)">
           <SearchBar text="Repeat" />
           <MockCard glyph="🔁" glyphBg="#8E8E93" title={<>Repeat <Tap>14</Tap> times</>} />
