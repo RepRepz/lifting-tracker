@@ -2557,35 +2557,59 @@ function useSteps(user, sinceDays) {
   const [nameOf, setNameOf] = useState({});
   const [board, setBoard] = useState([]);
   const [celebrate, setCelebrate] = useState(null);
-  useEffect(()=>{ let alive=true; (async()=>{
-    try {
-      const since = dAdd(todayStr(), -sinceDays);
-      let groups=[]; try { groups = await listMyGroups(); } catch {}
-      const nm = {}; const gm = [];
-      for (const g of groups) { try {
-        const mems = await listMembers(g.id);
-        gm.push({ name:g.name, ids: mems.map(m=>m.user_id) });
-        mems.forEach(m => { nm[m.user_id] = m.username; });
-      } catch {} }
-      const myName = user.user_metadata?.username || "you";
-      nm[user.id] = nm[user.id] || myName;
-      const ids = Array.from(new Set([user.id, ...Object.keys(nm)]));
-      const s = await stepsFor(ids, since);
-      if (!alive) return;
-      setMine(s[user.id] || {}); setAll(s); setNameOf(nm);
-      const bd = ids.map(id => ({ id, name: id===user.id ? myName : (nm[id]||"?"), me: id===user.id, steps: s[id]?.[yStr] ?? null }))
-        .filter(r => r.steps != null).sort((a,b)=> b.steps - a.steps);
-      setBoard(bd);
-      for (const g of gm) {
-        if (g.ids.length >= 2 && g.ids.every(id => s[id]?.[yStr] != null)) {
-          if (localStorage.getItem(`lt-allin-${yStr}`) !== "1") setCelebrate(g.name);
-          break;
+  const reloadRef = useRef(() => {});
+  useEffect(()=>{
+    let alive = true;
+    const load = async () => {
+      try {
+        const since = dAdd(todayStr(), -sinceDays);
+        let groups=[]; try { groups = await listMyGroups(); } catch {}
+        const nm = {}; const gm = [];
+        for (const g of groups) { try {
+          const mems = await listMembers(g.id);
+          gm.push({ name:g.name, ids: mems.map(m=>m.user_id) });
+          mems.forEach(m => { nm[m.user_id] = m.username; });
+        } catch {} }
+        const myName = user.user_metadata?.username || "you";
+        nm[user.id] = nm[user.id] || myName;
+        const ids = Array.from(new Set([user.id, ...Object.keys(nm)]));
+        const s = await stepsFor(ids, since);
+        if (!alive) return;
+        setMine(s[user.id] || {}); setAll(s); setNameOf(nm);
+        const bd = ids.map(id => ({ id, name: id===user.id ? myName : (nm[id]||"?"), me: id===user.id, steps: s[id]?.[yStr] ?? null }))
+          .filter(r => r.steps != null).sort((a,b)=> b.steps - a.steps);
+        setBoard(bd);
+        for (const g of gm) {
+          if (g.ids.length >= 2 && g.ids.every(id => s[id]?.[yStr] != null)) {
+            if (localStorage.getItem(`lt-allin-${yStr}`) !== "1") setCelebrate(g.name);
+            break;
+          }
         }
-      }
-    } catch { if (alive) setMine({}); }
-  })(); return ()=>{ alive=false; }; }, [user.id, sinceDays]);
+      } catch { if (alive) setMine(prev => prev === undefined ? {} : prev); }
+    };
+    reloadRef.current = load;
+    load();
+    // re-fetch when the app regains focus (e.g. after running the Sync shortcut and returning)
+    const onVis = () => { if (document.visibilityState === "visible") load(); };
+    document.addEventListener("visibilitychange", onVis);
+    window.addEventListener("focus", onVis);
+    return () => { alive = false; document.removeEventListener("visibilitychange", onVis); window.removeEventListener("focus", onVis); };
+  }, [user.id, sinceDays]);
   const dismiss = () => { localStorage.setItem(`lt-allin-${yStr}`, "1"); setCelebrate(null); };
-  return { mine, all, nameOf, board, celebrate, dismiss, yStr, myId: user.id };
+  return { mine, all, nameOf, board, celebrate, dismiss, yStr, myId: user.id, reload: () => reloadRef.current() };
+}
+
+/* One reliable "Sync now" launcher — runs the phone shortcut via its URL scheme.
+   Works only while the phone is unlocked (Apple's Health rule), which it is when you tap. */
+function SyncNowButton({ block, small }) {
+  const href = `shortcuts://run-shortcut?name=${encodeURIComponent("The Lab: Steps")}`;
+  return (
+    <a href={href} style={{ display: block ? "flex" : "inline-flex", width: block ? "100%" : "auto",
+      alignItems:"center", justifyContent:"center", gap:7, background:T.green, color:"#000", fontWeight:800,
+      fontSize: small?12.5:14.5, padding: small?"7px 13px":"12px 16px", borderRadius: small?99:11, textDecoration:"none" }}>
+      🔄 Sync now
+    </a>
+  );
 }
 
 /* Reusable goal ring + Apple-Health-style ranged chart for a single person's step map.
@@ -2845,18 +2869,24 @@ function StepsTab({ user, data, setData }) {
       </div>
     )}
 
-    {/* header + editable goal */}
-    <div className="card" style={{display:"flex", alignItems:"center", justifyContent:"space-between", gap:10, flexWrap:"wrap"}}>
-      <div className="h" style={{fontSize:19, color:T.tealDk}}>👟 Steps</div>
-      {!editGoal ? (
-        <button onClick={()=>{ setGoalInput(String(goal)); setEditGoal(true); }} style={{background:T.input, color:T.ink, border:`1px solid ${T.line}`, borderRadius:99, padding:"7px 13px", fontSize:12.5, fontWeight:700}}>🎯 Goal {goal.toLocaleString()} · Edit</button>
-      ) : (
-        <div style={{display:"flex", gap:6, alignItems:"center"}}>
-          <input type="number" inputMode="numeric" value={goalInput} onChange={e=>setGoalInput(e.target.value)} style={{width:96}} />
-          <button onClick={saveGoal} style={{background:T.green, color:"#000", fontWeight:700, padding:"8px 13px", fontSize:13}}>Save</button>
-          <button onClick={()=>setEditGoal(false)} style={{background:T.input, color:T.sub, padding:"8px 11px", fontSize:13}}>✕</button>
-        </div>
-      )}
+    {/* header + editable goal + reliable Sync now */}
+    <div className="card">
+      <div style={{display:"flex", alignItems:"center", justifyContent:"space-between", gap:10, flexWrap:"wrap", marginBottom:12}}>
+        <div className="h" style={{fontSize:19, color:T.tealDk}}>👟 Steps</div>
+        {!editGoal ? (
+          <button onClick={()=>{ setGoalInput(String(goal)); setEditGoal(true); }} style={{background:T.input, color:T.ink, border:`1px solid ${T.line}`, borderRadius:99, padding:"7px 13px", fontSize:12.5, fontWeight:700}}>🎯 Goal {goal.toLocaleString()} · Edit</button>
+        ) : (
+          <div style={{display:"flex", gap:6, alignItems:"center"}}>
+            <input type="number" inputMode="numeric" value={goalInput} onChange={e=>setGoalInput(e.target.value)} style={{width:96}} />
+            <button onClick={saveGoal} style={{background:T.green, color:"#000", fontWeight:700, padding:"8px 13px", fontSize:13}}>Save</button>
+            <button onClick={()=>setEditGoal(false)} style={{background:T.input, color:T.sub, padding:"8px 11px", fontSize:13}}>✕</button>
+          </div>
+        )}
+      </div>
+      <SyncNowButton block />
+      <div style={{fontSize:11, color:T.sub, textAlign:"center", marginTop:7, lineHeight:1.5}}>
+        Runs your <b style={{color:T.ink}}>“The Lab: Steps”</b> shortcut and pulls your latest steps — this page updates the moment you come back.
+      </div>
     </div>
 
     <StepRingChart map={merged.map} goal={goal} meta={merged.meta} />
