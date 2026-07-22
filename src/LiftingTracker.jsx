@@ -5151,12 +5151,12 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
           <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:2}}>🏋️ Strength — best est. 1RM ({uLabel(units)})</div>
           <div style={{fontSize:12, color:T.sub, marginBottom:8}}>Green = group best.</div>
           <div style={{overflowX:"auto"}}>
-            <table><thead><tr><th>Member</th>{BIG_LIFTS.map(l=><th key={l}>{LIFT_SHORT[l]}</th>)}</tr></thead>
+            <table><thead><tr><th>Member</th>{BIG_LIFTS.map(l=><th key={l} style={{textAlign:"center"}}>{LIFT_SHORT[l]}</th>)}</tr></thead>
               <tbody>{strength.rows.map(r=>(
                 <tr key={r.uid}>
                   <td style={{fontWeight: r.uid===user.id?700:400}}>{r.user}</td>
                   {BIG_LIFTS.map(l=>(
-                    <td key={l} style={{ color: r.lifts[l] && r.lifts[l]===strength.best[l] ? T.green : T.ink, fontWeight: r.lifts[l] && r.lifts[l]===strength.best[l] ? 700 : 400 }}>
+                    <td key={l} style={{ textAlign:"center", color: r.lifts[l] && r.lifts[l]===strength.best[l] ? T.green : T.ink, fontWeight: r.lifts[l] && r.lifts[l]===strength.best[l] ? 700 : 400 }}>
                       {r.lifts[l] == null ? "—" : dispW(r.lifts[l], units)}
                     </td>
                   ))}
