@@ -4083,11 +4083,14 @@ function StepsCard({ user }) {
           <SearchBar text="Calculate Statistics" />
           <MockCard glyph="📊" glyphBg="#8E8E93" title={<>Calculate the <Tap>Sum</Tap> of <Var icon="❤️" iconBg="#fff">Health Samples</Var></>} />
           <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55, marginBottom:9 }}>It starts as “<b>Average</b> of <b>Input</b>.” Tap <b>Average</b> → pick <b>Sum</b>. Tap <b>Input</b> → pick <b>Health Samples</b>. That adds that day's steps into one number.</div>
-          <div style={{ display:"flex", gap:9, alignItems:"flex-start", background:"rgba(76,155,255,.10)", border:`1px solid ${STEP_BLUE}`, borderRadius:10, padding:"10px 12px", fontSize:11.5, color:T.sub, lineHeight:1.55 }}>
-            <span style={{ flexShrink:0 }}>⚠️</span>
-            <span>Don't see <b style={{ color:T.ink }}>Health Samples</b> when you tap Input (only Clipboard, Current Date, etc.)? Then step 3 isn't
-              <b style={{ color:T.ink }}> above</b> this one. It has to go <b style={{ color:T.ink }}>Find Health Samples first, then Calculate Statistics.</b>
-              {" "}Press-and-hold this action and drag it under step 3, then tap <b>Input</b> again.</span>
+          <div style={{ display:"flex", gap:9, alignItems:"flex-start", background:"rgba(76,155,255,.10)", border:`1px solid ${STEP_BLUE}`, borderRadius:10, padding:"10px 12px", fontSize:11.5, color:T.sub, lineHeight:1.55, marginBottom:9 }}>
+            <span style={{ flexShrink:0 }}>ℹ️</span>
+            <span>Don't see <b style={{ color:T.ink }}>Health Samples</b> when you tap Input? Then step 3 isn't <b style={{ color:T.ink }}>above</b> this one — drag it up so it's <b>Find first, then Calculate</b>.</span>
+          </div>
+          <div style={{ display:"flex", gap:9, alignItems:"flex-start", background:"rgba(255,80,0,.10)", border:`1px solid ${T.danger}`, borderRadius:10, padding:"11px 13px", fontSize:12, color:T.sub, lineHeight:1.55 }}>
+            <span style={{ flexShrink:0, fontSize:15 }}>🔒</span>
+            <span><b style={{ color:T.ink }}>Required: add a “Text” step right after.</b> iOS won't let you send raw Health data online, so you'll get <i>“trying to share N Health items.”</i>
+              The fix: add a <b style={{ color:T.ink }}>Text</b> action (inside the loop), put <b>only the Sum</b> variable inside it, and later point <b>p_count</b> at that <b>Text</b> — not Sum. That sends a plain number instead of Health data.</span>
           </div>
         </StepBlock>
 
@@ -4164,7 +4167,7 @@ function StepsCard({ user }) {
               </div>
               <JField type="Text" name="p_token" nameId="k-tok" valueCopy={token} valueId="tok" secret valueNote="🔒 Don’t share this with anyone" />
               <JField type="Text" name="p_day" nameId="k-day" valuePick={<>Tap this Value box. In the bar <b>above the keyboard</b>, tap <b>Formatted Date</b> (from step 5). When it's set it looks like this: <span style={{ display:"inline-block", verticalAlign:"middle" }}><Var icon="📅" iconBg="#3B7BEF">Formatted Date</Var></span></>} />
-              <JField type="Number" name="p_count" nameId="k-cnt" valuePick={<>Tap this Value box. In the same bar <b>above the keyboard</b>, tap <b>Sum</b> (from step 4). When it's set it looks like this: <span style={{ display:"inline-block", verticalAlign:"middle" }}><Var icon="📊" iconBg="#8E8E93">Sum</Var></span></>} />
+              <JField type="Number" name="p_count" nameId="k-cnt" valuePick={<>Tap this Value box → pick the <b>Text</b> variable (the laundered Sum you made in step 4). <b style={{ color:T.danger }}>Not Sum directly</b> — that triggers the "share Health items" block.</>} />
               <div style={{ fontSize:10.5, color:T.sub, marginTop:2, lineHeight:1.5 }}>
                 Only <b style={{ color:T.ink }}>p_token</b>’s value is copied. For <b>p_day</b> and <b>p_count</b> the value is a blue variable you <b>pick</b>, not type — they should end up looking exactly like the chips above.
               </div>
