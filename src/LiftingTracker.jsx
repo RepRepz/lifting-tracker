@@ -4067,17 +4067,11 @@ function StepsCard({ user }) {
             </div>
           </div>
           <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55, marginBottom:9 }}>
-            First row: <b>Type is Steps</b>. Second row: change it to <b>Start Date · is on</b>, then set its <b>Date</b> to the <b style={{ color:STEP_BLUE }}>Adjusted Date</b> variable from step 2 (that grabs that day's steps).
+            Two rows: <b>Type is Steps</b>, and <b>Start Date is on Adjusted Date</b>.
           </div>
-          <div style={{ display:"flex", gap:9, alignItems:"flex-start", background:"rgba(255,80,0,.10)", border:`1px solid ${T.danger}`, borderRadius:10, padding:"10px 12px", fontSize:11.5, color:T.sub, lineHeight:1.55, marginBottom:9 }}>
+          <div style={{ display:"flex", gap:9, alignItems:"flex-start", background:"rgba(255,80,0,.10)", border:`1px solid ${T.danger}`, borderRadius:10, padding:"10px 12px", fontSize:11.5, color:T.sub, lineHeight:1.55 }}>
             <span style={{ flexShrink:0, fontSize:14 }}>⚠️</span>
-            <span><b style={{ color:T.ink }}>Date keeps opening a calendar?</b> A normal tap picks a fixed date — you don't want that. Instead <b style={{ color:T.ink }}>tap and hold (long-press)</b> the
-              <b> Date</b> value → choose <b>Select Variable</b> → pick <b style={{ color:STEP_BLUE }}>Adjusted Date</b>. The long-press is what lets you use a variable instead of the calendar.</span>
-          </div>
-          <div style={{ display:"flex", gap:9, alignItems:"flex-start", background:"rgba(76,155,255,.10)", border:`1px solid ${STEP_BLUE}`, borderRadius:10, padding:"10px 12px", fontSize:11.5, color:T.sub, lineHeight:1.55, marginBottom:9 }}>
-            <span style={{ flexShrink:0 }}>💡</span>
-            <span><b style={{ color:T.ink }}>Don't type the word “adjusted.”</b> If a <b>“Value is …”</b> row appears, that's a stray extra filter — tap the <b>⊖</b> on its right to delete it.
-              You want exactly two rows: <b>Type is Steps</b> and <b>Start Date is on Adjusted Date</b>.</span>
+            <span>Tapping the <b>Date</b> opens a calendar — you don't want that. <b style={{ color:T.ink }}>Long-press (tap &amp; hold)</b> it → <b>Select Variable</b> → <b style={{ color:STEP_BLUE }}>Adjusted Date</b>.</span>
           </div>
           <div style={{ display:"flex", gap:9, alignItems:"flex-start", background:"rgba(0,200,5,.08)", borderRadius:10, padding:"10px 12px", fontSize:11.5, color:T.sub, lineHeight:1.55 }}>
             <span style={{ flexShrink:0 }}>🔒</span>
