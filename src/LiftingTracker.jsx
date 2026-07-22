@@ -4003,29 +4003,39 @@ function StepsCard({ user }) {
         <StepBlock n="1" title="Repeat  (the 14-day loop)">
           <SearchBar text="Repeat" />
           <MockCard glyph="🔁" glyphBg="#8E8E93" title={<>Repeat <Tap>14</Tap> times</>} />
-          <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55, marginBottom:9 }}>
-            Add <b>Repeat</b> and change its number to <b style={{ color:T.ink }}>14</b>. It creates a <b>Repeat … End Repeat</b> block.
-            <b style={{ color:T.ink }}> Everything in steps 2–6 must go INSIDE it</b> — between <b>Repeat</b> and <b>End Repeat</b>.
+          <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55, marginBottom:10 }}>
+            Add <b>Repeat</b>, then tap its number and change it to <b style={{ color:T.ink }}>14</b>. It drops in a <b>Repeat 14 Times</b> line and an <b>End Repeat</b> line.
           </div>
-          <div style={{ display:"flex", gap:9, alignItems:"flex-start", background:"rgba(76,155,255,.10)", border:`1px solid ${STEP_BLUE}`, borderRadius:10, padding:"10px 12px", fontSize:11.5, color:T.sub, lineHeight:1.55 }}>
-            <span style={{ flexShrink:0 }}>ℹ️</span>
-            <span>If an action lands <b>below “End Repeat,”</b> press-and-hold it and drag it up so it's inside the loop. The loop runs 14 times — once per day.</span>
+          {/* target structure — what the finished shortcut should look like */}
+          <div style={{ fontSize:11, fontWeight:700, color:T.sub, textTransform:"uppercase", letterSpacing:.5, marginBottom:6 }}>Your shortcut should end up like this:</div>
+          <div style={{ background:T.cardAlt, border:`1px solid ${STEP_BLUE}`, borderRadius:12, padding:"12px 14px", marginBottom:10, fontSize:12.5, fontFamily:"ui-monospace, Menlo, monospace", lineHeight:1.85 }}>
+            <div style={{ color:STEP_BLUE, fontWeight:700 }}>🔁 Repeat 14 Times</div>
+            {["Adjust Date","Find Health Samples","Calculate Statistics","Format Date","Get Contents of URL"].map((t,i)=>(
+              <div key={t} style={{ paddingLeft:16, color:T.ink }}><span style={{ color:T.sub }}>{i+2}.</span> {t}</div>
+            ))}
+            <div style={{ color:STEP_BLUE, fontWeight:700 }}>End Repeat</div>
+          </div>
+          <div style={{ display:"flex", gap:9, alignItems:"flex-start", background:"rgba(255,80,0,.10)", border:`1px solid ${T.danger}`, borderRadius:10, padding:"10px 12px", fontSize:11.5, color:T.sub, lineHeight:1.55 }}>
+            <span style={{ flexShrink:0, fontSize:14 }}>⚠️</span>
+            <span><b style={{ color:T.ink }}>The #1 thing:</b> steps 2–6 must sit <b>between</b> “Repeat 14 Times” and “End Repeat” (indented, like above). When you add each one and it
+              lands <b>below</b> “End Repeat,” press-and-hold the <b>≡</b> grip on its right and <b>drag it up</b> into the loop.</span>
           </div>
         </StepBlock>
 
         <StepBlock n="2" title="Adjust Date  (inside the loop)">
           <SearchBar text="Adjust Date" />
           <MockCard glyph="🗓" glyphBg="#E64637" title={<><Tap>Subtract</Tap> <Var icon="🔁" iconBg="#8E8E93">Repeat Index</Var> <Tap>days</Tap> from <Var icon="📅" iconBg="#3B7BEF">Current Date</Var></>} />
-          <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55, marginBottom:9 }}>
-            Set it to <b>Subtract … days from Current Date</b>. For the <b>amount</b>, don't type a number — tap that slot and pick the
-            <b style={{ color:STEP_BLUE }}> Repeat Index</b> variable. It's 1 on the first loop, 2 on the second… so it steps back day by day
-            (yesterday, 2 days ago, …). Its result is called <b>Adjusted Date</b>.
-          </div>
+          <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55, marginBottom:8 }}>Do these 4 taps, in order:</div>
+          <ol style={{ fontSize:12.5, color:T.sub, lineHeight:1.6, paddingLeft:18, margin:"0 0 10px" }}>
+            <li>It starts as “<b>Add 1 Days to …</b>”. Tap <b>Add</b> → choose <b>Subtract</b>.</li>
+            <li>Tap the empty <b>date</b> slot (the “from ___” part) → pick <b style={{ color:STEP_BLUE }}>Current Date</b>.</li>
+            <li>Tap the number <b>1</b> and delete it. A row of <b style={{ color:T.ink }}>blue chips</b> appears right above the keyboard — that's the <b>Variables bar</b>.</li>
+            <li><b style={{ color:T.ink }}>Swipe that blue bar sideways</b> and tap <b style={{ color:STEP_BLUE }}>Repeat Index</b>. (Don't tap “Select Variable” — it's not in there.)</li>
+          </ol>
+          <div style={{ fontSize:12, color:T.sub, lineHeight:1.5, marginBottom:9 }}>Done right, it reads <b>Subtract Repeat Index Days from Current Date</b>, and its result is called <b>Adjusted Date</b>.</div>
           <div style={{ display:"flex", gap:9, alignItems:"flex-start", background:"rgba(255,80,0,.10)", border:`1px solid ${T.danger}`, borderRadius:10, padding:"10px 12px", fontSize:11.5, color:T.sub, lineHeight:1.55 }}>
             <span style={{ flexShrink:0, fontSize:14 }}>⚠️</span>
-            <span>Can't find <b style={{ color:T.ink }}>Repeat Index</b>? It only shows if this action is <b>inside the loop</b>, and it lives <b style={{ color:T.ink }}>only in the
-              row of blue chips right above the keyboard</b> (the Variables bar) — <b>not</b> in the “Select Variable” screen. Tap the amount slot,
-              then <b style={{ color:T.ink }}>swipe that bar sideways</b> to find Repeat Index.</span>
+            <span><b style={{ color:T.ink }}>No “Repeat Index” in the blue bar?</b> Then this Adjust Date action isn't inside the loop yet — go to step 1 and drag it up between “Repeat 14 Times” and “End Repeat,” then try again.</span>
           </div>
         </StepBlock>
 
