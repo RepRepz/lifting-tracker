@@ -4026,14 +4026,14 @@ function StepsCard({ user }) {
           <div style={{ fontSize:11, fontWeight:700, color:T.sub, textTransform:"uppercase", letterSpacing:.5, marginBottom:6 }}>Your shortcut should end up like this:</div>
           <div style={{ background:T.cardAlt, border:`1px solid ${STEP_BLUE}`, borderRadius:12, padding:"12px 14px", marginBottom:10, fontSize:12.5, fontFamily:"ui-monospace, Menlo, monospace", lineHeight:1.85 }}>
             <div style={{ color:STEP_BLUE, fontWeight:700 }}>🔁 Repeat 14 Times</div>
-            {["Adjust Date","Find Health Samples","Calculate Statistics","Format Date","Get Contents of URL"].map((t,i)=>(
+            {["Adjust Date","Find Health Samples","Calculate Statistics","Text  (Sum)","Format Date","Get Contents of URL"].map((t,i)=>(
               <div key={t} style={{ paddingLeft:16, color:T.ink }}><span style={{ color:T.sub }}>{i+2}.</span> {t}</div>
             ))}
             <div style={{ color:STEP_BLUE, fontWeight:700 }}>End Repeat</div>
           </div>
           <div style={{ display:"flex", gap:9, alignItems:"flex-start", background:"rgba(255,80,0,.10)", border:`1px solid ${T.danger}`, borderRadius:10, padding:"11px 13px", fontSize:12, color:T.sub, lineHeight:1.55 }}>
             <span style={{ flexShrink:0, fontSize:15 }}>⚠️</span>
-            <span><b style={{ color:T.ink }}>Every action must end up ABOVE the “End Repeat” line.</b> When you add steps 2–6 they'll appear <b>below</b> “End Repeat” by default —
+            <span><b style={{ color:T.ink }}>Every action must end up ABOVE the “End Repeat” line.</b> When you add steps 2–7 they'll appear <b>below</b> “End Repeat” by default —
               press-and-hold the <b>≡</b> grip on the right of each one and <b>drag it up above “End Repeat”</b> so it's inside the loop. Nothing should sit below End Repeat.</span>
           </div>
         </StepBlock>
@@ -4103,14 +4103,22 @@ function StepsCard({ user }) {
             <span style={{ flexShrink:0 }}>ℹ️</span>
             <span>Don't see <b style={{ color:T.ink }}>Health Samples</b> when you tap Input? Then step 3 isn't <b style={{ color:T.ink }}>above</b> this one — drag it up so it's <b>Find first, then Calculate</b>.</span>
           </div>
-          <div style={{ display:"flex", gap:9, alignItems:"flex-start", background:"rgba(255,80,0,.10)", border:`1px solid ${T.danger}`, borderRadius:10, padding:"11px 13px", fontSize:12, color:T.sub, lineHeight:1.55 }}>
-            <span style={{ flexShrink:0, fontSize:15 }}>🔒</span>
-            <span><b style={{ color:T.ink }}>Required: add a “Text” step right after.</b> iOS won't let you send raw Health data online, so you'll get <i>“trying to share N Health items.”</i>
-              The fix: add a <b style={{ color:T.ink }}>Text</b> action (inside the loop), put <b>only the Sum</b> variable inside it, and later point <b>p_count</b> at that <b>Text</b> — not Sum. That sends a plain number instead of Health data.</span>
+        </StepBlock>
+
+        <StepBlock n="5" title="Text  (the Health-privacy fix)">
+          <SearchBar text="Text" />
+          <MockCard glyph="📝" glyphBg="#EAB308" title={<>Text: <Var icon="📊" iconBg="#8E8E93">Sum</Var></>} />
+          <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55, marginBottom:9 }}>
+            Add a <b>Text</b> action. Tap the empty text box → insert <b>only the <span style={{ color:STEP_BLUE }}>Sum</span></b> variable (don't type anything).
+            This turns the Health number into plain text so iOS will let you send it. In the next steps, <b>p_count</b> uses this <b>Text</b> — not Sum.
+          </div>
+          <div style={{ display:"flex", gap:9, alignItems:"flex-start", background:"rgba(255,80,0,.10)", border:`1px solid ${T.danger}`, borderRadius:10, padding:"10px 12px", fontSize:11.5, color:T.sub, lineHeight:1.55 }}>
+            <span style={{ flexShrink:0, fontSize:14 }}>🔒</span>
+            <span><b style={{ color:T.ink }}>Why this step:</b> without it you'd get <i>“trying to share N Health items.”</i> Sending plain text instead of raw Health data is the free workaround.</span>
           </div>
         </StepBlock>
 
-        <StepBlock n="5" title="Format Date  (inside the loop)">
+        <StepBlock n="6" title="Format Date  (inside the loop)">
           <SearchBar text="Format Date" />
           <MockCard glyph="🗓" glyphBg="#E64637" title={<>Format <Var icon="🗓" iconBg="#E64637">Adjusted Date</Var></>}
             rows={[
@@ -4130,7 +4138,7 @@ function StepsCard({ user }) {
           <Copy label="Paste into the Format String box" value="yyyy-MM-dd" id="fmt" />
         </StepBlock>
 
-        <StepBlock n="6" title="Get Contents of URL  (inside the loop)">
+        <StepBlock n="7" title="Get Contents of URL  (inside the loop)">
           <SearchBar text="Get Contents of URL" />
           <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55, marginBottom:10 }}>
             Everything here is <b style={{ color:T.ink }}>tap-to-copy right in place</b> — no scrolling around. A blue box = copy it. A grey note = tap that box on your phone and pick a variable.
@@ -4182,8 +4190,8 @@ function StepsCard({ user }) {
                 <span style={{ padding:"5px 12px", borderRadius:6, fontSize:12.5, fontWeight:700, color:T.sub }}>File</span>
               </div>
               <JField type="Text" name="p_token" nameId="k-tok" valueCopy={token} valueId="tok" secret valueNote="🔒 Don’t share this with anyone" />
-              <JField type="Text" name="p_day" nameId="k-day" valuePick={<>Tap this Value box. In the bar <b>above the keyboard</b>, tap <b>Formatted Date</b> (from step 5). When it's set it looks like this: <span style={{ display:"inline-block", verticalAlign:"middle" }}><Var icon="📅" iconBg="#3B7BEF">Formatted Date</Var></span></>} />
-              <JField type="Number" name="p_count" nameId="k-cnt" valuePick={<>Tap this Value box → pick the <b>Text</b> variable (the laundered Sum you made in step 4). <b style={{ color:T.danger }}>Not Sum directly</b> — that triggers the "share Health items" block.</>} />
+              <JField type="Text" name="p_day" nameId="k-day" valuePick={<>Tap this Value box. In the bar <b>above the keyboard</b>, tap <b>Formatted Date</b> (from step 6). When it's set it looks like this: <span style={{ display:"inline-block", verticalAlign:"middle" }}><Var icon="📅" iconBg="#3B7BEF">Formatted Date</Var></span></>} />
+              <JField type="Number" name="p_count" nameId="k-cnt" valuePick={<>Tap this Value box → pick the <b>Text</b> variable (from step 5). When it's set it looks like this: <span style={{ display:"inline-block", verticalAlign:"middle" }}><Var icon="📝" iconBg="#EAB308">Text</Var></span> <b style={{ color:T.danger }}>Not Sum directly</b> — that triggers the "share Health items" block.</>} />
               <div style={{ fontSize:10.5, color:T.sub, marginTop:2, lineHeight:1.5 }}>
                 Only <b style={{ color:T.ink }}>p_token</b>’s value is copied. For <b>p_day</b> and <b>p_count</b> the value is a blue variable you <b>pick</b>, not type — they should end up looking exactly like the chips above.
               </div>
@@ -4191,7 +4199,7 @@ function StepsCard({ user }) {
           </div>
         </StepBlock>
 
-        <StepBlock n="7" title="Name it & save">
+        <StepBlock n="8" title="Name it & save">
           <div style={{ background:"rgba(0,200,5,.08)", border:`1px solid ${T.green}`, borderRadius:12, padding:"13px 14px" }}>
             <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55, marginBottom:9 }}>
               At the top of the shortcut, tap its <b style={{ color:T.ink }}>name</b> (or the <b>⌄</b> next to it → <b>Rename</b>), erase what's there,
