@@ -4017,9 +4017,15 @@ function StepsCard({ user }) {
           <SearchBar text="Adjust Date" />
           <MockCard glyph="🗓" glyphBg="#E64637" title={<><Tap>Subtract</Tap> <Var icon="🔁" iconBg="#8E8E93">Repeat Index</Var> <Tap>days</Tap> from <Var icon="📅" iconBg="#3B7BEF">Current Date</Var></>} />
           <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55, marginBottom:9 }}>
-            Set it to <b>Subtract … days from Current Date</b>. For the <b>amount</b>, don't type a number — tap it and pick the
+            Set it to <b>Subtract … days from Current Date</b>. For the <b>amount</b>, don't type a number — tap that slot and pick the
             <b style={{ color:STEP_BLUE }}> Repeat Index</b> variable. It's 1 on the first loop, 2 on the second… so it steps back day by day
             (yesterday, 2 days ago, …). Its result is called <b>Adjusted Date</b>.
+          </div>
+          <div style={{ display:"flex", gap:9, alignItems:"flex-start", background:"rgba(255,80,0,.10)", border:`1px solid ${T.danger}`, borderRadius:10, padding:"10px 12px", fontSize:11.5, color:T.sub, lineHeight:1.55 }}>
+            <span style={{ flexShrink:0, fontSize:14 }}>⚠️</span>
+            <span>Can't find <b style={{ color:T.ink }}>Repeat Index</b>? It only shows if this action is <b>inside the loop</b>, and it lives <b style={{ color:T.ink }}>only in the
+              row of blue chips right above the keyboard</b> (the Variables bar) — <b>not</b> in the “Select Variable” screen. Tap the amount slot,
+              then <b style={{ color:T.ink }}>swipe that bar sideways</b> to find Repeat Index.</span>
           </div>
         </StepBlock>
 
