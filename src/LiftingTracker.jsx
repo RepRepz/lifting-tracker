@@ -532,6 +532,15 @@ export default function LiftingTracker({ user }) {
         .vbar { transform-origin:bottom; animation:grow .5s ease-out both; }
         .chip { animation:pop .25s ease-out both; }
         .chip { display:inline-block; padding:3px 11px; border-radius:99px; font-size:12px; font-weight:600; border:1px solid color-mix(in srgb, currentColor 22%, transparent); }
+        /* premium primary CTA — gradient accent with a glow. Use on the main action of a tab. */
+        .btn-primary { background:linear-gradient(180deg, color-mix(in srgb, var(--accent) 88%, #fff 12%), var(--accent) 92%); color:#05140b; font-weight:800; border-radius:14px; box-shadow:0 10px 24px -10px rgba(var(--accent-rgb),.65), 0 1px 0 rgba(255,255,255,.28) inset; }
+        .btn-primary:disabled { filter:saturate(.35) brightness(.75); box-shadow:none; cursor:default; }
+        /* segmented pill control — a row of options where one is active */
+        .seg { display:inline-flex; gap:2px; background:var(--input); border:1px solid var(--line); border-radius:99px; padding:3px; }
+        .seg-btn { padding:6px 13px; font-size:12.5px; font-weight:700; border-radius:99px; border:none; background:transparent; color:var(--sub); min-height:0; transition:background .18s ease, color .18s ease; }
+        .seg-btn.on { background:linear-gradient(180deg, rgba(var(--accent-rgb),.22), rgba(var(--accent-rgb),.12)); color:var(--accent); box-shadow:0 0 0 1px rgba(var(--accent-rgb),.25) inset; }
+        /* subtle section eyebrow */
+        .eyebrow { font-size:11px; font-weight:800; letter-spacing:1.2px; text-transform:uppercase; color:var(--sub); }
         @keyframes fadeSwap { from { opacity:0; transform:translateY(8px) scale(.994); } to { opacity:1; transform:none; } }
         @keyframes sheetUp { from { transform:translateY(100%); } to { transform:none; } }
         .tabview { animation:fadeSwap .28s cubic-bezier(.22,1,.36,1) both; }
@@ -1229,9 +1238,9 @@ function LogTab({ data, exMap, setData, routinesOn }) {
         <div style={{ background:T.cream, border:`1px solid ${T.creamLine}`, borderRadius:10, padding:"10px 12px", marginBottom:10, fontSize:13.5 }}>
           <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom: (plateMode==="build" || weight>0) ? 9 : 0, flexWrap:"wrap" }}>
             <span style={{fontWeight:700}}>🏋️ Plates</span>
-            <div style={{ display:"flex", background:T.input, borderRadius:8, padding:2 }}>
-              <button onClick={()=>setPlateMode("weight")} style={{ padding:"4px 10px", fontSize:12, borderRadius:6, background: plateMode==="weight"?T.green:"none", color: plateMode==="weight"?"#000":T.sub, fontWeight:700 }}>Show for weight</button>
-              <button onClick={()=>setPlateMode("build")} style={{ padding:"4px 10px", fontSize:12, borderRadius:6, background: plateMode==="build"?T.green:"none", color: plateMode==="build"?"#000":T.sub, fontWeight:700 }}>Tap what's loaded</button>
+            <div className="seg">
+              <button className={"seg-btn"+(plateMode==="weight"?" on":"")} onClick={()=>setPlateMode("weight")} style={{fontSize:12, padding:"5px 10px"}}>Show for weight</button>
+              <button className={"seg-btn"+(plateMode==="build"?" on":"")} onClick={()=>setPlateMode("build")} style={{fontSize:12, padding:"5px 10px"}}>Tap what's loaded</button>
             </div>
             <select value={bar} onChange={e=>{ const nb=parseFloat(e.target.value); setBar(nb); if(plateMode==="build") setWeight(built.length? String(nb + 2*sumSide) : ""); }}
               style={{width:"auto", marginLeft:"auto", padding:"4px 26px 4px 8px", fontSize:12.5, minHeight:0}}>
@@ -1290,8 +1299,8 @@ function LogTab({ data, exMap, setData, routinesOn }) {
         </label>
         <label style={lbl}>Notes<input value={notes} onChange={e=>setNotes(e.target.value)} placeholder="optional" /></label>
       </div>
-      <button onClick={addSet} disabled={!exName || !reps || (!isBW && !weight)}
-        style={{ width:"100%", padding:"12px", background:T.green, color:"#000", fontWeight:700, fontSize:16, opacity:(!exName||!reps||(!isBW&&!weight))?0.45:1 }}>
+      <button onClick={addSet} disabled={!exName || !reps || (!isBW && !weight)} className="btn-primary"
+        style={{ width:"100%", padding:"14px", fontSize:16 }}>
         Save set {setNum}
       </button>
 
@@ -2555,7 +2564,7 @@ function BodyTab({ data, setData, hunit }) {
           placeholder="How'd you feel? e.g. felt full, big water day, slept great, sore…"
           style={noteInput} />
       </label>
-      <button onClick={add} disabled={!weight} style={{width:"100%", padding:"12px", background:T.green, color:"#000", fontWeight:700, fontSize:16, opacity:weight?1:0.45}}>Save weigh-in</button>
+      <button onClick={add} disabled={!weight} className="btn-primary" style={{width:"100%", padding:"14px", fontSize:16}}>Save weigh-in</button>
     </div>
 
     <div className="card" style={{display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:8, textAlign:"center"}}>
@@ -3286,7 +3295,7 @@ function CardioTab({ data, setData, latestBW, user, stepsOn }) {
         </div>
       )}
       {estCal!=null && <div style={{background:T.cream, borderRadius:10, padding:"8px 12px", marginBottom:10, fontSize:14}}>Estimated: <b>{estCal} cal</b>{isSteps && steps && <span style={{color:T.sub}}> · about {stepsMiles(parseInt(steps)||0)} mi</span>}</div>}
-      <button onClick={add} disabled={!canSave} style={{width:"100%", padding:"12px", background:T.green, color:"#000", fontWeight:700, fontSize:16, opacity:canSave?1:0.45}}>Save session</button>
+      <button onClick={add} disabled={!canSave} className="btn-primary" style={{width:"100%", padding:"14px", fontSize:16}}>Save session</button>
     </div>
 
     {stepStats.any && (
@@ -3519,8 +3528,8 @@ function ExercisesTab({ data, setData }) {
           setData(d=>({...d, exercises:[...d.exercises, {name:nn, muscle:muscles[0], muscles, muscles2, ...fromEquip(equip)}]}));
           setName(""); setMuscles([]); setMuscles2([]); setAddMsg(null);
         }}
-        disabled={!name.trim()||!muscles.length}
-        style={{background:T.green, color:"#000", padding:"10px 20px", fontWeight:700, marginTop:10, marginBottom:14, opacity:(!name.trim()||!muscles.length)?0.45:1}}>Add exercise</button>
+        disabled={!name.trim()||!muscles.length} className="btn-primary"
+        style={{padding:"11px 22px", marginTop:10, marginBottom:14}}>Add exercise</button>
       <input value={libQ} onChange={e=>setLibQ(e.target.value)} placeholder="🔍 Search your library…"
         autoCapitalize="none" autoCorrect="off" spellCheck={false} style={{marginBottom:8}} />
       <div style={{display:"flex", gap:6, overflowX:"auto", paddingBottom:6, WebkitOverflowScrolling:"touch"}}>
