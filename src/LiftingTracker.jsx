@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, lazy, Suspense, Fragment, createContext, useContext } from "react";
-import { supabase, loadUserState, saveUserState, listMyGroups, listMembers, createGroup, joinGroup, leaveGroup, listReactions, addReaction, removeReaction, setSecurityQuestion, getSecurityQuestion, lastActiveFor, setGroupEmoji, resetInviteCode, listCloudBackups, getCloudBackup, getStepToken, stepsFor, lastStepSync, createDuel, listDuels, deleteDuel, listProUserIds } from "./lib/storage.js";
+import { supabase, loadUserState, saveUserState, listMyGroups, listMembers, createGroup, joinGroup, leaveGroup, listReactions, addReaction, removeReaction, setSecurityQuestion, getSecurityQuestion, lastActiveFor, setGroupEmoji, resetInviteCode, listCloudBackups, getCloudBackup, getStepToken, stepsFor, lastStepSync, createDuel, listDuels, deleteDuel, acceptDuel, declineDuel, listProUserIds } from "./lib/storage.js";
 import { SECURITY_QUESTIONS } from "./AuthScreen.jsx";
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
@@ -2758,11 +2758,13 @@ function DuelsCard({ user, all, nameOf, myId, myName }) {
     if (!oppId) return;
     const n = Math.max(1, Math.min(365, parseInt(days)||7));
     setBusy(true); setErr("");
-    try { await createDuel(oppId, myName, nameOf[oppId]||"?", today, dAdd(today, n-1)); setOpen(false); setOppId(""); setDays("7"); await load(); }
+    try { await createDuel(oppId, myName, nameOf[oppId]||"?", today, dAdd(today, n-1), n); setOpen(false); setOppId(""); setDays("7"); await load(); }
     catch(e){ setErr(String(e?.message||e)); }
     finally { setBusy(false); }
   };
-  const remove = async (id) => { try { await deleteDuel(id); await load(); } catch {} };
+  const remove  = async (id) => { try { await deleteDuel(id); await load(); } catch {} };
+  const accept  = async (d)  => { const n = Math.max(1, Math.min(365, d.days||7)); try { await acceptDuel(d.id, today, dAdd(today, n-1)); await load(); } catch(e){ setErr(String(e?.message||e)); } };
+  const decline = async (id) => { try { await declineDuel(id); await load(); } catch {} };
 
   return (
     <div className="card">
@@ -2785,7 +2787,7 @@ function DuelsCard({ user, all, nameOf, myId, myName }) {
           {!opps.length && <div style={{fontSize:12, color:T.sub, marginBottom:8}}>Join a group with friends to duel them.</div>}
           {err && <div style={{color:T.danger, fontSize:12.5, marginBottom:8}}>{err}</div>}
           <div style={{display:"flex", gap:8}}>
-            <button onClick={create} disabled={!oppId||busy} style={{flex:1, background:T.green, color:"#000", fontWeight:800, padding:"9px", opacity:(!oppId||busy)?0.5:1}}>{busy?"Starting…":"Start duel ⚔️"}</button>
+            <button onClick={create} disabled={!oppId||busy} style={{flex:1, background:T.green, color:"#000", fontWeight:800, padding:"9px", opacity:(!oppId||busy)?0.5:1}}>{busy?"Sending…":"Send challenge ⚔️"}</button>
             <button onClick={()=>setOpen(false)} style={{background:T.card, color:T.sub, padding:"9px 14px"}}>Cancel</button>
           </div>
         </div>
@@ -2797,6 +2799,41 @@ function DuelsCard({ user, all, nameOf, myId, myName }) {
         const meA = d.a_id===myId;
         const oId = meA ? d.b_id : d.a_id;
         const oName = meA ? d.b_name : d.a_name;
+
+        // ---- pending: waiting on the opponent to accept ----
+        if (d.status === "pending") {
+          const iOwe = !meA; // I'm the one who needs to accept
+          return (
+            <div key={d.id} style={{borderTop:`1px solid ${T.creamLine}`, padding:"12px 0"}}>
+              <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", gap:8, marginBottom: iOwe?9:0}}>
+                <span style={{fontSize:13.5, fontWeight:800, color:T.ink}}>
+                  {iOwe ? <>⚔️ {oName} challenged you</> : <>⏳ Waiting for {oName}…</>}
+                </span>
+                <span style={{fontSize:11.5, fontWeight:700, color:T.sub, background:T.input, padding:"3px 9px", borderRadius:99}}>{d.days||7}-day duel</span>
+              </div>
+              {iOwe ? (
+                <div style={{display:"flex", gap:8}}>
+                  <button onClick={()=>accept(d)} style={{flex:1, background:T.green, color:"#000", fontWeight:800, fontSize:13, padding:"9px", borderRadius:10}}>Accept ⚔️</button>
+                  <button onClick={()=>decline(d.id)} style={{background:T.card, color:T.sub, fontWeight:700, fontSize:13, padding:"9px 16px", borderRadius:10}}>Decline</button>
+                </div>
+              ) : (
+                <div style={{display:"flex", justifyContent:"flex-end", marginTop:4}}><ConfirmX label="Cancel" onConfirm={()=>remove(d.id)} /></div>
+              )}
+            </div>
+          );
+        }
+
+        // ---- declined ----
+        if (d.status === "declined") {
+          return (
+            <div key={d.id} style={{borderTop:`1px solid ${T.creamLine}`, padding:"11px 0", display:"flex", justifyContent:"space-between", alignItems:"center"}}>
+              <span style={{fontSize:13, color:T.sub}}>{meA ? `${oName} declined the duel` : `You declined ${oName}'s duel`}</span>
+              <ConfirmX label="Remove" onConfirm={()=>remove(d.id)} />
+            </div>
+          );
+        }
+
+        // ---- active / finished: live standings ----
         const mySum = sumRange(all[myId] || all[user.id], d.start_day, d.end_day);
         const oppSum = sumRange(all[oId], d.start_day, d.end_day);
         const mx = Math.max(mySum, oppSum, 1);
@@ -4813,7 +4850,7 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
     if (!members?.length) { setMemberSteps({}); return; }
     let alive = true;
     (async () => {
-      try { const s = await stepsFor(members.map(m=>m.user_id), dAdd(todayStr(), -370)); if (alive) setMemberSteps(s); }
+      try { const s = await stepsFor(members.map(m=>m.user_id), dAdd(todayStr(), -5*365 - 40)); if (alive) setMemberSteps(s); }
       catch { if (alive) setMemberSteps({}); }
     })();
     return () => { alive = false; };
@@ -4832,6 +4869,7 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
     let w=0, l=0, t=0;
     const sumRange = (map,s,e)=>{ let x=0; const m=map||{}; for (const d in m) if (d>=s && d<=e) x+=m[d]; return x; };
     for (const d of duels) {
+      if (d.status !== "active") continue;          // pending/declined don't count
       if (d.a_id!==uid && d.b_id!==uid) continue;
       if (today <= d.end_day) continue; // only finished duels count toward the record
       const mine = sumRange(memberSteps[uid], d.start_day, d.end_day);
@@ -5067,7 +5105,8 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
     else if (stepRange === "1M")  { since = dAdd(today, -29);          label = "Past month"; sub = "last 30 days"; }
     else if (stepRange === "6M")  { since = dAdd(today, -181);         label = "6 months";   sub = "last 6 months"; }
     else if (stepRange === "YTD") { since = today.slice(0,4)+"-01-01"; label = "This year";  sub = "since Jan 1"; }
-    else                          { since = dAdd(today, -364);         label = "Past year";  sub = "last 12 months"; }
+    else if (stepRange === "1Y")  { since = dAdd(today, -364);         label = "Past year";  sub = "last 12 months"; }
+    else                          { since = dAdd(today, -5*365);       label = "Past 5 years"; sub = "last 5 years"; }
     const rows = members.map(m => {
       const mp = memberSteps[m.user_id] || {};
       let total = 0, days = 0;
@@ -5387,15 +5426,12 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
         </div>
 
         <div className="card">
-          <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", gap:8, flexWrap:"wrap", marginBottom:8}}>
-            <div>
-              <div className="h" style={{fontSize:17, color:T.tealDk}}>👣 Group steps</div>
-              <div style={{fontSize:11.5, color:T.sub}}>{stepBoard.sub} · small # = steps/day · tap anyone for fun stats.</div>
-            </div>
-            <div style={{display:"flex", gap:3, background:T.input, borderRadius:99, padding:3}}>
-              {["W","1M","6M","YTD","1Y"].map(rg=>(
+          <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", gap:8, marginBottom:10}}>
+            <div className="h" style={{fontSize:17, color:T.tealDk}}>👣 Group steps</div>
+            <div style={{display:"flex", gap:2, background:T.input, borderRadius:99, padding:3, flexShrink:0}}>
+              {["W","1M","6M","YTD","1Y","5Y"].map(rg=>(
                 <button key={rg} onClick={()=>setStepRange(rg)} style={{
-                  border:"none", cursor:"pointer", fontSize:11.5, fontWeight:700, padding:"4px 9px", borderRadius:99,
+                  border:"none", cursor:"pointer", fontSize:11, fontWeight:700, padding:"4px 7px", borderRadius:99,
                   background: stepRange===rg ? T.green : "transparent", color: stepRange===rg ? "#000" : T.sub }}>{rg}</button>
               ))}
             </div>

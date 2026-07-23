@@ -86,12 +86,27 @@ export async function listProUserIds() {
 
 /* ---------- step duels (head-to-head) ---------- */
 
-/** Start a duel vs another user (you are the challenger). Instant — no accept needed. */
-export async function createDuel(bId, aName, bName, startDay, endDay) {
+/** Send a duel challenge to another user. Stays "pending" until they accept.
+    start/end are a placeholder window; the real clock starts when they accept. */
+export async function createDuel(bId, aName, bName, startDay, endDay, days) {
   const { data: { user } } = await supabase.auth.getUser();
   const { error } = await supabase.from("duels").insert({
-    a_id: user.id, b_id: bId, a_name: aName, b_name: bName, start_day: startDay, end_day: endDay,
+    a_id: user.id, b_id: bId, a_name: aName, b_name: bName,
+    start_day: startDay, end_day: endDay, days, status: "pending",
   });
+  if (error) throw error;
+}
+
+/** Opponent accepts a pending duel — the window starts today for `days` days. */
+export async function acceptDuel(id, startDay, endDay) {
+  const { error } = await supabase.from("duels")
+    .update({ status: "active", start_day: startDay, end_day: endDay }).eq("id", id);
+  if (error) throw error;
+}
+
+/** Opponent declines a pending duel. */
+export async function declineDuel(id) {
+  const { error } = await supabase.from("duels").update({ status: "declined" }).eq("id", id);
   if (error) throw error;
 }
 
