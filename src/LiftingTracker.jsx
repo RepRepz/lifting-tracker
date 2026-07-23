@@ -4898,12 +4898,23 @@ const GSHORT = { push: "Push", pull: "Pull", legs: "Legs" };
    picks one in the Coach card; until they do, the coach won't assume a rotation. */
 const SPLITS = {
   ppl:        { label: "Push / Pull / Legs" },
+  arnold:     { label: "Arnold (Chest+Back · Shoulders+Arms · Legs)" },
   upperlower: { label: "Upper / Lower" },
+  phul:       { label: "PHUL / Power-Hypertrophy (Upper/Lower)" },
   fullbody:   { label: "Full body" },
   bro:        { label: "Body-part (bro) split" },
   other:      { label: "Other / no fixed split" },
 };
 const maxDate = (...ds) => ds.filter(Boolean).sort().reverse()[0] || null;
+/* Arnold split groups antagonists: Chest & Back, then Shoulders & Arms, then Legs. */
+const ARNOLD_DAY = (m) => {
+  const s = (m || "").toLowerCase();
+  if (/chest|pec|back|lat|rhomboid/.test(s)) return "cb";
+  if (/shoulder|delt|bicep|tricep|trap|forearm|arm/.test(s)) return "sa";
+  if (/quad|hamstring|glute|calf|leg|adductor/.test(s)) return "legs";
+  return "other";
+};
+const ARNOLD_NAME = { cb: "chest & back", sa: "shoulders & arms", legs: "legs" };
 
 function coachTips(data, exMap, units) {
   const log = Array.isArray(data.log) ? data.log : [];
@@ -4945,7 +4956,16 @@ function coachTips(data, exMap, units) {
     if (sg && dayGap(today, sd) >= 3)
       tips.push({ key: `train-${sg}-${sd}`, icon: "📅", cat: "Train today",
         text: `It's been ${dayGap(today, sd)} days since you trained ${GNAME[sg]} — a solid pick for today.` });
-  } else if (split === "upperlower") {
+  } else if (split === "arnold") {
+    // Chest & Back / Shoulders & Arms / Legs — the day you've rested longest
+    const lastAr = { cb: null, sa: null, legs: null };
+    for (const e of log) { const g = ARNOLD_DAY(exMap[e.exercise]?.muscle); if (g in lastAr && (!lastAr[g] || e.date > lastAr[g])) lastAr[g] = e.date; }
+    let sg = null, sd = null;
+    for (const g of ["cb", "sa", "legs"]) { const d = lastAr[g]; if (!d) continue; if (!sd || d < sd) { sd = d; sg = g; } }
+    if (sg && dayGap(today, sd) >= 3)
+      tips.push({ key: `train-ar-${sg}-${sd}`, icon: "📅", cat: "Train today",
+        text: `It's been ${dayGap(today, sd)} days since your ${ARNOLD_NAME[sg]} day — a solid pick for today.` });
+  } else if (split === "upperlower" || split === "phul") {
     const lastUpper = maxDate(lastByGroup.push, lastByGroup.pull);
     const lastLower = lastByGroup.legs;
     // suggest whichever half you've rested longer
