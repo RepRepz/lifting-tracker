@@ -2057,26 +2057,12 @@ function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled
       const bestMode = isBW && bwMode[p]==="best";
       return (
       <div className="card" key={p}>
-        <div style={{display:"flex", gap:8, alignItems:"center", marginBottom:6, flexWrap:"wrap"}}>
+        <div style={{display:"flex", gap:8, alignItems:"center", marginBottom: isBW?8:6}}>
           <select value={p} onChange={e=>changePick(i, e.target.value)}
-            style={{flex:"1 1 120px", minWidth:0, background:T.cream, fontWeight:600}}>
+            style={{flex:1, minWidth:0, background:T.cream, fontWeight:600}}>
             {!chartOpts.includes(p) && <option key={p}>{p}</option>}
             {chartOpts.map(x=><option key={x}>{x}</option>)}
           </select>
-          {isBW && (
-            <div style={{display:"inline-flex", flexShrink:0, background:T.input, border:`1px solid ${T.line}`, borderRadius:99, padding:2}}
-              title="Total reps per day, or your best single set">
-              {[["total","Total"],["best","Best"]].map(([m,lbl])=>{
-                const on = (bwMode[p]||"total")===m;
-                return (
-                  <button key={m} onClick={()=>setBwMode(s=>({...s,[p]:m}))} style={{
-                    minHeight:32, padding:"4px 12px", fontSize:12, fontWeight:700, borderRadius:99, border:"none", cursor:"pointer",
-                    background: on ? T.green : "transparent", color: on ? "#fff" : T.sub, transition:"background .15s, color .15s",
-                  }}>{lbl}</button>
-                );
-              })}
-            </div>
-          )}
           {own && (
           <button onClick={()=>togglePin(i)} title={pinned ? "Unpin — go back to most recent" : "Pin this chart"} style={{
             flexShrink:0, minHeight:38, padding:"5px 12px", fontSize:12.5, fontWeight:700, borderRadius:99,
@@ -2088,6 +2074,19 @@ function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled
           </button>
           )}
         </div>
+        {/* Total/Best on its own row so it never squeezes the exercise name */}
+        {isBW && (
+          <div className="seg" style={{display:"inline-flex", marginBottom:8}}
+            title="Total reps per day, or your best single set">
+            {[["total","Total"],["best","Best"]].map(([m,lbl])=>{
+              const on = (bwMode[p]||"total")===m;
+              return (
+                <button key={m} onClick={()=>setBwMode(s=>({...s,[p]:m}))} className={"seg-btn"+(on?" on":"")}
+                  style={{padding:"6px 18px", fontSize:12.5}}>{lbl}</button>
+              );
+            })}
+          </div>
+        )}
         {lastDate && (
           <div style={{fontSize:12.5, color:T.ink, marginBottom:2}}>
             Last workout {fmtDate(lastDate)}: <b style={{color:T.green}}>{daySets.length} set{daySets.length===1?"":"s"}</b> · <b style={{color:T.green}}>{dayReps} reps</b>
