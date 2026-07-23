@@ -1837,6 +1837,21 @@ function YearRecap({ data }) {
 
 /* ================= DASHBOARD ================= */
 const DASH_WIDGETS = ["charts","target","streak","calendar","muscle","recap"];
+/* Hero stat tile for the dashboard — big gradient number, icon, label. `hero`
+   gives the primary tile an accent-tinted glow so the eye lands on it first. */
+function StatTile({ icon, value, label, hero }) {
+  return (
+    <div className="card" style={{ margin:0, padding:"16px 10px", textAlign:"center",
+      background: hero ? "linear-gradient(180deg, rgba(var(--accent-rgb),.16), color-mix(in srgb, var(--card) 90%, #fff 5%) 72%)" : undefined,
+      borderColor: hero ? "rgba(var(--accent-rgb),.38)" : undefined,
+      boxShadow: hero ? "0 10px 30px -14px rgba(var(--accent-rgb),.6), 0 1px 0 rgba(255,255,255,.06) inset" : undefined }}>
+      <div style={{ fontSize:22, marginBottom:6, filter: hero ? "drop-shadow(0 2px 9px rgba(var(--accent-rgb),.55))" : "none" }}>{icon}</div>
+      <div style={{ fontSize:30, fontWeight:900, lineHeight:1, color: hero ? T.green : T.ink, letterSpacing:"-.6px" }}>{value}</div>
+      <div style={{ fontSize:11, color:T.sub, marginTop:6, fontWeight:600, lineHeight:1.25 }}>{label}</div>
+    </div>
+  );
+}
+
 function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled, stepsEnabled, nutritionOn, openSettings, setTab }) {
   const units = useUnit();
   // range sticks forever (remembered on this device)
@@ -1984,13 +1999,18 @@ function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled
   widgets.charts = (<>
     <div className="card" style={{display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 16px", gap:8, flexWrap:"wrap"}}>
       <div className="h" style={{fontSize:16, color:T.tealDk}}>📈 Progress</div>
-      <div style={{display:"flex", gap:2}}>
-        {Object.keys(RANGE_DAYS).map(r=>(
+      <div style={{display:"inline-flex", gap:2, background:T.input, border:`1px solid ${T.line}`, borderRadius:99, padding:3}}>
+        {Object.keys(RANGE_DAYS).map(r=>{
+          const on = range===r;
+          return (
           <button key={r} onClick={()=>setRange(r)} style={{
-            background:"none", padding:"5px 10px", fontSize:12, fontWeight:700, letterSpacing:".5px", borderRadius:0,
-            color: range===r?T.green:T.sub, borderBottom: range===r?`2px solid ${T.green}`:"2px solid transparent",
+            padding:"5px 11px", fontSize:11.5, fontWeight:800, letterSpacing:".4px", borderRadius:99, border:"none", minHeight:0,
+            background: on ? "linear-gradient(180deg, rgba(var(--accent-rgb),.22), rgba(var(--accent-rgb),.12))" : "transparent",
+            color: on ? T.green : T.sub, boxShadow: on ? "0 0 0 1px rgba(var(--accent-rgb),.25) inset" : "none",
+            transition:"background .18s ease, color .18s ease",
           }}>{r.toUpperCase()}</button>
-        ))}
+          );
+        })}
       </div>
     </div>
 
@@ -2083,10 +2103,10 @@ function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled
   );
 
   widgets.streak = (
-    <div className="card" style={{display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, textAlign:"center"}}>
-      <div><div style={kpiN}>{streak.cur}</div><div style={kpiL}>Current streak (weeks)</div></div>
-      <div><div style={kpiN}>{streak.best}</div><div style={kpiL}>Best streak (weeks)</div></div>
-      <div><div style={kpiN}>{cardioMin}</div><div style={kpiL}>Cardio this week (min)</div></div>
+    <div style={{display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginBottom:14}}>
+      <StatTile hero icon="🔥" value={streak.cur} label="Week streak" />
+      <StatTile icon="🏆" value={streak.best} label="Best ever (wks)" />
+      <StatTile icon="🏃" value={cardioMin} label="Cardio min · wk" />
     </div>
   );
 
