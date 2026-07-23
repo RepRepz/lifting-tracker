@@ -4894,6 +4894,17 @@ const dayGap = (a, b) => Math.round((new Date(a + "T00:00") - new Date(b + "T00:
 const GNAME = { push: "push (chest/shoulders/triceps)", pull: "pull (back/biceps)", legs: "legs" };
 const GSHORT = { push: "Push", pull: "Pull", legs: "Legs" };
 
+/* Training splits the coach can tailor its "what to train today" advice to. The user
+   picks one in the Coach card; until they do, the coach won't assume a rotation. */
+const SPLITS = {
+  ppl:        { label: "Push / Pull / Legs" },
+  upperlower: { label: "Upper / Lower" },
+  fullbody:   { label: "Full body" },
+  bro:        { label: "Body-part (bro) split" },
+  other:      { label: "Other / no fixed split" },
+};
+const maxDate = (...ds) => ds.filter(Boolean).sort().reverse()[0] || null;
+
 function coachTips(data, exMap, units) {
   const log = Array.isArray(data.log) ? data.log : [];
   const cardio = Array.isArray(data.cardio) ? data.cardio : [];
@@ -4921,14 +4932,47 @@ function coachTips(data, exMap, units) {
     tips.push({ key: `prog-${p.ex}-${p.cur}-${p.reps}`, icon: "📈", cat: "Progression",
       text: `You hit ${dispW(p.cur, units)}${uLabel(units)}×${p.curReps} on ${p.ex} twice — try ${dispW(p.next, units)}${uLabel(units)}×${p.reps} next session.` });
 
-  // ---- WHAT TO TRAIN TODAY: the push/pull/legs group you've left longest ----
+  // ---- WHAT TO TRAIN TODAY: tailored to the user's chosen split ----
+  // We never assume a rotation until they've told us their split (data.profile.split).
+  const split = data.profile?.split || null;
   const lastByGroup = { push: null, pull: null, legs: null };
   for (const e of log) { const g = MUSCLE_GROUP(exMap[e.exercise]?.muscle); if (g in lastByGroup && (!lastByGroup[g] || e.date > lastByGroup[g])) lastByGroup[g] = e.date; }
-  let staleGroup = null, staleDate = null;
-  for (const g of ["push", "pull", "legs"]) { const d = lastByGroup[g]; if (!d) continue; if (!staleDate || d < staleDate) { staleDate = d; staleGroup = g; } }
-  if (staleGroup && dayGap(today, staleDate) >= 3)
-    tips.push({ key: `train-${staleGroup}-${staleDate}`, icon: "📅", cat: "Train today",
-      text: `It's been ${dayGap(today, staleDate)} days since you trained ${GNAME[staleGroup]} — a solid pick for today.` });
+
+  if (split === "ppl") {
+    // the push/pull/legs group left longest
+    let sg = null, sd = null;
+    for (const g of ["push", "pull", "legs"]) { const d = lastByGroup[g]; if (!d) continue; if (!sd || d < sd) { sd = d; sg = g; } }
+    if (sg && dayGap(today, sd) >= 3)
+      tips.push({ key: `train-${sg}-${sd}`, icon: "📅", cat: "Train today",
+        text: `It's been ${dayGap(today, sd)} days since you trained ${GNAME[sg]} — a solid pick for today.` });
+  } else if (split === "upperlower") {
+    const lastUpper = maxDate(lastByGroup.push, lastByGroup.pull);
+    const lastLower = lastByGroup.legs;
+    // suggest whichever half you've rested longer
+    let region = null, rDate = null;
+    if (lastUpper && lastLower) { if (lastUpper <= lastLower) { region = "upper"; rDate = lastUpper; } else { region = "lower"; rDate = lastLower; } }
+    else if (lastUpper && !lastLower) { region = "lower"; rDate = lastUpper; }
+    else if (lastLower && !lastUpper) { region = "upper"; rDate = lastLower; }
+    if (region && dayGap(today, rDate) >= 2)
+      tips.push({ key: `train-ul-${region}-${rDate}`, icon: "📅", cat: "Train today",
+        text: `It's been ${dayGap(today, rDate)} days since your last ${region === "upper" ? "upper-body (chest/back/shoulders/arms)" : "lower-body (legs)"} session — good pick for today.` });
+  } else if (split === "fullbody") {
+    const lastAny = maxDate(...log.map(e => e.date));
+    const gap = lastAny ? dayGap(today, lastAny) : 0;
+    if (lastAny && gap >= 2)
+      tips.push({ key: `train-fb-${lastAny}`, icon: "📅", cat: "Train today",
+        text: `You last lifted ${gap} days ago — you're recovered. Hit a full-body session today (a push, a pull, and a leg movement).` });
+  } else if (split === "bro") {
+    // longest-rested individual muscle among the ones you actually train
+    const lastMuscle = {};
+    for (const e of log) { const m = exMap[e.exercise]?.muscle; if (!m) continue; if (!lastMuscle[m] || e.date > lastMuscle[m]) lastMuscle[m] = e.date; }
+    let bm = null, bd = null;
+    for (const [m, d] of Object.entries(lastMuscle)) { if (!bd || d < bd) { bd = d; bm = m; } }
+    if (bm && dayGap(today, bd) >= 4)
+      tips.push({ key: `train-bro-${bm}-${bd}`, icon: "📅", cat: "Train today",
+        text: `It's been ${dayGap(today, bd)} days since you hit ${bm.toLowerCase()} — a good muscle to target today.` });
+  }
+  // split === "other" or unset: no rotation nudge (the card asks you to pick a split)
 
   // ---- PR PROJECTION / ETA: a big lift trending up → project the next milestone ----
   for (const ex of BIG_LIFTS) {
@@ -5011,6 +5055,8 @@ function CoachCard({ data, exMap, user, setData }) {
   const [groupTip, setGroupTip] = useState(null);
   const dismissed = data.profile?.coachDismissed || [];
   const dismiss = (key) => setData(d => ({ ...d, profile: { ...(d.profile || {}), coachDismissed: [...(d.profile?.coachDismissed || []), key] } }));
+  const split = data.profile?.split || "";
+  const setSplit = (v) => setData(d => ({ ...d, profile: { ...(d.profile || {}), split: v } }));
 
   useEffect(() => {
     let alive = true;
@@ -5048,7 +5094,24 @@ function CoachCard({ data, exMap, user, setData }) {
         <div className="h" style={{ fontSize: 18, color: T.ink }}>💪 Lab's AI Coach</div>
         <span style={{ fontSize: 10, fontWeight: 800, color: T.green, background: "rgba(var(--accent-rgb),.12)", padding: "2px 8px", borderRadius: 99, letterSpacing: .4 }}>SMART</span>
       </div>
-      <div style={{ fontSize: 12, color: T.sub, marginBottom: all.length ? 10 : 0 }}>Personalized from your logs · updates every time you train.</div>
+      <div style={{ fontSize: 12, color: T.sub, marginBottom: 11 }}>Personalized from your logs · updates every time you train.</div>
+
+      {/* split selector — the coach tailors "what to train today" to this */}
+      <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap", marginBottom: all.length ? 12 : 0,
+        padding: "10px 12px", background: split ? T.input : "rgba(var(--accent-rgb),.08)",
+        border: `1px solid ${split ? T.line : "rgba(var(--accent-rgb),.35)"}`, borderRadius: 13 }}>
+        <span style={{ fontSize: 12.5, color: split ? T.sub : T.green, fontWeight: 800, whiteSpace: "nowrap" }}>🗂 {split ? "Your split" : "Pick your split →"}</span>
+        <select value={split} onChange={e => setSplit(e.target.value)} style={{ flex: 1, minWidth: 150, width: "auto", minHeight: 40, fontWeight: 700 }}>
+          <option value="">— choose one —</option>
+          {Object.entries(SPLITS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+        </select>
+      </div>
+      {!split && (
+        <div style={{ fontSize: 12.5, color: T.sub, lineHeight: 1.5, marginBottom: all.length ? 12 : 0 }}>
+          Tell me your split and I'll tell you what to train each day. Everything below (progressions, plateaus, PRs, balance) works no matter what.
+        </div>
+      )}
+
       {all.length === 0 ? (
         <div style={{ fontSize: 13.5, color: T.sub, paddingTop: 6 }}>All caught up 🎉 Log a few more sessions and I'll surface fresh progressions, plateaus and imbalances.</div>
       ) : all.slice(0, 5).map((t, i) => (
