@@ -489,7 +489,7 @@ export default function LiftingTracker({ user }) {
 
   return (
     <UnitCtx.Provider value={units}>
-    <div style={{ fontFamily:"system-ui,-apple-system,'Segoe UI',Roboto,sans-serif", background:T.bg, minHeight:"100dvh", color:T.ink }} className="app-root">
+    <div style={{ fontFamily:"system-ui,-apple-system,'Segoe UI',Roboto,sans-serif", background:"radial-gradient(135% 72% at 50% -6%, rgba(var(--accent-rgb),.10), transparent 52%), var(--bg)", backgroundAttachment:"fixed", minHeight:"100dvh", color:T.ink, position:"relative", isolation:"isolate" }} className="app-root">
       <style>{`
         html { color-scheme:dark; scroll-behavior:smooth; }
         * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
@@ -507,7 +507,7 @@ export default function LiftingTracker({ user }) {
         button { cursor:pointer; border:none; border-radius:24px; font-weight:600; transition:transform .14s cubic-bezier(.34,1.56,.64,1), background-color .18s ease, color .18s ease, border-color .18s ease, opacity .18s ease, box-shadow .18s ease, filter .18s ease; }
         button:active { transform:scale(.95); }
         @media(hover:hover){ button:hover:not(:disabled){ filter:brightness(1.08); } }
-        table { border-collapse:collapse; width:100%; } td,th { padding:9px 10px; text-align:left; font-size:13.5px; }
+        table { border-collapse:collapse; width:100%; } td,th { padding:9px 10px; text-align:left; font-size:13.5px; } td { font-variant-numeric:tabular-nums; }
         th { background:none; color:${T.sub}; font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.8px; white-space:nowrap; border-bottom:1px solid ${T.line}; }
         td { border-bottom:1px solid color-mix(in srgb, var(--line) 65%, transparent); }
         @media(hover:hover){ tbody tr { transition:background .15s ease; } tbody tr:hover { background:rgba(var(--accent-rgb),.05); } }
@@ -516,13 +516,15 @@ export default function LiftingTracker({ user }) {
         *::-webkit-scrollbar-thumb { background:color-mix(in srgb, var(--line) 70%, transparent); border-radius:99px; border:2px solid transparent; background-clip:content-box; }
         *::-webkit-scrollbar-thumb:hover { background:color-mix(in srgb, var(--accent) 45%, var(--line)); background-clip:content-box; }
         *::-webkit-scrollbar-track { background:transparent; }
-        .card { position:relative; background:linear-gradient(180deg, color-mix(in srgb, var(--card) 92%, #fff 8%), var(--card) 60%); border:1px solid color-mix(in srgb, var(--line) 88%, transparent); border-radius:20px; padding:17px; margin-bottom:14px; box-shadow:0 1px 0 rgba(255,255,255,.04) inset, 0 10px 26px -16px rgba(0,0,0,.75); animation:rise .34s cubic-bezier(.22,1,.36,1) both; }
+        .card { position:relative; background:linear-gradient(180deg, color-mix(in srgb, var(--card) 90%, #fff 10%), var(--card) 58%); border:1px solid color-mix(in srgb, var(--line) 90%, transparent); border-radius:18px; padding:17px; margin-bottom:14px; box-shadow:0 1px 0 rgba(255,255,255,.05) inset, 0 12px 30px -18px rgba(0,0,0,.85); animation:rise .34s cubic-bezier(.22,1,.36,1) both; }
+        /* bright hairline along the very top edge of every panel — subtle cockpit sheen */
+        .card::before { content:""; position:absolute; top:0; left:14px; right:14px; height:1px; background:linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 30%, rgba(255,255,255,.5)), transparent); opacity:.4; pointer-events:none; }
         .recharts-text { fill:${T.sub}; }
         .h { font-weight:800; letter-spacing:.2px; }
         /* glass sticky app bar */
-        .app-bar { position:sticky; top:0; z-index:10; background:color-mix(in srgb, var(--bg) 72%, transparent); -webkit-backdrop-filter:blur(20px) saturate(1.5); backdrop-filter:blur(20px) saturate(1.5); border-bottom:1px solid color-mix(in srgb, var(--line) 70%, transparent); }
-        /* gradient wordmark */
-        .brand-word { font-weight:900; letter-spacing:1.2px; background:linear-gradient(96deg, var(--ink) 10%, var(--accent) 130%); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; color:transparent; }
+        .app-bar { position:sticky; top:0; z-index:10; background:color-mix(in srgb, var(--bg) 70%, transparent); -webkit-backdrop-filter:blur(22px) saturate(1.6); backdrop-filter:blur(22px) saturate(1.6); border-bottom:1px solid color-mix(in srgb, var(--accent) 16%, var(--line)); box-shadow:0 1px 0 rgba(var(--accent-rgb),.12), 0 8px 24px -18px rgba(0,0,0,.9); }
+        /* gradient wordmark — technical, wide tracking */
+        .brand-word { font-weight:900; letter-spacing:3px; text-transform:uppercase; background:linear-gradient(96deg, var(--ink) 10%, var(--accent) 135%); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; color:transparent; }
         /* pill for the settings/profile chip */
         .profile-chip { display:flex; align-items:center; gap:7px; flex-shrink:0; background:color-mix(in srgb, var(--card) 90%, #fff 4%); border:1px solid color-mix(in srgb, var(--line) 90%, transparent); color:var(--ink); border-radius:99px; box-shadow:0 4px 14px -8px rgba(0,0,0,.6); transition:border-color .18s ease, background .18s ease; }
         @media(hover:hover){ .profile-chip:hover { border-color:color-mix(in srgb, var(--accent) 30%, var(--line)); } }
@@ -533,15 +535,23 @@ export default function LiftingTracker({ user }) {
         .chip { animation:pop .25s ease-out both; }
         .chip { display:inline-block; padding:3px 11px; border-radius:99px; font-size:12px; font-weight:600; border:1px solid color-mix(in srgb, currentColor 22%, transparent); }
         /* premium primary CTA — gradient accent with a glow. Use on the main action of a tab. */
-        .btn-primary { background:linear-gradient(180deg, color-mix(in srgb, var(--accent) 88%, #fff 12%), var(--accent) 92%); color:#05140b; font-weight:800; border-radius:14px; box-shadow:0 10px 24px -10px rgba(var(--accent-rgb),.65), 0 1px 0 rgba(255,255,255,.28) inset; }
-        .btn-primary:disabled { filter:saturate(.35) brightness(.75); box-shadow:none; cursor:default; }
+        .btn-primary { background:linear-gradient(180deg, color-mix(in srgb, var(--accent) 86%, #fff 14%), var(--accent) 92%); color:#05140b; font-weight:800; border-radius:13px; text-transform:uppercase; letter-spacing:.7px; box-shadow:0 10px 26px -10px rgba(var(--accent-rgb),.7), 0 0 0 1px rgba(var(--accent-rgb),.25), 0 1px 0 rgba(255,255,255,.3) inset; transition:transform .14s cubic-bezier(.34,1.56,.64,1), box-shadow .2s ease, filter .18s ease; }
+        @media(hover:hover){ .btn-primary:hover:not(:disabled){ box-shadow:0 14px 34px -10px rgba(var(--accent-rgb),.85), 0 0 0 1px rgba(var(--accent-rgb),.4), 0 1px 0 rgba(255,255,255,.35) inset; filter:brightness(1.05); } }
+        .btn-primary:disabled { filter:saturate(.3) brightness(.7); box-shadow:none; cursor:default; }
         /* segmented pill control — a row of options where one is active */
         .seg { display:inline-flex; gap:2px; background:var(--input); border:1px solid var(--line); border-radius:99px; padding:3px; }
         .seg-btn { padding:6px 13px; font-size:12.5px; font-weight:700; border-radius:99px; border:none; background:transparent; color:var(--sub); min-height:0; transition:background .18s ease, color .18s ease; }
         .seg-btn.on { background:linear-gradient(180deg, rgba(var(--accent-rgb),.22), rgba(var(--accent-rgb),.12)); color:var(--accent); box-shadow:0 0 0 1px rgba(var(--accent-rgb),.25) inset; }
         /* subtle section eyebrow */
         .eyebrow { font-size:11px; font-weight:800; letter-spacing:1.2px; text-transform:uppercase; color:var(--sub); }
+        @keyframes pulseDot { 0%,100%{opacity:1; transform:scale(1);} 50%{opacity:.4; transform:scale(.8);} }
+        .status-dot { width:6px; height:6px; border-radius:99px; background:var(--accent); box-shadow:0 0 10px 1px rgba(var(--accent-rgb),.7); animation:pulseDot 2.4s ease-in-out infinite; flex-shrink:0; }
         @media(hover:hover){ .pro-feat:hover { border-color:color-mix(in srgb, var(--accent) 45%, var(--line))!important; transform:translateY(-2px); } }
+        /* faint HUD blueprint grid behind everything, fading in from the top */
+        .app-root::before { content:""; position:fixed; inset:0; z-index:-1; pointer-events:none;
+          background-image:linear-gradient(to right, rgba(var(--accent-rgb),.055) 1px, transparent 1px), linear-gradient(to bottom, rgba(var(--accent-rgb),.055) 1px, transparent 1px);
+          background-size:46px 46px;
+          -webkit-mask-image:radial-gradient(125% 62% at 50% -4%, #000 0%, transparent 60%); mask-image:radial-gradient(125% 62% at 50% -4%, #000 0%, transparent 60%); }
         @keyframes fadeSwap { from { opacity:0; transform:translateY(8px) scale(.994); } to { opacity:1; transform:none; } }
         @keyframes sheetUp { from { transform:translateY(100%); } to { transform:none; } }
         .tabview { animation:fadeSwap .28s cubic-bezier(.22,1,.36,1) both; }
@@ -608,18 +618,18 @@ export default function LiftingTracker({ user }) {
         /* mobile-first: tabs live in a fixed BOTTOM bar for thumb reach */
         .nav-top { display:none; }
         .nav-bottom {
-          /* Floating glass pill — detached from the screen edges, blurred backdrop,
-             lifted with a soft shadow. Feels like a modern app dock. */
-          position:fixed; bottom:calc(9px + min(env(safe-area-inset-bottom), 34px)); left:11px; right:11px; z-index:20;
+          /* Flush to the bottom edge — anchored, edge-to-edge, glass with a bright
+             hairline top border. Cockpit dock, not a floating pill. */
+          position:fixed; bottom:0; left:0; right:0; z-index:20;
           /* GRID, not flex-wrap: columns are set inline to balance the rows evenly.
              Flex-wrap used to spill a button onto a phantom extra row at launch on iOS
              when the viewport width wasn't settled; grid can't. */
           display:grid; grid-template-columns:repeat(5, 1fr); row-gap:2px; column-gap:2px;
-          padding:7px 7px; border-radius:24px;
-          background:color-mix(in srgb, var(--card) 78%, transparent);
-          -webkit-backdrop-filter:blur(24px) saturate(1.6); backdrop-filter:blur(24px) saturate(1.6);
-          border:1px solid color-mix(in srgb, var(--line) 85%, transparent);
-          box-shadow:0 1px 0 rgba(255,255,255,.05) inset, 0 12px 34px -8px rgba(0,0,0,.7);
+          padding:6px 6px calc(6px + min(env(safe-area-inset-bottom), 34px));
+          background:linear-gradient(180deg, color-mix(in srgb, var(--card) 72%, transparent), color-mix(in srgb, var(--bg) 88%, transparent));
+          -webkit-backdrop-filter:blur(26px) saturate(1.7); backdrop-filter:blur(26px) saturate(1.7);
+          border-top:1px solid color-mix(in srgb, var(--accent) 22%, var(--line));
+          box-shadow:0 -1px 0 rgba(255,255,255,.04) inset, 0 -10px 34px -12px rgba(0,0,0,.8);
           transition:transform .34s cubic-bezier(.4,0,.2,1), opacity .3s ease;
           /* Keep the bar on its OWN GPU layer at all times. Without a persistent
              non-none transform, iOS Safari doesn't give a position:fixed element a
@@ -628,7 +638,7 @@ export default function LiftingTracker({ user }) {
           transform:translateY(0) translateZ(0); will-change:transform; backface-visibility:hidden;
         }
         /* slide the bar down out of view while scrolling down; back up on scroll-up */
-        .nav-bottom.nav-hidden { transform:translateY(200%) translateZ(0); opacity:0; }
+        .nav-bottom.nav-hidden { transform:translateY(140%) translateZ(0); opacity:0; }
         /* tab button — glowing green pill on the active one */
         .navbtn {
           display:flex; flex-direction:column; align-items:center; gap:2px; min-width:0;
@@ -637,12 +647,12 @@ export default function LiftingTracker({ user }) {
           transition:background .22s ease, color .22s ease, transform .16s cubic-bezier(.34,1.56,.64,1);
         }
         .navbtn .navlbl { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-        .navbtn.on { background:linear-gradient(180deg, rgba(var(--accent-rgb),.20), rgba(var(--accent-rgb),.10)); color:${T.green}; font-weight:700; box-shadow:0 0 0 1px rgba(var(--accent-rgb),.22) inset, 0 4px 14px -6px rgba(var(--accent-rgb),.5); }
+        .navbtn.on { background:linear-gradient(180deg, rgba(var(--accent-rgb),.26), rgba(var(--accent-rgb),.10)); color:${T.green}; font-weight:800; box-shadow:0 0 0 1px rgba(var(--accent-rgb),.35) inset, 0 6px 18px -6px rgba(var(--accent-rgb),.65); text-shadow:0 0 14px rgba(var(--accent-rgb),.5); }
         @media(hover:hover){ .navbtn:hover:not(.on){ background:rgba(255,255,255,.06); color:${T.ink}; } }
         .navbtn:active { transform:scale(.9); }
         .app-main { max-width:860px; margin:0 auto; padding:16px 14px; }
-        /* floating two-row nav pill sits ~9px off the bottom — reserve clearance */
-        .app-root { padding-bottom:calc(132px + min(env(safe-area-inset-bottom), 34px)); }
+        /* flush two-row nav dock at the bottom — reserve clearance */
+        .app-root { padding-bottom:calc(118px + min(env(safe-area-inset-bottom), 34px)); }
         /* floating "back" on member profiles — above the bottom nav on phones */
         .profile-back-fab { position:fixed; right:16px; z-index:40; bottom:calc(96px + min(env(safe-area-inset-bottom), 34px)); }
 
@@ -687,6 +697,7 @@ export default function LiftingTracker({ user }) {
           <div onClick={()=>setTab("dash")} style={{ display:"flex", alignItems:"center", gap:9, cursor:"pointer", userSelect:"none", whiteSpace:"nowrap", minWidth:0, overflow:"hidden" }}>
             <span style={{ fontSize:21, filter:"drop-shadow(0 2px 6px rgba(var(--accent-rgb),.35))" }}>🏋️</span>
             <span className="brand-word" style={{ fontSize:19.5, overflow:"hidden", textOverflow:"ellipsis" }}>THE LAB</span>
+            <span className="status-dot" style={{ marginLeft:1 }} />
           </div>
           {/* tabs: inline & centered in the app bar on desktop; hidden on phone (bottom bar used) */}
           <nav className="nav-top" style={{ flex:1, justifyContent:"center" }}>
@@ -1851,13 +1862,17 @@ const DASH_WIDGETS = ["charts","target","streak","calendar","muscle","recap"];
    gives the primary tile an accent-tinted glow so the eye lands on it first. */
 function StatTile({ icon, value, label, hero }) {
   return (
-    <div className="card" style={{ margin:0, padding:"16px 10px", textAlign:"center",
-      background: hero ? "linear-gradient(180deg, rgba(var(--accent-rgb),.16), color-mix(in srgb, var(--card) 90%, #fff 5%) 72%)" : undefined,
-      borderColor: hero ? "rgba(var(--accent-rgb),.38)" : undefined,
-      boxShadow: hero ? "0 10px 30px -14px rgba(var(--accent-rgb),.6), 0 1px 0 rgba(255,255,255,.06) inset" : undefined }}>
-      <div style={{ fontSize:22, marginBottom:6, filter: hero ? "drop-shadow(0 2px 9px rgba(var(--accent-rgb),.55))" : "none" }}>{icon}</div>
-      <div style={{ fontSize:30, fontWeight:900, lineHeight:1, color: hero ? T.green : T.ink, letterSpacing:"-.6px" }}>{value}</div>
-      <div style={{ fontSize:11, color:T.sub, marginTop:6, fontWeight:600, lineHeight:1.25 }}>{label}</div>
+    <div className="card stat-tile" style={{ margin:0, padding:"13px 13px 15px", position:"relative", overflow:"hidden",
+      background: hero ? "linear-gradient(165deg, rgba(var(--accent-rgb),.20), color-mix(in srgb, var(--card) 90%, #fff 4%) 68%)" : undefined,
+      borderColor: hero ? "rgba(var(--accent-rgb),.45)" : undefined,
+      boxShadow: hero ? "0 12px 34px -14px rgba(var(--accent-rgb),.7), 0 1px 0 rgba(255,255,255,.07) inset" : undefined }}>
+      {/* top HUD accent bar */}
+      <div style={{ position:"absolute", top:0, left:0, right:0, height:2, background: hero ? "linear-gradient(90deg, transparent, var(--accent), transparent)" : "linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 40%, transparent), transparent)", opacity: hero?1:.5 }} />
+      <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:6, minHeight:22, marginBottom:9 }}>
+        <span className="eyebrow" style={{ fontSize:9, letterSpacing:"1px", lineHeight:1.25, color: hero?T.green:T.sub }}>{label}</span>
+        <span style={{ fontSize:14, flexShrink:0, filter: hero ? "drop-shadow(0 2px 8px rgba(var(--accent-rgb),.6))" : "none" }}>{icon}</span>
+      </div>
+      <div style={{ fontSize:33, fontWeight:900, lineHeight:.95, color: hero ? T.green : T.ink, letterSpacing:"-1.2px", fontVariantNumeric:"tabular-nums", textShadow: hero?"0 0 26px rgba(var(--accent-rgb),.45)":"none" }}>{value}</div>
     </div>
   );
 }
