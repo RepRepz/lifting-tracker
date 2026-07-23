@@ -541,6 +541,7 @@ export default function LiftingTracker({ user }) {
         .seg-btn.on { background:linear-gradient(180deg, rgba(var(--accent-rgb),.22), rgba(var(--accent-rgb),.12)); color:var(--accent); box-shadow:0 0 0 1px rgba(var(--accent-rgb),.25) inset; }
         /* subtle section eyebrow */
         .eyebrow { font-size:11px; font-weight:800; letter-spacing:1.2px; text-transform:uppercase; color:var(--sub); }
+        @media(hover:hover){ .pro-feat:hover { border-color:color-mix(in srgb, var(--accent) 45%, var(--line))!important; transform:translateY(-2px); } }
         @keyframes fadeSwap { from { opacity:0; transform:translateY(8px) scale(.994); } to { opacity:1; transform:none; } }
         @keyframes sheetUp { from { transform:translateY(100%); } to { transform:none; } }
         .tabview { animation:fadeSwap .28s cubic-bezier(.22,1,.36,1) both; }
@@ -2164,22 +2165,25 @@ function ProUpsellCard({ openSettings }) {
     ["🥗", "Nutrition & macros", "Full food logging with macro targets and trends."],
   ];
   return (
-    <div className="card" style={{ border: `1px solid ${T.green}`, background: "linear-gradient(180deg,rgba(var(--accent-rgb),.08),transparent 62%)", marginBottom: 14 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
-        <div className="h" style={{ fontSize: 19, color: T.ink }}>✨ The Lab Pro</div>
-        <span style={{ fontSize: 10, fontWeight: 800, color: "#000", background: T.green, padding: "2px 8px", borderRadius: 99, letterSpacing: .4 }}>UPGRADE</span>
+    <div className="card pro-hero" style={{ marginBottom: 14, overflow: "hidden",
+      border: "1px solid rgba(var(--accent-rgb),.42)",
+      background: "radial-gradient(120% 90% at 0% 0%, rgba(var(--accent-rgb),.18), transparent 55%), linear-gradient(180deg, color-mix(in srgb, var(--card) 88%, #fff 6%), var(--card) 70%)",
+      boxShadow: "0 14px 40px -18px rgba(var(--accent-rgb),.55), 0 1px 0 rgba(255,255,255,.06) inset" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 4 }}>
+        <div className="recap-title" style={{ fontSize: 22, fontWeight: 900, letterSpacing: .3 }}>✨ The Lab Pro</div>
+        <span style={{ fontSize: 10, fontWeight: 800, color: "#05140b", background: "linear-gradient(100deg, rgb(var(--accent-rgb)), #8fe3a0)", padding: "3px 9px", borderRadius: 99, letterSpacing: .5, boxShadow: "0 2px 10px rgba(var(--accent-rgb),.45)" }}>UPGRADE</span>
       </div>
-      <div style={{ fontSize: 12.5, color: T.sub, marginBottom: 12 }}>Unlock the coach, steps, themes and nutrition — everything that makes The Lab yours.</div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9, marginBottom: 13 }}>
+      <div style={{ fontSize: 13, color: T.sub, marginBottom: 14, lineHeight: 1.5 }}>Unlock the coach, steps, themes and nutrition — everything that makes The Lab <b style={{color:T.ink}}>yours</b>.</div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 15 }}>
         {feats.map(([icon, title, desc]) => (
-          <div key={title} style={{ background: T.input, border: `1px solid ${T.line}`, borderRadius: 12, padding: "11px 12px" }}>
-            <div style={{ fontSize: 20, marginBottom: 4 }}>{icon}</div>
-            <div style={{ fontSize: 13, fontWeight: 800, color: T.ink, marginBottom: 2 }}>{title}</div>
-            <div style={{ fontSize: 11, color: T.sub, lineHeight: 1.4 }}>{desc}</div>
+          <div key={title} className="pro-feat" style={{ background: "color-mix(in srgb, var(--input) 88%, transparent)", border: `1px solid ${T.line}`, borderRadius: 14, padding: "12px 13px", transition: "border-color .18s ease, transform .18s ease" }}>
+            <div style={{ fontSize: 22, marginBottom: 5, filter: "drop-shadow(0 2px 7px rgba(var(--accent-rgb),.35))" }}>{icon}</div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: T.ink, marginBottom: 3 }}>{title}</div>
+            <div style={{ fontSize: 11, color: T.sub, lineHeight: 1.45 }}>{desc}</div>
           </div>
         ))}
       </div>
-      <button onClick={openSettings} style={{ width: "100%", background: T.green, color: "#000", fontWeight: 800, fontSize: 15, padding: "12px", borderRadius: 11, cursor: "pointer" }}>See Pro plans →</button>
+      <button onClick={openSettings} className="btn-primary" style={{ width: "100%", fontSize: 15.5, padding: "14px" }}>See Pro plans →</button>
     </div>
   );
 }
