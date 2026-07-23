@@ -2504,6 +2504,9 @@ function BodyTab({ data, setData, hunit }) {
 const dAdd = (ds,n)=>{ const d=new Date(ds+"T00:00"); d.setDate(d.getDate()+n);
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
 const stepAvg = (a)=> a.length ? Math.round(a.reduce((x,y)=>x+y,0)/a.length) : 0;
+/* "just now" / "5 min ago" / "3h ago" / "2d ago" from an ISO timestamp. */
+const stepRel = (iso) => { if (!iso) return null; const ms = Date.now() - new Date(iso).getTime();
+  return ms<60000 ? "just now" : ms<3600000 ? `${Math.floor(ms/60000)} min ago` : ms<86400000 ? `${Math.floor(ms/3600000)}h ago` : `${Math.floor(ms/86400000)}d ago`; };
 
 /* Merge auto-synced steps (steps table) with manually-logged cardio "Steps" entries into
    one day->count map, plus a day->source map ("auto" | "manual" | "both"). */
@@ -4733,6 +4736,7 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
   const [recap, setRecap] = useState(null); // end-of-month recap popup: { pmKey, monthLabel, rows } | null
   const [profileTab, setProfileTab] = useState("lifting"); // sub-tab inside a member profile
   const [profileSteps, setProfileSteps] = useState(undefined); // open profile's step map (separate steps table)
+  const [profileLastSync, setProfileLastSync] = useState(null); // open profile's last step sync time
   const [memberSteps, setMemberSteps] = useState({}); // user_id -> {day->count} auto steps (~1yr) for board + facts
   const [facts, setFacts] = useState(null); // steps "cool facts" popup: { uid, name } | null
   const savedActiveId = useRef(localStorage.getItem("lt-active-group")); // reopen last group after refresh
@@ -4753,12 +4757,13 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
 
   // load the open profile's steps (they live in the `steps` table, not user_state)
   useEffect(() => {
-    if (!profile) { setProfileSteps(undefined); setProfileTab("lifting"); return; }
+    if (!profile) { setProfileSteps(undefined); setProfileLastSync(null); setProfileTab("lifting"); return; }
     setDueling(false); setDuelMsg("");
     let alive = true;
     (async () => {
       try { const s = await stepsFor([profile.user_id], dAdd(todayStr(), -5*365 - 40)); if (alive) setProfileSteps(s[profile.user_id] || {}); }
       catch { if (alive) setProfileSteps({}); }
+      try { const t = await lastStepSync(profile.user_id); if (alive) setProfileLastSync(t); } catch {}
     })();
     return () => { alive = false; };
   }, [profile?.user_id]);
@@ -5119,6 +5124,12 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
                   </div>
                 )}
                 {duelMsg && <div style={{fontSize:13, color:T.green, fontWeight:700}}>{duelMsg}</div>}
+              </div>
+            )}
+            {profileLastSync && (
+              <div className="card" style={{display:"flex", alignItems:"center", gap:9, padding:"11px 14px"}}>
+                <span style={{fontSize:16}}>🕐</span>
+                <span style={{fontSize:13, color:T.sub}}>Last synced <b style={{color:T.ink}}>{stepRel(profileLastSync)}</b></span>
               </div>
             )}
             {profileSteps === undefined ? <div className="card"><div className="skeleton" style={{height:220, borderRadius:12}} /></div>
