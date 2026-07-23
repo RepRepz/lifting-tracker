@@ -180,7 +180,7 @@ function MacroBar({ label, color, eaten, goal, unit = "g" }) {
   );
 }
 
-const btnGreen = { background: T.green, color: "#000", fontWeight: 700, borderRadius: 10, border: "none" };
+const btnGreen = { background: "linear-gradient(180deg, color-mix(in srgb, var(--accent) 88%, #fff 12%), var(--accent) 92%)", color: "#05140b", fontWeight: 800, borderRadius: 12, border: "none", boxShadow: "0 8px 20px -10px rgba(var(--accent-rgb),.6), 0 1px 0 rgba(255,255,255,.28) inset" };
 const btnGhost = { background: T.input, color: T.sub, borderRadius: 10, border: `1px solid ${T.line}` };
 
 /* ---------- add food modal (search / scan / my foods / manual) ---------- */
@@ -353,8 +353,10 @@ function AddFoodModal({ meal, date, data, setData, onSave, onClose }) {
   const close = () => { stopScan(); onClose(); };
   const tabBtn = (id, label) => (
     <button onClick={() => { stopScan(); setMode(id); setPicked(null); }} style={{
-      flex: 1, padding: "9px 2px", borderRadius: 8, border: "none", fontWeight: 700, fontSize: 11.5, lineHeight: 1.3,
-      background: mode === id ? T.green : T.input, color: mode === id ? "#000" : T.sub,
+      flex: 1, padding: "9px 2px", borderRadius: 9, border: "none", fontWeight: 800, fontSize: 11.5, lineHeight: 1.3,
+      background: mode === id ? "linear-gradient(180deg, rgba(var(--accent-rgb),.22), rgba(var(--accent-rgb),.12))" : T.input,
+      color: mode === id ? T.green : T.sub,
+      boxShadow: mode === id ? "0 0 0 1px rgba(var(--accent-rgb),.25) inset" : "none",
     }}>{label}</button>
   );
 
@@ -590,9 +592,9 @@ function GoalsModal({ data, setData, goals, onSave, onClose, firstTime }) {
           </button>
         )}
 
-        <div style={{ display: "flex", gap: 6, marginBottom: 12, marginTop: 4 }}>
+        <div className="seg" style={{ display: "flex", width:"100%", marginBottom: 12, marginTop: 4, borderRadius:12 }}>
           {[["calc", "Calculate for me"], ["manual", "Enter manually"]].map(([id, l]) => (
-            <button key={id} onClick={() => setMode(id)} style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: "none", fontWeight: 700, fontSize: 13, background: mode === id ? T.green : T.input, color: mode === id ? "#000" : T.sub }}>{l}</button>
+            <button key={id} onClick={() => setMode(id)} className={"seg-btn"+(mode===id?" on":"")} style={{ flex: 1, padding: "10px 0", borderRadius:9, fontSize: 13 }}>{l}</button>
           ))}
         </div>
 

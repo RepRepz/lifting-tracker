@@ -2244,13 +2244,18 @@ function RecordsTab({ data, exMap, setData }) {
         autoCapitalize="none" autoCorrect="off" spellCheck={false} style={{marginBottom:8}} />
       {/* muscle filter chips (scroll sideways if they overflow) */}
       <div style={{display:"flex", gap:6, overflowX:"auto", paddingBottom:2, WebkitOverflowScrolling:"touch"}}>
-        {["All", ...present].map(m=>(
+        {["All", ...present].map(m=>{
+          const on = filter===m;
+          return (
           <button key={m} onClick={()=>setFilter(m)} style={{
             flexShrink:0, padding:"6px 14px", borderRadius:99, fontSize:13, fontWeight:700,
-            background: filter===m ? T.green : T.input, color: filter===m ? "#000" : T.sub,
-            border:`1px solid ${filter===m ? T.green : T.line}`,
+            background: on ? "linear-gradient(180deg, rgba(var(--accent-rgb),.22), rgba(var(--accent-rgb),.12))" : T.input,
+            color: on ? T.green : T.sub,
+            border:`1px solid ${on ? "rgba(var(--accent-rgb),.4)" : T.line}`,
+            boxShadow: on ? "0 0 0 1px rgba(var(--accent-rgb),.15) inset" : "none",
           }}>{m}</button>
-        ))}
+          );
+        })}
       </div>
     </div>
 
@@ -3798,7 +3803,7 @@ function JournalTab({ data, setData }) {
       <div className="card">
         <div className="h" style={{ fontSize:17, color:T.tealDk, marginBottom:6 }}>📓 Past entries</div>
         {recent.map(([d,e])=>(
-          <button key={d} onClick={()=>setSel(d)} style={{ display:"flex", gap:12, width:"100%", textAlign:"left", background: d===sel?T.mint:"none", border:"none", borderTop:`1px solid ${T.line}`, padding:"11px 4px", cursor:"pointer", alignItems:"baseline" }}>
+          <button key={d} onClick={()=>setSel(d)} style={{ display:"flex", gap:12, width:"100%", textAlign:"left", background: d===sel?"linear-gradient(90deg, rgba(var(--accent-rgb),.14), transparent)":"none", borderRadius: d===sel?10:0, border:"none", borderTop:`1px solid ${T.line}`, padding:"11px 8px", cursor:"pointer", alignItems:"baseline" }}>
             <span style={{ fontSize:12.5, fontWeight:800, color: d===sel?T.green:T.ink, whiteSpace:"nowrap", flexShrink:0, minWidth:96 }}>{prettyDay(d)}{d===todayStr()?" ·":""}</span>
             <span style={{ fontSize:13, color:T.sub, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{e.text}</span>
           </button>
@@ -3909,12 +3914,9 @@ function SettingsModal({ user, username, data, setData, startTab, setStartTab, t
           <div style={{ ...sCard }}>
             <div style={{ fontSize:14, fontWeight:700, color:T.ink, marginBottom:2 }}>Weight units</div>
             <div style={{ fontSize:12, color:T.sub, marginBottom:10 }}>Changes everything shown across the app, and switches the plate calculator to matching plates. Your data is unchanged underneath.</div>
-            <div style={{ display:"flex", background:T.input, borderRadius:10, padding:3, maxWidth:200 }}>
+            <div className="seg" style={{ display:"flex", maxWidth:200, borderRadius:12 }}>
               {["lb","kg"].map(u=>(
-                <button key={u} onClick={()=>setUnits(u)} style={{
-                  flex:1, padding:"9px 0", borderRadius:8, fontWeight:700, fontSize:14,
-                  background: units===u ? T.green : "none", color: units===u ? "#000" : T.sub,
-                }}>{u === "lb" ? "Pounds (lb)" : "Kilos (kg)"}</button>
+                <button key={u} onClick={()=>setUnits(u)} className={"seg-btn"+(units===u?" on":"")} style={{ flex:1, padding:"10px 0", borderRadius:9, fontSize:14 }}>{u === "lb" ? "Pounds (lb)" : "Kilos (kg)"}</button>
               ))}
             </div>
           </div>
@@ -3922,12 +3924,9 @@ function SettingsModal({ user, username, data, setData, startTab, setStartTab, t
           <div style={{ ...sCard }}>
             <div style={{ fontSize:14, fontWeight:700, color:T.ink, marginBottom:2 }}>Height units</div>
             <div style={{ fontSize:12, color:T.sub, marginBottom:10 }}>Used by the BMI calculator on the Body tab.</div>
-            <div style={{ display:"flex", background:T.input, borderRadius:10, padding:3, maxWidth:230 }}>
+            <div className="seg" style={{ display:"flex", maxWidth:230, borderRadius:12 }}>
               {[["ftin","Feet + inches"],["cm","Centimeters"]].map(([v,label])=>(
-                <button key={v} onClick={()=>setHunit(v)} style={{
-                  flex:1, padding:"9px 0", borderRadius:8, fontWeight:700, fontSize:14,
-                  background: hunit===v ? T.green : "none", color: hunit===v ? "#000" : T.sub,
-                }}>{label}</button>
+                <button key={v} onClick={()=>setHunit(v)} className={"seg-btn"+(hunit===v?" on":"")} style={{ flex:1, padding:"10px 0", borderRadius:9, fontSize:14 }}>{label}</button>
               ))}
             </div>
           </div>
