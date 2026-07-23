@@ -677,7 +677,7 @@ export default function LiftingTracker({ user }) {
 
       <main className={"app-main" + (tab==="macros" ? " app-main-wide" : "")}>
         <div className="tabview" key={tab}>
-          {tab==="dash" && liftingOn && <Dashboard data={data} exMap={exMap} setData={setData} />}
+          {tab==="dash" && liftingOn && <><CoachCard data={data} exMap={exMap} user={user} /><Dashboard data={data} exMap={exMap} setData={setData} /></>}
           {tab==="log" && liftingOn && <LogTab data={data} exMap={exMap} setData={setData} routinesOn={routinesOn} />}
           {tab==="records" && liftingOn && <RecordsTab data={data} exMap={exMap} />}
           {tab==="journal" && <JournalTab data={data} setData={setData} />}
@@ -4589,6 +4589,136 @@ const bestEst1RM = (exercise, entries) => {
     .map(e => e1rm(e.weight, e.reps));
   return vals.length ? Math.max(...vals) : null;
 };
+
+/* =================== THE LAB COACH (rule-based, no LLM / no API) ===================
+   Reads your logged sets and turns them into personalized coaching with plain math:
+   progression nudges, plateau/deload alerts, and push/pull/legs balance. Group weak-
+   point comparison is loaded separately in CoachCard. 100% local, free, offline. */
+const MUSCLE_GROUP = (m) => {
+  const s = (m || "").toLowerCase();
+  if (/chest|shoulder|tricep|delt|pec/.test(s)) return "push";
+  if (/back|lat|bicep|trap|rear|rhomboid/.test(s)) return "pull";
+  if (/quad|hamstring|glute|calf|leg|adductor/.test(s)) return "legs";
+  if (/ab|core|oblique/.test(s)) return "core";
+  return "other";
+};
+const dayGap = (a, b) => Math.round((new Date(a + "T00:00") - new Date(b + "T00:00")) / 86400000);
+
+function coachTips(data, exMap, units) {
+  const log = Array.isArray(data.log) ? data.log : [];
+  const tips = [];
+  const today = todayStr();
+  const inc = units === "kg" ? 2.5 : 5;              // smallest sensible jump
+  const byEx = {};
+  for (const e of log) { if (e.weight == null) continue; (byEx[e.exercise] ||= []).push(e); }
+
+  // ---- PROGRESSION: same top weight for 8+ reps across the last two sessions → go up ----
+  const progressions = [];
+  for (const [ex, entries] of Object.entries(byEx)) {
+    const byDate = {};
+    for (const e of entries) (byDate[e.date] ||= []).push(e);
+    const dates = Object.keys(byDate).sort().reverse();
+    if (dates.length < 2 || dayGap(today, dates[0]) > 21) continue;
+    const topSet = (ds) => byDate[ds].slice().sort((a, b) => (b.weight - a.weight) || ((b.reps || 0) - (a.reps || 0)))[0];
+    const t0 = topSet(dates[0]), t1 = topSet(dates[1]);
+    if (t0.weight === t1.weight && (t0.reps || 0) >= 8)
+      progressions.push({ ex, cur: t0.weight, curReps: t0.reps, next: t0.weight + inc, reps: Math.max(5, (t0.reps || 8) - 2) });
+  }
+  progressions.sort((a, b) => (BIG_LIFT_SET.has(b.ex) - BIG_LIFT_SET.has(a.ex)));
+  for (const p of progressions.slice(0, 2))
+    tips.push({ icon: "📈", cat: "Progression",
+      text: `You hit ${dispW(p.cur, units)}${uLabel(units)}×${p.curReps} on ${p.ex} twice — try ${dispW(p.next, units)}${uLabel(units)}×${p.reps} next session.` });
+
+  // ---- PLATEAU: no est-1RM gain over the last 4 trained weeks despite recent training ----
+  for (const ex of BIG_LIFTS) {
+    const entries = byEx[ex]; if (!entries || entries.length < 4) continue;
+    const lastDate = entries.map(e => e.date).sort().reverse()[0];
+    if (dayGap(today, lastDate) > 14) continue;
+    const weekBest = {};
+    for (const e of entries) if ((e.reps || 0) <= REP_CAP(ex)) {
+      const w = weekStart(e.date); weekBest[w] = Math.max(weekBest[w] || 0, e1rm(e.weight, e.reps));
+    }
+    const weeks = Object.keys(weekBest).sort(); if (weeks.length < 4) continue;
+    const recent = weeks.slice(-4);
+    const peak = Math.max(...recent.map(w => weekBest[w]));
+    if (peak <= weekBest[recent[0]] * 1.005)
+      tips.push({ icon: "🧱", cat: "Plateau",
+        text: `${LIFT_SHORT[ex] || ex} hasn't moved in ~4 weeks. Take a deload (−10% for a week) or switch rep range to break the stall.` });
+  }
+
+  // ---- BALANCE: push/pull ratio + leg neglect over the last 28 days ----
+  const since = dAdd(today, -28);
+  const vol = { push: 0, pull: 0, legs: 0, core: 0, other: 0 };
+  for (const e of log) { if (e.date < since) continue; const g = MUSCLE_GROUP(exMap[e.exercise]?.muscle); vol[g]++; }
+  if (vol.push + vol.pull >= 8) {
+    if (vol.push >= vol.pull * 2) tips.push({ icon: "⚖️", cat: "Balance", text: `Push ${vol.push} vs pull ${vol.pull} sets this month — add rows/pulldowns to protect your shoulders.` });
+    else if (vol.pull >= vol.push * 2) tips.push({ icon: "⚖️", cat: "Balance", text: `Pull ${vol.pull} vs push ${vol.push} sets this month — add some pressing to even it out.` });
+  }
+  const tot = vol.push + vol.pull + vol.legs + vol.core + vol.other;
+  if (tot >= 10 && vol.legs <= tot * 0.15)
+    tips.push({ icon: "🦵", cat: "Balance", text: `Only ${vol.legs} leg sets in 4 weeks (${Math.round(vol.legs / tot * 100)}% of your volume). Don't skip leg day 👀` });
+
+  return tips;
+}
+
+/* The Coach card (shown on Home). Personal tips are instant; the group weak-point
+   comparison loads in the background so the card never blocks the dashboard. */
+function CoachCard({ data, exMap, user }) {
+  const units = useUnit();
+  const tips = useMemo(() => coachTips(data, exMap, units), [data, exMap, units]);
+  const [groupTip, setGroupTip] = useState(null);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const groups = await listMyGroups(); if (!groups.length) return;
+        const ids = new Set();
+        for (const g of groups) { const ms = await listMembers(g.id); for (const m of ms) if (m.user_id !== user.id) ids.add(m.user_id); }
+        if (!ids.size) return;
+        const list = [...ids], states = {};
+        await Promise.all(list.map(async id => { try { states[id] = await loadUserState(id); } catch { /* no data */ } }));
+        const myLog = data.log || [];
+        let worst = null;
+        for (const lift of BIG_LIFTS) {
+          const mine = bestEst1RM(lift, myLog.filter(e => e.exercise === lift)); if (mine == null) continue;
+          let groupMax = 0;
+          for (const id of list) { const st = states[id]; if (!st?.log) continue;
+            const b = bestEst1RM(lift, st.log.filter(e => e.exercise === lift)); if (b != null && b > groupMax) groupMax = b; }
+          if (groupMax > 0) { const ratio = mine / groupMax; if (!worst || ratio < worst.ratio) worst = { lift, ratio, groupMax }; }
+        }
+        if (alive && worst && worst.ratio < 0.9)
+          setGroupTip({ icon: "🎯", cat: "Weak point",
+            text: `Your ${LIFT_SHORT[worst.lift] || worst.lift} is ${Math.round((1 - worst.ratio) * 100)}% behind your group's best (${dispW(worst.groupMax, units)}${uLabel(units)}). Prime lift to attack.` });
+      } catch { /* offline / no groups */ }
+    })();
+    return () => { alive = false; };
+  }, [data.log, user.id, units]);
+
+  const all = groupTip ? [...tips, groupTip] : tips;
+  const CAT_COLOR = { Progression: T.green, Plateau: "#E9C46A", Balance: STEP_BLUE, "Weak point": "#FF7A45" };
+
+  return (
+    <div className="card" style={{ border: `1px solid ${T.green}`, background: "linear-gradient(180deg,rgba(0,200,5,.05),transparent 60%)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
+        <div className="h" style={{ fontSize: 18, color: T.ink }}>💪 Coach</div>
+        <span style={{ fontSize: 10, fontWeight: 800, color: T.green, background: "rgba(0,200,5,.12)", padding: "2px 8px", borderRadius: 99, letterSpacing: .4 }}>SMART</span>
+      </div>
+      <div style={{ fontSize: 12, color: T.sub, marginBottom: all.length ? 12 : 0 }}>Personalized from your logs · updates every time you train.</div>
+      {all.length === 0 ? (
+        <div style={{ fontSize: 13.5, color: T.sub, paddingTop: 6 }}>Log a few more sessions and I'll start spotting progressions, plateaus and imbalances for you. 🔍</div>
+      ) : all.slice(0, 4).map((t, i) => (
+        <div key={i} style={{ display: "flex", gap: 11, alignItems: "flex-start", padding: "10px 0", borderTop: i === 0 ? "none" : `1px solid ${T.creamLine}` }}>
+          <span style={{ fontSize: 20, lineHeight: 1.2, flexShrink: 0 }}>{t.icon}</span>
+          <div style={{ minWidth: 0 }}>
+            <span style={{ fontSize: 9.5, fontWeight: 800, color: CAT_COLOR[t.cat] || T.sub, textTransform: "uppercase", letterSpacing: .5 }}>{t.cat}</span>
+            <div style={{ fontSize: 13.5, color: T.ink, lineHeight: 1.5 }}>{t.text}</div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 /* End-of-month recap: pops up once per group each month with everyone's
    average weigh-in for the month that just finished (+ their goal). */
