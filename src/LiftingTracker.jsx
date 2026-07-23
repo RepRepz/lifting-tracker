@@ -553,11 +553,11 @@ export default function LiftingTracker({ user }) {
         .nav-top { display:none; }
         .nav-bottom {
           position:fixed; bottom:0; left:0; right:0; z-index:20;
-          /* GRID, not flex-wrap: exactly 4 columns → the 8 tabs always make two clean
-             rows. Flex-wrap used to spill one button onto a phantom 3rd row at launch
-             on iOS (Groups tab) when the viewport width wasn't settled yet; grid can't. */
-          display:grid; grid-template-columns:repeat(4, 1fr); row-gap:2px;
-          padding:5px 4px calc(5px + min(env(safe-area-inset-bottom), 34px));
+          /* GRID, not flex-wrap: 5 columns → up to 10 tabs make exactly two tight rows
+             (icons sit closer together). Flex-wrap used to spill a button onto a phantom
+             extra row at launch on iOS when the viewport width wasn't settled; grid can't. */
+          display:grid; grid-template-columns:repeat(5, 1fr); row-gap:1px;
+          padding:4px 3px calc(4px + min(env(safe-area-inset-bottom), 34px));
           background:${T.bg}; border-top:1px solid ${T.line};
           transition:transform .3s cubic-bezier(.4,0,.2,1);
           /* Keep the bar on its OWN GPU layer at all times. Without a persistent
@@ -571,9 +571,9 @@ export default function LiftingTracker({ user }) {
         .nav-bottom.nav-hidden { transform:translateY(140%) translateZ(0); }
         /* tab button — soft green pill on the active one, Robinhood style */
         .navbtn {
-          display:flex; flex-direction:column; align-items:center; gap:2px; min-width:0;
-          padding:7px 0 6px; border:none; border-radius:12px; background:transparent;
-          color:${T.sub}; font-weight:500; font-size:10px; cursor:pointer;
+          display:flex; flex-direction:column; align-items:center; gap:1px; min-width:0;
+          padding:6px 0 5px; border:none; border-radius:11px; background:transparent;
+          color:${T.sub}; font-weight:500; font-size:9.5px; cursor:pointer;
           transition:background .22s ease, color .22s ease, transform .16s cubic-bezier(.34,1.56,.64,1);
         }
         .navbtn .navlbl { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -581,23 +581,25 @@ export default function LiftingTracker({ user }) {
         @media(hover:hover){ .navbtn:hover:not(.on){ background:rgba(255,255,255,.05); color:${T.ink}; } }
         .navbtn:active { transform:scale(.9); }
         .app-main { max-width:860px; margin:0 auto; padding:16px 14px; }
-        /* bottom bar is now up to THREE rows tall (10 tabs), so reserve room for 3 */
-        .app-root { padding-bottom:calc(176px + min(env(safe-area-inset-bottom), 34px)); }
+        /* bottom bar is two tight rows of five now — reserve room for two */
+        .app-root { padding-bottom:calc(120px + min(env(safe-area-inset-bottom), 34px)); }
         /* floating "back" on member profiles — above the bottom nav on phones */
-        .profile-back-fab { position:fixed; right:16px; z-index:40; bottom:calc(136px + min(env(safe-area-inset-bottom), 34px)); }
+        .profile-back-fab { position:fixed; right:16px; z-index:40; bottom:calc(96px + min(env(safe-area-inset-bottom), 34px)); }
 
         @media (min-width:900px) {
           /* desktop: tabs move into the TOP app bar, bottom bar disappears.
              Content stays a clean CENTERED single column (no stretching). */
-          .nav-top { display:flex; gap:4px; }
+          .nav-top { display:flex; gap:6px; }
           .nav-bottom { display:none; }
           .app-root { padding-bottom:36px; }
           .navtop-btn {
-            display:flex; flex-direction:column; align-items:center; gap:3px;
-            padding:7px 14px; border:none; border-radius:11px; background:transparent;
-            color:${T.sub}; font-weight:500; font-size:12px; cursor:pointer;
-            transition:background .18s ease, color .18s ease;
+            display:flex; flex-direction:column; align-items:center; gap:4px;
+            padding:9px 17px; border:none; border-radius:13px; background:transparent;
+            color:${T.sub}; font-weight:600; font-size:12.5px; cursor:pointer; white-space:nowrap;
+            transition:background .18s ease, color .18s ease, transform .15s ease;
           }
+          .navtop-btn .navicon { font-size:21px; }
+          .navtop-btn:active { transform:scale(.94); }
           .navtop-btn.on { background:rgba(0,200,5,.13); color:${T.green}; font-weight:700; }
           .navtop-btn:hover:not(.on){ background:rgba(255,255,255,.06); color:${T.ink}; }
           .profile-back-fab { bottom:28px; }
@@ -620,14 +622,14 @@ export default function LiftingTracker({ user }) {
       `}</style>
 
       <div style={{ position:"sticky", top:0, zIndex:10, background:T.bg, borderBottom:`1px solid ${T.line}` }}>
-        <div style={{ maxWidth:960, margin:"0 auto", display:"flex", alignItems:"center", gap:14,
+        <div style={{ maxWidth:1240, margin:"0 auto", display:"flex", alignItems:"center", gap:14,
           padding:"calc(12px + env(safe-area-inset-top)) 20px 8px", color:"#fff" }}>
           <div className="h" onClick={()=>setTab("dash")} style={{ fontSize:19, cursor:"pointer", userSelect:"none", whiteSpace:"nowrap", minWidth:0, overflow:"hidden", textOverflow:"ellipsis" }}>🏋️ THE LAB</div>
           {/* tabs: inline & centered in the app bar on desktop; hidden on phone (bottom bar used) */}
           <nav className="nav-top" style={{ flex:1, justifyContent:"center" }}>
             {tabs.map(([id,label,icon]) => (
               <button key={id} onClick={()=>setTab(id)} className={"navtop-btn" + (tab===id?" on":"")}>
-                <span className={"navicon" + (tab===id?" on":"")} style={{fontSize:17}}>{icon}</span>
+                <span className={"navicon" + (tab===id?" on":"")}>{icon}</span>
                 <span style={{whiteSpace:"nowrap"}}>{label}</span>
               </button>
             ))}
@@ -2543,10 +2545,17 @@ function mergeSteps(autoMap, cardio) {
   return { map, meta };
 }
 
-/* Build W/M/6M/Y/5Y bars from a day->count map. Pure — reused by the tab and popups. */
+/* Build 1D/W/M/6M/Y/5Y bars from a day->count map. Pure — reused by the tab and popups. */
 function computeStepChart(m, range) {
-  const today = todayStr(); const yStr = dAdd(today,-1); let bars=[]; let every=1; const isAvg = !(range==="W"||range==="M");
-  if (range==="W" || range==="M") {
+  const today = todayStr(); const yStr = dAdd(today,-1); let bars=[]; let every=1; const isAvg = !(range==="W"||range==="M"||range==="1D");
+  if (range==="1D") {
+    // "Yesterday" — the last few finished days so yesterday has a little context, totals not averages
+    every=1;
+    for (let i=4;i>=1;i--){ const d=dAdd(today,-i); const dt=new Date(d+"T00:00");
+      bars.push({ label: dt.toLocaleDateString("en-US",{weekday:"short"}),
+        full: d===yStr ? "Yesterday" : dt.toLocaleDateString("en-US",{weekday:"long", month:"short", day:"numeric"}),
+        day: d, value: m[d]||0, has: m[d]!=null, mark: d===yStr }); }
+  } else if (range==="W" || range==="M") {
     const n = range==="W"?7:30; every = range==="W"?1:5;
     for (let i=n-1;i>=0;i--){ const d=dAdd(today,-i); const dt=new Date(d+"T00:00");
       bars.push({ label: range==="W" ? dt.toLocaleDateString("en-US",{weekday:"narrow"}) : String(dt.getDate()),
@@ -2656,7 +2665,7 @@ function StepRingChart({ map, goal, meta }) {
   const chart = useMemo(()=>computeStepChart(m, range), [map, range]);
   const scrub = (x)=>{ const el=plotRef.current; if(!el) return; const r=el.getBoundingClientRect();
     const n=chart.bars.length; if(!n) return; const idx=Math.floor((x-r.left)/r.width*n); setSel(Math.max(0,Math.min(n-1,idx))); };
-  const rangeSub = { W:"Past week", M:"Past 30 days", "6M":"Past 6 months", Y:"Past year", "5Y":"Past 5 years" };
+  const rangeSub = { "1D":"Yesterday", W:"Past week", M:"Past 30 days", "6M":"Past 6 months", Y:"Past year", "5Y":"Past 5 years" };
   const goalK = goal % 1000 === 0 ? `${goal/1000}k` : goal.toLocaleString();
 
   return (<>
@@ -2686,8 +2695,8 @@ function StepRingChart({ map, goal, meta }) {
 
     <div className="card">
       <div style={{display:"flex", background:T.input, borderRadius:10, padding:3, gap:2, marginBottom:14}}>
-        {["W","M","6M","Y","5Y"].map(r=>(
-          <button key={r} onClick={()=>{setRange(r); setSel(null);}} style={{flex:1, padding:"7px 0", borderRadius:8, fontSize:12.5, fontWeight:800,
+        {["1D","W","M","6M","Y","5Y"].map(r=>(
+          <button key={r} onClick={()=>{setRange(r); setSel(null);}} style={{flex:1, padding:"7px 0", borderRadius:8, fontSize:12, fontWeight:800,
             background: range===r?T.green:"none", color: range===r?"#000":T.sub}}>{r}</button>
         ))}
       </div>
