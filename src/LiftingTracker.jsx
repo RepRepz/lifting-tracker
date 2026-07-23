@@ -2824,7 +2824,8 @@ function StepRingChart({ map, goal, meta }) {
 
 /* Head-to-head step duels: instant-start, custom length, most total steps wins.
    Standings are summed from each person's step map over the duel window. */
-function DuelsCard({ user, all, nameOf, myId, myName }) {
+function DuelsCard({ user, all, nameOf, myId, myName, proIds = [] }) {
+  const oIsPro = (oId) => proIds.includes(oId);
   const [duels, setDuels] = useState([]);
   const [open, setOpen] = useState(false);
   const [oppId, setOppId] = useState("");
@@ -2937,12 +2938,12 @@ function DuelsCard({ user, all, nameOf, myId, myName }) {
         return (
           <div key={d.id} style={{borderTop:`1px solid ${T.creamLine}`, padding:"11px 0"}}>
             <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8}}>
-              <span style={{fontSize:13.5, fontWeight:800, color:T.ink}}>You vs {oName}</span>
+              <span style={{fontSize:13.5, fontWeight:800, color:T.ink}}>You vs <span style={{color:oIsPro(oId)?T.green:"inherit"}}>{oName}{oIsPro(oId) && <ProBadge small />}</span></span>
               <span style={{fontSize:12.5, fontWeight:800, color:statusColor}}>{status}</span>
             </div>
             {[["You", mySum, true],[oName, oppSum, false]].map(([nm,val,me])=>(
               <div key={nm+String(me)} style={{display:"flex", alignItems:"center", gap:8, marginBottom:5}}>
-                <span style={{width:66, fontSize:12.5, fontWeight: me?800:600, color: me?T.green:T.ink, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{nm}</span>
+                <span style={{width:66, fontSize:12.5, fontWeight: me?800:600, color: (me||oIsPro(oId))?T.green:T.ink, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{nm}{!me && oIsPro(oId) && <ProBadge small />}</span>
                 <span style={{flex:1, height:8, background:T.input, borderRadius:99, overflow:"hidden"}}>
                   <span style={{display:"block", width:`${val/mx*100}%`, height:"100%", background: me?T.green:"rgba(var(--accent-rgb),.5)", borderRadius:99, transition:"width .5s ease"}} />
                 </span>
@@ -2966,6 +2967,8 @@ function StepsTab({ user, data, setData }) {
   const goal = (data.profile?.stepGoal) || 10000;
   const { mine, all, nameOf, board, celebrate, dismiss, yStr, myId, lastSync } = useSteps(user, 5*365 + 40);
   const myName = nameOf[myId] || (user.user_metadata?.username || "you");
+  const [proIds, setProIds] = useState([]);
+  useEffect(()=>{ listProUserIds().then(setProIds).catch(()=>{}); }, []);
   const merged = useMemo(() => mergeSteps(mine || {}, data.cardio), [mine, data.cardio]);
   const [editGoal, setEditGoal] = useState(false);
   const [goalInput, setGoalInput] = useState(String(goal));
@@ -2990,7 +2993,7 @@ function StepsTab({ user, data, setData }) {
   const Row = ({ r, i, value }) => (
     <button onClick={()=>setView({ id:r.id, name:r.name })} style={{width:"100%", textAlign:"left", background:"none", display:"flex", alignItems:"center", gap:10, padding:"9px 2px", borderTop: i===0?"none":`1px solid ${T.creamLine}`}}>
       <span style={{width:24, textAlign:"center", fontWeight:800, color: i===0?T.green:T.sub, fontSize:14}}>{i===0?"👑":i+1}</span>
-      <span style={{flex:1, fontWeight: r.me?800:600, color: r.me?T.green:T.ink, fontSize:14, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{r.name}{r.me?" (you)":""}</span>
+      <span style={{flex:1, fontWeight: r.me?800:600, color: (r.me||proIds.includes(r.id))?T.green:T.ink, fontSize:14, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{r.name}{r.me?" (you)":""}{!r.me && proIds.includes(r.id) && <ProBadge small />}</span>
       <span style={{fontSize:14, fontWeight:800, color:T.ink, fontVariantNumeric:"tabular-nums"}}>{value.toLocaleString()}</span>
       <span style={{color:T.sub, fontSize:15}}>›</span>
     </button>
@@ -3046,7 +3049,7 @@ function StepsTab({ user, data, setData }) {
 
     <StepRingChart map={merged.map} goal={goal} meta={merged.meta} />
 
-    <DuelsCard user={user} all={all} nameOf={nameOf} myId={myId} myName={myName} />
+    <DuelsCard user={user} all={all} nameOf={nameOf} myId={myId} myName={myName} proIds={proIds} />
 
     {race.length > 1 && (
       <div className="card" style={{display:"flex", alignItems:"center", gap:11, padding:"13px 15px"}}>
@@ -5194,6 +5197,16 @@ function FriendsTab({ user, nutritionOn, streaksOn, isPro, openPro }) {
   const [proIds, setProIds] = useState([]);          // Pro members you can see (for the PRO badge)
   const isProUser = (uid) => proIds.includes(uid);
   useEffect(() => { listProUserIds().then(setProIds).catch(()=>{}); }, [members]);
+  // Render a member's name with the theme accent + a PRO badge if they're Pro — used
+  // EVERYWHERE a friend's name shows, so Pro status is unmistakable and aspirational.
+  const nameEl = (uid, name, { you = false, weight, size } = {}) => {
+    const pro = isProUser(uid);
+    return (
+      <span style={{ color: (pro || you) ? T.green : "inherit", fontWeight: weight ?? (you ? 800 : 600), fontSize: size }}>
+        {name}{you ? " (you)" : ""}{pro ? <ProBadge small /> : null}
+      </span>
+    );
+  };
   const [squadCel, setSquadCel] = useState(null);    // "whole squad logged steps" popup, per group
   const [profile, setProfile] = useState(null);      // member whose profile is open
   const [err, setErr] = useState("");
@@ -5462,13 +5475,13 @@ function FriendsTab({ user, nutritionOn, streaksOn, isPro, openPro }) {
       }
       for (const [date, entries] of Object.entries(byDate)) {
         const names = [...new Set(entries.map(e=>e.exercise))];
-        evs.push({ key:`${m.user_id}-${date}-lift`, date, user:m.username, kind:"lift",
+        evs.push({ key:`${m.user_id}-${date}-lift`, date, user:m.username, uid:m.user_id, kind:"lift",
           sets: entries.length, names: names.slice(0,3), more: Math.max(0, names.length-3),
           prs: Object.values((prsByDate[date] || []).reduce((acc,p)=>{ acc[p.ex] = { ...p, note: st.prNotes?.[p.ex] || "" }; return acc; }, {})) });
       }
       for (const c of (st.cardio || [])) {
         const txt = c.steps ? `${c.steps.toLocaleString()} steps — ${c.activity}` : `${c.duration} min ${c.activity}`;
-        evs.push({ key:`${m.user_id}-${c.id}-cardio`, date:c.date, user:m.username, kind:"cardio",
+        evs.push({ key:`${m.user_id}-${c.id}-cardio`, date:c.date, user:m.username, uid:m.user_id, kind:"cardio",
           icon: c.steps ? "👣" : "🏃", text: txt });
       }
     }
@@ -5479,11 +5492,11 @@ function FriendsTab({ user, nutritionOn, streaksOn, isPro, openPro }) {
       let best = -1, bestDate = null;
       for (const d of days) { syncedPerDay[d] = (syncedPerDay[d] || 0) + 1; if (mp[d] > best) { best = mp[d]; bestDate = d; } }
       if (best >= 10000 && bestDate)
-        evs.push({ key:`${m.user_id}-${bestDate}-rec`, date:bestDate, user:m.username, kind:"step", icon:"🔥", text:`set a new step record — ${best.toLocaleString()} steps` });
+        evs.push({ key:`${m.user_id}-${bestDate}-rec`, date:bestDate, user:m.username, uid:m.user_id, kind:"step", icon:"🔥", text:`set a new step record — ${best.toLocaleString()} steps` });
       let latestGoal = null;
       for (const d of days) if (mp[d] >= 10000 && (!latestGoal || d > latestGoal)) latestGoal = d;
       if (latestGoal && latestGoal !== bestDate)
-        evs.push({ key:`${m.user_id}-${latestGoal}-goal`, date:latestGoal, user:m.username, kind:"step", icon:"🎯", text:`hit their 10k goal — ${mp[latestGoal].toLocaleString()} steps` });
+        evs.push({ key:`${m.user_id}-${latestGoal}-goal`, date:latestGoal, user:m.username, uid:m.user_id, kind:"step", icon:"🎯", text:`hit their 10k goal — ${mp[latestGoal].toLocaleString()} steps` });
     }
     if (members.length >= 2) {
       const full = Object.keys(syncedPerDay).filter(d => syncedPerDay[d] === members.length).sort();
@@ -5618,7 +5631,7 @@ function FriendsTab({ user, nutritionOn, streaksOn, isPro, openPro }) {
         border:"none", boxShadow:"0 8px 24px rgba(0,0,0,.5)",
       }}>← Back</button>
       <div className="card" style={{display:"flex", justifyContent:"space-between", alignItems:"center"}}>
-        <div className="h" style={{fontSize:19, color:T.tealDk}}>💪 {profile.username}{isProUser(profile.user_id) && <ProBadge />}</div>
+        <div className="h" style={{fontSize:19, color:T.tealDk}}>💪 <span style={{color:isProUser(profile.user_id)?T.green:"inherit"}}>{profile.username}</span>{isProUser(profile.user_id) && <ProBadge />}</div>
         <span className="chip" style={{background:T.mint, color:T.green}}>read-only</span>
       </div>
       {!pdata ? (
@@ -5796,7 +5809,7 @@ function FriendsTab({ user, nutritionOn, streaksOn, isPro, openPro }) {
                 <span style={{color:T.sub, fontSize:12.5}}>{fmtDate(ev.date)}</span>{" "}
                 {ev.kind==="step" && ev.squad
                   ? <><b style={{color:T.green}}>{ev.icon} {ev.text}</b></>
-                  : <><b>{ev.user}</b>{" "}
+                  : <>{nameEl(ev.uid, ev.user, { you: ev.uid===user.id, weight:700 })}{" "}
                       {ev.kind==="step" ? <>{ev.icon} {ev.text}</>
                         : ev.kind==="cardio" ? <>{ev.icon||"🏃"} {ev.text}</>
                         : <>logged {ev.sets} set{ev.sets===1?"":"s"} — {ev.names.join(", ")}{ev.more>0?` +${ev.more} more`:""}</>}
@@ -5842,7 +5855,7 @@ function FriendsTab({ user, nutritionOn, streaksOn, isPro, openPro }) {
             return (
               <div key={r.uid} style={{display:"flex", alignItems:"center", gap:9, padding:"10px 2px", borderTop: i===0?"none":`1px solid ${T.creamLine}`}}>
                 <span style={{width:22, textAlign:"center", fontWeight:800, fontSize:14, color: i===0&&r.workouts>0?T.green:T.sub}}>{i===0&&r.workouts>0?"👑":i+1}</span>
-                <span style={{flex:1, minWidth:0, fontWeight:isMe?800:600, color:isMe?T.green:T.ink, fontSize:14, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{r.user}{isMe?" (you)":""}</span>
+                <span style={{flex:1, minWidth:0, fontSize:14, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{nameEl(r.uid, r.user, { you: isMe })}</span>
                 <span style={{width:70, display:"flex", alignItems:"center", gap:6, flexShrink:0}}>
                   <span style={{flex:1, height:6, background:T.input, borderRadius:99, overflow:"hidden"}}>
                     <span style={{display:"block", width:`${Math.min(r.workouts,7)/7*100}%`, height:"100%", background:T.green, borderRadius:99}} />
@@ -5889,7 +5902,7 @@ function FriendsTab({ user, nutritionOn, streaksOn, isPro, openPro }) {
               <button key={r.uid} onClick={()=>setFacts({ uid:r.uid, name:r.user })} title={`${r.avg.toLocaleString()} steps/day average`}
                 style={{width:"100%", textAlign:"left", background:"none", display:"flex", alignItems:"center", gap:9, padding:"9px 2px", borderTop: i===0?"none":`1px solid ${T.creamLine}`}}>
                 <span style={{width:20, textAlign:"center", fontWeight:800, fontSize:13, color: i===0?T.green:T.sub}}>{i===0?"👑":i+1}</span>
-                <span style={{width:82, flexShrink:0, fontSize:13.5, fontWeight: isMe?800:600, color: isMe?T.green:T.ink, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{r.user}{isMe?" (you)":""}</span>
+                <span style={{width:82, flexShrink:0, fontSize:13.5, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{nameEl(r.uid, r.user, { you: isMe })}</span>
                 <span style={{flex:1, height:8, background:T.input, borderRadius:99, overflow:"hidden"}}>
                   <span style={{display:"block", width:`${r.total/top*100}%`, height:"100%", background:T.green, borderRadius:99, transition:"width .5s ease"}} />
                 </span>
@@ -5903,7 +5916,7 @@ function FriendsTab({ user, nutritionOn, streaksOn, isPro, openPro }) {
         </div>
 
         {isPro
-          ? <DuelsCard user={user} all={memberSteps} nameOf={Object.fromEntries((members||[]).map(m=>[m.user_id,m.username]))} myId={user.id} myName={myName} />
+          ? <DuelsCard user={user} all={memberSteps} nameOf={Object.fromEntries((members||[]).map(m=>[m.user_id,m.username]))} myId={user.id} myName={myName} proIds={proIds} />
           : <ProTeaser icon="👟" title="Join the steps game" onGoPro={openPro}
               desc="You can see the squad's steps here — go Pro to auto-track your own, climb the board, and challenge friends to head-to-head step duels ⚔️" />}
 
@@ -5914,7 +5927,7 @@ function FriendsTab({ user, nutritionOn, streaksOn, isPro, openPro }) {
             <table><thead><tr><th>Member</th>{BIG_LIFTS.map(l=><th key={l} style={{textAlign:"center"}}>{LIFT_SHORT[l]}</th>)}</tr></thead>
               <tbody>{strength.rows.map(r=>(
                 <tr key={r.uid}>
-                  <td style={{fontWeight: r.uid===user.id?700:400}}>{r.user}</td>
+                  <td>{nameEl(r.uid, r.user, { you: r.uid===user.id, weight: r.uid===user.id?700:400 })}</td>
                   {BIG_LIFTS.map(l=>(
                     <td key={l} style={{ textAlign:"center", color: r.lifts[l] && r.lifts[l]===strength.best[l] ? T.green : T.ink, fontWeight: r.lifts[l] && r.lifts[l]===strength.best[l] ? 700 : 400 }}>
                       {r.lifts[l] == null ? "—" : dispW(r.lifts[l], units)}
@@ -5948,8 +5961,8 @@ function FriendsTab({ user, nutritionOn, streaksOn, isPro, openPro }) {
           </div>
           {members.map(m=>(
             <div key={m.user_id} style={{display:"flex", alignItems:"center", gap:8, padding:"7px 0", borderBottom:`1px solid ${T.line}`, fontSize:14}}>
-              <span style={{flex:1, fontWeight: m.user_id===user.id?700:500}}>
-                {m.user_id===active.created_by ? "👑 " : ""}{m.username}{m.user_id===user.id?" (you)":""}{isProUser(m.user_id) && <ProBadge small />}
+              <span style={{flex:1}}>
+                {m.user_id===active.created_by ? "👑 " : ""}{nameEl(m.user_id, m.username, { you: m.user_id===user.id, weight: m.user_id===user.id?700:500 })}
               </span>
               {isOwner && m.user_id !== user.id && (
                 <ConfirmX label="Remove" onConfirm={async ()=>{
