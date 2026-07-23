@@ -53,6 +53,14 @@ export async function getStepToken() {
   return data ?? null;
 }
 
+/** When the user's steps were last written (ISO string), or null. */
+export async function lastStepSync(userId) {
+  const { data, error } = await supabase.from("steps").select("updated_at")
+    .eq("user_id", userId).order("updated_at", { ascending: false }).limit(1).maybeSingle();
+  if (error) return null;
+  return data?.updated_at || null;
+}
+
 /** Recent step counts for a set of users: { user_id: { "YYYY-MM-DD": count } }.
     RLS limits results to yourself + groupmates. */
 export async function stepsFor(userIds, sinceDay) {

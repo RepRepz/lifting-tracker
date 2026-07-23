@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, lazy, Suspense, Fragment, createContext, useContext } from "react";
-import { supabase, loadUserState, saveUserState, listMyGroups, listMembers, createGroup, joinGroup, leaveGroup, listReactions, addReaction, removeReaction, setSecurityQuestion, getSecurityQuestion, lastActiveFor, setGroupEmoji, resetInviteCode, listCloudBackups, getCloudBackup, getStepToken, stepsFor, createDuel, listDuels, deleteDuel, listProUserIds } from "./lib/storage.js";
+import { supabase, loadUserState, saveUserState, listMyGroups, listMembers, createGroup, joinGroup, leaveGroup, listReactions, addReaction, removeReaction, setSecurityQuestion, getSecurityQuestion, lastActiveFor, setGroupEmoji, resetInviteCode, listCloudBackups, getCloudBackup, getStepToken, stepsFor, lastStepSync, createDuel, listDuels, deleteDuel, listProUserIds } from "./lib/storage.js";
 import { SECURITY_QUESTIONS } from "./AuthScreen.jsx";
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
@@ -2557,6 +2557,7 @@ function useSteps(user, sinceDays) {
   const [nameOf, setNameOf] = useState({});
   const [board, setBoard] = useState([]);
   const [celebrate, setCelebrate] = useState(null);
+  const [lastSync, setLastSync] = useState(null);
   const reloadRef = useRef(() => {});
   useEffect(()=>{
     let alive = true;
@@ -2579,6 +2580,7 @@ function useSteps(user, sinceDays) {
         const bd = ids.map(id => ({ id, name: id===user.id ? myName : (nm[id]||"?"), me: id===user.id, steps: s[id]?.[yStr] ?? null }))
           .filter(r => r.steps != null).sort((a,b)=> b.steps - a.steps);
         setBoard(bd);
+        lastStepSync(user.id).then(t => { if (alive) setLastSync(t); }).catch(()=>{});
         for (const g of gm) {
           if (g.ids.length >= 2 && g.ids.every(id => s[id]?.[yStr] != null)) {
             if (localStorage.getItem(`lt-allin-${yStr}`) !== "1") setCelebrate(g.name);
@@ -2596,7 +2598,7 @@ function useSteps(user, sinceDays) {
     return () => { alive = false; document.removeEventListener("visibilitychange", onVis); window.removeEventListener("focus", onVis); };
   }, [user.id, sinceDays]);
   const dismiss = () => { localStorage.setItem(`lt-allin-${yStr}`, "1"); setCelebrate(null); };
-  return { mine, all, nameOf, board, celebrate, dismiss, yStr, myId: user.id, reload: () => reloadRef.current() };
+  return { mine, all, nameOf, board, celebrate, dismiss, yStr, myId: user.id, lastSync, reload: () => reloadRef.current() };
 }
 
 /* One reliable "Sync now" launcher — runs the phone shortcut via its URL scheme.
@@ -2810,7 +2812,7 @@ function DuelsCard({ user, all, nameOf, myId, myName }) {
    and a once-a-day whole-group celebration. */
 function StepsTab({ user, data, setData }) {
   const goal = (data.profile?.stepGoal) || 10000;
-  const { mine, all, nameOf, board, celebrate, dismiss, yStr, myId } = useSteps(user, 5*365 + 40);
+  const { mine, all, nameOf, board, celebrate, dismiss, yStr, myId, lastSync } = useSteps(user, 5*365 + 40);
   const myName = nameOf[myId] || (user.user_metadata?.username || "you");
   const merged = useMemo(() => mergeSteps(mine || {}, data.cardio), [mine, data.cardio]);
   const [editGoal, setEditGoal] = useState(false);
@@ -2884,9 +2886,18 @@ function StepsTab({ user, data, setData }) {
         )}
       </div>
       <SyncNowButton block />
-      <div style={{fontSize:11, color:T.sub, textAlign:"center", marginTop:7, lineHeight:1.5}}>
-        Runs your <b style={{color:T.ink}}>“The Lab: Steps”</b> shortcut and pulls your latest steps — this page updates the moment you come back.
-      </div>
+      {(() => {
+        if (!lastSync) return <div style={{fontSize:11, color:T.sub, textAlign:"center", marginTop:7, lineHeight:1.5}}>Runs your <b style={{color:T.ink}}>“The Lab: Steps”</b> shortcut — this page updates the moment you come back.</div>;
+        const ms = Date.now() - new Date(lastSync).getTime();
+        const recent = ms < 120000;
+        const rel = ms<60000 ? "just now" : ms<3600000 ? `${Math.floor(ms/60000)} min ago` : ms<86400000 ? `${Math.floor(ms/3600000)}h ago` : `${Math.floor(ms/86400000)}d ago`;
+        return (
+          <div style={{textAlign:"center", marginTop:9, fontSize:12.5, fontWeight:800, color: recent?T.green:T.sub,
+            background: recent?"rgba(0,200,5,.10)":"transparent", borderRadius:99, padding:recent?"6px 0":"2px 0", transition:"all .2s ease"}}>
+            {recent ? "✓ Synced " : "🕐 Last synced "}{rel}
+          </div>
+        );
+      })()}
     </div>
 
     <StepRingChart map={merged.map} goal={goal} meta={merged.meta} />
