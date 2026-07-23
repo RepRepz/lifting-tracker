@@ -308,7 +308,7 @@ export default function LiftingTracker({ user }) {
   // Currently unlocked ONLY for these usernames (a private demo for Anis). Add a name here
   // to give someone access, or set to `true` to turn it on for everyone.
   const liftingOn = true;
-  const MACRO_ACCOUNTS = ["dimi", "ancenurkic"];
+  const MACRO_ACCOUNTS = ["ancenurkic"];
   const [proIds, setProIds] = useState([]);
   useEffect(() => { listProUserIds().then(setProIds).catch(()=>{}); }, []);
   const isPro = proIds.includes(user.id);
