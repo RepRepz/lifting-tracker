@@ -2225,9 +2225,9 @@ function RecordsTab({ data, exMap, setData }) {
               </div>
               <div style={{marginTop:11}}>
                 <div style={{...statL, marginBottom:5}}>💬 PR note — shows in your groups</div>
-                <input value={data.prNotes?.[r.name] || ""} onChange={e=>setNote(r.name, e.target.value.slice(0,80))} maxLength={80}
-                  placeholder="e.g. finally hit 2 plates 🔥" style={{width:"100%"}} />
-                <div style={{fontSize:10.5, color:T.sub, textAlign:"right", marginTop:3}}>{(data.prNotes?.[r.name]||"").length}/80</div>
+                <input value={data.prNotes?.[r.name] || ""} onChange={e=>setNote(r.name, e.target.value.slice(0,50))} maxLength={50}
+                  placeholder="e.g. finally 2 plates 🔥" style={{width:"100%"}} />
+                <div style={{fontSize:10.5, color:T.sub, textAlign:"right", marginTop:3}}>{(data.prNotes?.[r.name]||"").length}/50</div>
               </div>
             </div>
           )}
@@ -5704,7 +5704,7 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
           <div onClick={e=>e.stopPropagation()} style={{background:T.card, border:`1px solid ${T.green}`, borderRadius:18, padding:"26px 22px", maxWidth:340, textAlign:"center", animation:"calPop .28s cubic-bezier(.34,1.56,.64,1) both"}}>
             <div style={{fontSize:44, marginBottom:8}}>🎉</div>
             <div className="h" style={{fontSize:20, color:T.green, marginBottom:6}}>Whole squad logged!</div>
-            <div style={{fontSize:13.5, color:T.sub, lineHeight:1.55, marginBottom:16}}>Everyone in <b style={{color:T.ink}}>{active.name}</b> got their steps in for {dayLabel(squadCel)}. Momentum. 🔥</div>
+            <div style={{fontSize:13.5, color:T.sub, lineHeight:1.55, marginBottom:16}}>Everyone in <b style={{color:T.ink}}>{active.name}</b> got their steps in for {squadCel === dAdd(todayStr(), -1) ? "yesterday" : fmtDate(squadCel)}. Momentum. 🔥</div>
             <button onClick={dismissSquad} style={{background:T.green, color:"#000", fontWeight:800, fontSize:15, padding:"11px 20px", borderRadius:10, width:"100%"}}>Let's go</button>
           </div>
         </div>
