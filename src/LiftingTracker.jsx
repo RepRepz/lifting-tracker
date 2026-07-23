@@ -321,6 +321,17 @@ export default function LiftingTracker({ user }) {
   useEffect(() => { localStorage.setItem("lt-hunit", hunit); }, [hunit]);
   useEffect(() => { localStorage.setItem("lt-routines-on", routinesOn ? "1" : "0"); }, [routinesOn]);
   useEffect(() => { localStorage.setItem("lt-steps-on", stepsOn ? "1" : "0"); }, [stepsOn]);
+  // The Steps toggle is PROFILE-WIDE: turning it on (or off) on one device syncs to the
+  // rest via the cloud state, so enabling on your phone lights it up on your PC too.
+  const setStepsOnSynced = (v) => {
+    const on = typeof v === "function" ? v(stepsOn) : v;
+    setStepsOn(on);
+    setData(d => ({ ...d, profile: { ...(d.profile || {}), stepsOn: on } }));
+  };
+  useEffect(() => {
+    const v = data?.profile?.stepsOn;
+    if (typeof v === "boolean" && v !== stepsOn) setStepsOn(v); // adopt the cloud value on load / cross-device change
+  }, [data?.profile?.stepsOn]);
   useEffect(() => {
     if (tab === "macros" && !nutritionOn) setTab("dash"); // non-dev accounts never land on Macros
     if (tab === "steps" && !stepsOn) setTab("dash");      // hide the Steps tab when the feature is off
@@ -549,9 +560,15 @@ export default function LiftingTracker({ user }) {
           padding:5px 4px calc(5px + min(env(safe-area-inset-bottom), 34px));
           background:${T.bg}; border-top:1px solid ${T.line};
           transition:transform .3s cubic-bezier(.4,0,.2,1);
+          /* Keep the bar on its OWN GPU layer at all times. Without a persistent
+             non-none transform, iOS Safari doesn't give a position:fixed element a
+             compositor layer, so during momentum/rubber-band scrolling it gets
+             "stranded" mid-page until the scroll settles (looked like the bar was
+             floating in the middle of the screen). translateZ(0) pins it. */
+          transform:translateY(0) translateZ(0); will-change:transform; backface-visibility:hidden;
         }
         /* slide the bar down out of view while scrolling down; back up on scroll-up */
-        .nav-bottom.nav-hidden { transform:translateY(130%); }
+        .nav-bottom.nav-hidden { transform:translateY(140%) translateZ(0); }
         /* tab button — soft green pill on the active one, Robinhood style */
         .navbtn {
           display:flex; flex-direction:column; align-items:center; gap:2px; min-width:0;
@@ -564,7 +581,8 @@ export default function LiftingTracker({ user }) {
         @media(hover:hover){ .navbtn:hover:not(.on){ background:rgba(255,255,255,.05); color:${T.ink}; } }
         .navbtn:active { transform:scale(.9); }
         .app-main { max-width:860px; margin:0 auto; padding:16px 14px; }
-        .app-root { padding-bottom:calc(124px + min(env(safe-area-inset-bottom), 34px)); }
+        /* bottom bar is now up to THREE rows tall (10 tabs), so reserve room for 3 */
+        .app-root { padding-bottom:calc(176px + min(env(safe-area-inset-bottom), 34px)); }
         /* floating "back" on member profiles — above the bottom nav on phones */
         .profile-back-fab { position:fixed; right:16px; z-index:40; bottom:calc(136px + min(env(safe-area-inset-bottom), 34px)); }
 
@@ -625,7 +643,7 @@ export default function LiftingTracker({ user }) {
           startTab={startTab} setStartTab={setStartTab} tabs={tabs}
           units={units} setUnits={setUnits} hunit={hunit} setHunit={setHunit}
           routinesOn={routinesOn} setRoutinesOn={setRoutinesOn}
-          stepsOn={stepsOn} setStepsOn={setStepsOn} isPro={isPro}
+          stepsOn={stepsOn} setStepsOn={setStepsOnSynced} isPro={isPro}
           streaksOn={streaksOn} setStreaksOn={setStreaksOn}
           waterOn={waterOn} setWaterOn={setWaterOn}
           nutritionOn={nutritionOn}
@@ -2516,7 +2534,10 @@ function mergeSteps(autoMap, cardio) {
   for (const d in map) meta[d] = "auto";
   for (const c of (cardio || [])) {
     if (!c.steps || !c.date) continue;
-    if (map[c.date] != null) { map[c.date] += c.steps; meta[c.date] = meta[c.date]==="manual" ? "manual" : "both"; }
+    // If Apple Health already synced this day, that number is the source of truth —
+    // keep it and DROP the manual entry so the day isn't double-counted. Manual only
+    // fills days Health never synced.
+    if (map[c.date] != null) { meta[c.date] = "both"; }   // synced value wins; no add
     else { map[c.date] = c.steps; meta[c.date] = "manual"; }
   }
   return { map, meta };
@@ -2908,15 +2929,16 @@ function StepsTab({ user, data, setData }) {
 
     <StepRingChart map={merged.map} goal={goal} meta={merged.meta} />
 
+    <DuelsCard user={user} all={all} nameOf={nameOf} myId={myId} myName={myName} />
+
     {race.length > 1 && (
-      <div className="card">
-        <div className="h" style={{fontSize:16, color:T.tealDk, marginBottom:2}}>🏁 This week's race</div>
-        <div style={{fontSize:12, color:T.sub, marginBottom:6}}>Most steps Mon–Sun · tap anyone to see their graph.</div>
-        {race.map((r,i)=><Row key={r.id} r={r} i={i} value={r.sum} />)}
+      <div className="card" style={{display:"flex", alignItems:"center", gap:11, padding:"13px 15px"}}>
+        <span style={{fontSize:22}}>🏁</span>
+        <div style={{flex:1, minWidth:0, fontSize:12.5, color:T.sub, lineHeight:1.5}}>
+          <b style={{color:T.ink}}>Weekly step race</b> lives in your <b style={{color:T.green}}>Groups</b> tab now — open a group to see everyone's steps this week.
+        </div>
       </div>
     )}
-
-    <DuelsCard user={user} all={all} nameOf={nameOf} myId={myId} myName={myName} />
 
     {/* groupmate graph popup */}
     {view && (
@@ -4506,8 +4528,21 @@ function SecurityCard({ username }) {
 }
 
 /* ================= FRIENDS ================= */
-const BIG_LIFTS = ["Bench Press","Back Squat","Deadlift","Overhead Press"];
-const LIFT_SHORT = { "Bench Press":"Bench", "Back Squat":"Squat", "Deadlift":"Dead", "Overhead Press":"OHP" };
+const BIG_LIFTS = ["Bench Press","Incline Bench Press","Incline Dumbbell Press","Back Squat","Deadlift","Overhead Press"];
+const LIFT_SHORT = { "Bench Press":"Bench", "Incline Bench Press":"Inc Bench", "Incline Dumbbell Press":"Inc DB", "Back Squat":"Squat", "Deadlift":"Dead", "Overhead Press":"OHP" };
+const BIG_LIFT_SET = new Set(BIG_LIFTS);
+/* High-rep sets don't give a trustworthy estimated 1RM. Cap the reps that count:
+   the competitive "big lifts" cut off at 12, everything else is more lenient at 15. */
+const REP_CAP = (exercise) => (BIG_LIFT_SET.has(exercise) ? 12 : 15);
+/* Best estimated 1RM for one exercise from its logged entries, ignoring sets whose
+   reps exceed the cap (a 30-rep set shouldn't crown anyone). null if nothing qualifies. */
+const bestEst1RM = (exercise, entries) => {
+  const cap = REP_CAP(exercise);
+  const vals = (entries || [])
+    .filter(e => e.weight != null && (e.reps || 0) >= 1 && (e.reps || 0) <= cap)
+    .map(e => e1rm(e.weight, e.reps));
+  return vals.length ? Math.max(...vals) : null;
+};
 
 /* End-of-month recap: pops up once per group each month with everyone's
    average weigh-in for the month that just finished (+ their goal). */
@@ -4733,6 +4768,8 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
   const [code, setCode] = useState("");
   const [copied, setCopied] = useState(false);
   const [reactions, setReactions] = useState({}); // event_key -> [{reactor_id, reactor_name}]
+  const [stepRange, setStepRange] = useState("W"); // group step board window: W | 1M | 6M | YTD | 1Y
+  const [duels, setDuels] = useState([]); // all visible duels — for each member's profile duel record
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [customEmoji, setCustomEmoji] = useState("");
   const [feedN, setFeedN] = useState(null); // null = auto (3, or the whole latest day if bigger)
@@ -4781,6 +4818,29 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
     })();
     return () => { alive = false; };
   }, [members]);
+
+  // all duels involving anyone you can see — used for each person's duel record on their profile
+  useEffect(() => {
+    let alive = true;
+    (async () => { try { const d = await listDuels(); if (alive) setDuels(d); } catch { /* table may be empty */ } })();
+    return () => { alive = false; };
+  }, [members]);
+
+  /* A member's finished-duel record (wins–losses–ties), computed from step totals. */
+  const duelRecord = (uid) => {
+    const today = todayStr();
+    let w=0, l=0, t=0;
+    const sumRange = (map,s,e)=>{ let x=0; const m=map||{}; for (const d in m) if (d>=s && d<=e) x+=m[d]; return x; };
+    for (const d of duels) {
+      if (d.a_id!==uid && d.b_id!==uid) continue;
+      if (today <= d.end_day) continue; // only finished duels count toward the record
+      const mine = sumRange(memberSteps[uid], d.start_day, d.end_day);
+      const oId = d.a_id===uid ? d.b_id : d.a_id;
+      const opp = sumRange(memberSteps[oId], d.start_day, d.end_day);
+      if (mine>opp) w++; else if (opp>mine) l++; else t++;
+    }
+    return { w, l, t, total: w+l+t };
+  };
 
   const saveEmoji = async (e) => {
     if (!e || !active) return;
@@ -4956,8 +5016,26 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
           icon: c.steps ? "👣" : "🏃", text: txt });
       }
     }
+    // step moments (from the steps table): new record (>10k only), goal hit, whole-squad
+    const syncedPerDay = {};
+    for (const m of members) {
+      const mp = memberSteps[m.user_id] || {}; const days = Object.keys(mp); if (!days.length) continue;
+      let best = -1, bestDate = null;
+      for (const d of days) { syncedPerDay[d] = (syncedPerDay[d] || 0) + 1; if (mp[d] > best) { best = mp[d]; bestDate = d; } }
+      if (best >= 10000 && bestDate)
+        evs.push({ key:`${m.user_id}-${bestDate}-rec`, date:bestDate, user:m.username, kind:"step", icon:"🔥", text:`set a new step record — ${best.toLocaleString()} steps` });
+      let latestGoal = null;
+      for (const d of days) if (mp[d] >= 10000 && (!latestGoal || d > latestGoal)) latestGoal = d;
+      if (latestGoal && latestGoal !== bestDate)
+        evs.push({ key:`${m.user_id}-${latestGoal}-goal`, date:latestGoal, user:m.username, kind:"step", icon:"🎯", text:`hit their 10k goal — ${mp[latestGoal].toLocaleString()} steps` });
+    }
+    if (members.length >= 2) {
+      const full = Object.keys(syncedPerDay).filter(d => syncedPerDay[d] === members.length).sort();
+      const d = full[full.length - 1];
+      if (d) evs.push({ key:`squad-${d}`, date:d, kind:"step", squad:true, icon:"🎉", user:"", text:"Everyone in the group logged their steps" });
+    }
     return evs.sort((a,b)=>b.date.localeCompare(a.date)).slice(0, 25);
-  }, [members, states, units]);
+  }, [members, states, memberSteps, units]);
 
   /* default feed length: 3 lines, unless the newest day alone has more — then show that whole day */
   const feedAuto = useMemo(() => {
@@ -4982,16 +5060,28 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
 
   /* steps leaderboard — this week's total per member (only shown if anyone logged steps) */
   const stepBoard = useMemo(() => {
-    if (!members) return [];
-    const thisWk = weekStart(todayStr());
+    if (!members) return { rows: [], total: 0, since: "", label: "", sub: "" };
+    const today = todayStr();
+    let since, label, sub;
+    if      (stepRange === "W")   { since = weekStart(today);          label = "This week";  sub = "since Monday"; }
+    else if (stepRange === "1M")  { since = dAdd(today, -29);          label = "Past month"; sub = "last 30 days"; }
+    else if (stepRange === "6M")  { since = dAdd(today, -181);         label = "6 months";   sub = "last 6 months"; }
+    else if (stepRange === "YTD") { since = today.slice(0,4)+"-01-01"; label = "This year";  sub = "since Jan 1"; }
+    else                          { since = dAdd(today, -364);         label = "Past year";  sub = "last 12 months"; }
     const rows = members.map(m => {
       const mp = memberSteps[m.user_id] || {};
-      let week = 0, days = 0;
-      for (const d in mp) if (weekStart(d) === thisWk) { week += mp[d]; days++; }
-      return { user: m.username, uid: m.user_id, week, avg: days ? Math.round(week/days) : 0 };
-    }).filter(r => r.week > 0).sort((a,b)=>b.week - a.week);
-    return rows;
-  }, [members, memberSteps]);
+      let total = 0, days = 0;
+      for (const d in mp) if (d >= since && d <= today) { total += mp[d]; days++; }
+      return { user: m.username, uid: m.user_id, total, avg: days ? Math.round(total/days) : 0 };
+    }).filter(r => r.total > 0).sort((a,b)=>b.total - a.total);
+    const total = rows.reduce((s,r)=>s+r.total, 0);
+    // fun "group journey": combined miles walked + a playful real-world equivalent.
+    const miles = total * 0.762 / 1609.34; // ~0.762 m per step
+    const eq = miles >= 500 ? `≈ ${(miles/2789).toFixed(miles/2789>=1?1:2)}× across the USA 🇺🇸`
+      : miles >= 26.2 ? `≈ ${Math.round(miles/26.2)} marathon${Math.round(miles/26.2)===1?"":"s"} 🏅`
+      : miles >= 1 ? `${Math.round(total*0.762)} m together` : "";
+    return { rows, total, since, label, sub, miles, eq };
+  }, [members, memberSteps, stepRange]);
 
   const strength = useMemo(() => {
     if (!members) return { rows: [], best: {} };
@@ -4999,8 +5089,9 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
       const st = states[m.user_id] || {};
       const lifts = {};
       for (const lift of BIG_LIFTS) {
-        const entries = (st.log || []).filter(e => e.exercise === lift && e.weight != null);
-        lifts[lift] = entries.length ? Math.round(Math.max(...entries.map(e => e1rm(e.weight, e.reps)))) : null;
+        const entries = (st.log || []).filter(e => e.exercise === lift);
+        const best = bestEst1RM(lift, entries);
+        lifts[lift] = best != null ? Math.round(best) : null;
       }
       return { user: m.username, uid: m.user_id, lifts };
     });
@@ -5021,13 +5112,12 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
       const setCount = (st.log || []).length;
       if (setCount > 0 && (!setsBest || setCount > setsBest.v))
         setsBest = { v:setCount, text:`${setCount.toLocaleString()} sets`, who:m.username };
-      // biggest all-time estimated-1RM across the big lifts (progress, not just who's heaviest today)
+      // biggest all-time estimated-1RM across the big lifts (progress, not just who's heaviest today).
+      // Uses the rep cap so a 30-rep burnout set can't fake a huge 1RM.
       let top1rm = 0, top1rmLift = "";
       for (const lift of BIG_LIFTS) {
-        for (const e of (st.log || [])) if (e.exercise === lift && e.weight != null) {
-          const est = e1rm(e.weight, e.reps);
-          if (est > top1rm) { top1rm = est; top1rmLift = lift; }
-        }
+        const est = bestEst1RM(lift, (st.log || []).filter(e => e.exercise === lift));
+        if (est != null && est > top1rm) { top1rm = est; top1rmLift = lift; }
       }
       if (top1rm > 0 && (!prBest || top1rm > prBest.v))
         prBest = { v:top1rm, text:`${Math.round(dispW(top1rm,units)).toLocaleString()} ${uLabel(units)} ${LIFT_SHORT[top1rmLift]||top1rmLift}`, who:m.username };
@@ -5135,6 +5225,26 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
                 <span style={{fontSize:13, color:T.sub}}>Last synced <b style={{color:T.ink}}>{stepRel(profileLastSync)}</b></span>
               </div>
             )}
+            {(() => {
+              const rec = duelRecord(profile.user_id);
+              if (!rec.total) return null;
+              const wr = Math.round(rec.w / rec.total * 100);
+              return (
+                <div className="card" style={{display:"flex", alignItems:"center", gap:12, padding:"12px 15px"}}>
+                  <span style={{fontSize:22}}>⚔️</span>
+                  <div style={{flex:1, minWidth:0}}>
+                    <div style={{fontSize:13, color:T.sub, fontWeight:600}}>Step duel record</div>
+                    <div style={{fontSize:17, fontWeight:800, color:T.ink, fontVariantNumeric:"tabular-nums"}}>
+                      {rec.w}<span style={{color:T.sub, fontWeight:600}}>W</span> – {rec.l}<span style={{color:T.sub, fontWeight:600}}>L</span>{rec.t ? <> – {rec.t}<span style={{color:T.sub, fontWeight:600}}>T</span></> : null}
+                    </div>
+                  </div>
+                  <div style={{textAlign:"right"}}>
+                    <div style={{fontSize:20, fontWeight:800, color: wr>=50?T.green:T.sub}}>{wr}%</div>
+                    <div style={{fontSize:10.5, color:T.sub}}>win rate</div>
+                  </div>
+                </div>
+              );
+            })()}
             {profileSteps === undefined ? <div className="card"><div className="skeleton" style={{height:220, borderRadius:12}} /></div>
             : (() => {
                 const mg = mergeSteps(profileSteps, pdata.cardio);
@@ -5158,7 +5268,7 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
   if (active) {
     return (<>
       {recap && <MonthlyRecapModal recap={recap} groupName={active.name} emoji={active.emoji} onClose={closeRecap} />}
-      {facts && <StepFactsModal name={facts.name} isMe={facts.uid===user.id} map={memberSteps[facts.uid]} rank={(stepBoard.findIndex(r=>r.uid===facts.uid)+1) || null} onClose={()=>setFacts(null)} />}
+      {facts && <StepFactsModal name={facts.name} isMe={facts.uid===user.id} map={memberSteps[facts.uid]} rank={(stepBoard.rows.findIndex(r=>r.uid===facts.uid)+1) || null} onClose={()=>setFacts(null)} />}
       <button onClick={()=>{setActive(null); setMembers(null);}} style={{ background:"none", color:T.green, fontWeight:700, fontSize:14, marginBottom:10 }}>← All groups</button>
       <div className="card">
         <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", gap:8, flexWrap:"wrap"}}>
@@ -5214,10 +5324,13 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
             return (
               <div key={ev.key} style={{padding:"9px 0", borderBottom:`1px solid ${T.line}`, fontSize:14}}>
                 <span style={{color:T.sub, fontSize:12.5}}>{fmtDate(ev.date)}</span>{" "}
-                <b>{ev.user}</b>{" "}
-                {ev.kind==="cardio" ? <>{ev.icon||"🏃"} {ev.text}</> : <>
-                  logged {ev.sets} set{ev.sets===1?"":"s"} — {ev.names.join(", ")}{ev.more>0?` +${ev.more} more`:""}
-                </>}
+                {ev.kind==="step" && ev.squad
+                  ? <><b style={{color:T.green}}>{ev.icon} {ev.text}</b></>
+                  : <><b>{ev.user}</b>{" "}
+                      {ev.kind==="step" ? <>{ev.icon} {ev.text}</>
+                        : ev.kind==="cardio" ? <>{ev.icon||"🏃"} {ev.text}</>
+                        : <>logged {ev.sets} set{ev.sets===1?"":"s"} — {ev.names.join(", ")}{ev.more>0?` +${ev.more} more`:""}</>}
+                    </>}
                 {ev.prs?.map(pr=>(
                   <span key={pr} className="chip" style={{background:T.mint, color:T.green, marginLeft:6}}>🎉 PR: {pr}</span>
                 ))}
@@ -5273,30 +5386,56 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
           })}
         </div>
 
-        {stepBoard.length > 0 && (
-          <div className="card">
-            <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:2}}>👣 Steps this week</div>
-            <div style={{fontSize:12, color:T.sub, marginBottom:8}}>Total since <b style={{color:T.ink}}>Monday</b> · small number = steps/day so far · tap anyone for fun stats.</div>
-            {stepBoard.map((r,i)=>{
-              const top = stepBoard[0].week || 1;
-              const isMe = r.uid===user.id;
-              return (
-                <button key={r.uid} onClick={()=>setFacts({ uid:r.uid, name:r.user })} title={`${r.avg.toLocaleString()} steps/day average this week`}
-                  style={{width:"100%", textAlign:"left", background:"none", display:"flex", alignItems:"center", gap:9, padding:"9px 2px", borderTop: i===0?"none":`1px solid ${T.creamLine}`}}>
-                  <span style={{width:20, textAlign:"center", fontWeight:800, fontSize:13, color: i===0?T.green:T.sub}}>{i===0?"👑":i+1}</span>
-                  <span style={{width:82, flexShrink:0, fontSize:13.5, fontWeight: isMe?800:600, color: isMe?T.green:T.ink, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{r.user}{isMe?" (you)":""}</span>
-                  <span style={{flex:1, height:8, background:T.input, borderRadius:99, overflow:"hidden"}}>
-                    <span style={{display:"block", width:`${r.week/top*100}%`, height:"100%", background:T.green, borderRadius:99, transition:"width .5s ease"}} />
-                  </span>
-                  <span style={{textAlign:"right", flexShrink:0, minWidth:64}}>
-                    <b style={{fontSize:13, color:T.ink, display:"block", fontVariantNumeric:"tabular-nums"}}>{r.week.toLocaleString()}</b>
-                    <span style={{fontSize:10.5, color:T.sub}}>{r.avg.toLocaleString()}/day</span>
-                  </span>
-                </button>
-              );
-            })}
+        <div className="card">
+          <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", gap:8, flexWrap:"wrap", marginBottom:8}}>
+            <div>
+              <div className="h" style={{fontSize:17, color:T.tealDk}}>👣 Group steps</div>
+              <div style={{fontSize:11.5, color:T.sub}}>{stepBoard.sub} · small # = steps/day · tap anyone for fun stats.</div>
+            </div>
+            <div style={{display:"flex", gap:3, background:T.input, borderRadius:99, padding:3}}>
+              {["W","1M","6M","YTD","1Y"].map(rg=>(
+                <button key={rg} onClick={()=>setStepRange(rg)} style={{
+                  border:"none", cursor:"pointer", fontSize:11.5, fontWeight:700, padding:"4px 9px", borderRadius:99,
+                  background: stepRange===rg ? T.green : "transparent", color: stepRange===rg ? "#000" : T.sub }}>{rg}</button>
+              ))}
+            </div>
           </div>
-        )}
+
+          {/* group "journey" — everyone's steps combined into one fun number */}
+          {stepBoard.total > 0 && (
+            <div style={{display:"flex", alignItems:"center", gap:11, background:"linear-gradient(100deg,rgba(0,200,5,.10),rgba(0,200,5,.02))",
+              border:`1px solid ${T.line}`, borderRadius:14, padding:"11px 14px", marginBottom:10}}>
+              <span style={{fontSize:24}}>🌍</span>
+              <div style={{flex:1, minWidth:0}}>
+                <div style={{fontSize:18, fontWeight:800, color:T.ink, fontVariantNumeric:"tabular-nums", lineHeight:1.1}}>{stepBoard.total.toLocaleString()} <span style={{fontSize:12, fontWeight:600, color:T.sub}}>steps together</span></div>
+                <div style={{fontSize:12, color:T.green, fontWeight:700}}>{Math.round(stepBoard.miles).toLocaleString()} mi {stepBoard.eq ? `· ${stepBoard.eq}` : ""}</div>
+              </div>
+            </div>
+          )}
+
+          {stepBoard.rows.length === 0 ? (
+            <div style={{fontSize:13, color:T.sub, padding:"6px 2px"}}>No steps logged in this range yet.</div>
+          ) : stepBoard.rows.map((r,i)=>{
+            const top = stepBoard.rows[0].total || 1;
+            const isMe = r.uid===user.id;
+            return (
+              <button key={r.uid} onClick={()=>setFacts({ uid:r.uid, name:r.user })} title={`${r.avg.toLocaleString()} steps/day average`}
+                style={{width:"100%", textAlign:"left", background:"none", display:"flex", alignItems:"center", gap:9, padding:"9px 2px", borderTop: i===0?"none":`1px solid ${T.creamLine}`}}>
+                <span style={{width:20, textAlign:"center", fontWeight:800, fontSize:13, color: i===0?T.green:T.sub}}>{i===0?"👑":i+1}</span>
+                <span style={{width:82, flexShrink:0, fontSize:13.5, fontWeight: isMe?800:600, color: isMe?T.green:T.ink, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{r.user}{isMe?" (you)":""}</span>
+                <span style={{flex:1, height:8, background:T.input, borderRadius:99, overflow:"hidden"}}>
+                  <span style={{display:"block", width:`${r.total/top*100}%`, height:"100%", background:T.green, borderRadius:99, transition:"width .5s ease"}} />
+                </span>
+                <span style={{textAlign:"right", flexShrink:0, minWidth:64}}>
+                  <b style={{fontSize:13, color:T.ink, display:"block", fontVariantNumeric:"tabular-nums"}}>{r.total.toLocaleString()}</b>
+                  <span style={{fontSize:10.5, color:T.sub}}>{r.avg.toLocaleString()}/day</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        <DuelsCard user={user} all={memberSteps} nameOf={Object.fromEntries((members||[]).map(m=>[m.user_id,m.username]))} myId={user.id} myName={myName} />
 
         <div className="card">
           <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:2}}>🏋️ Strength — best est. 1RM ({uLabel(units)})</div>
