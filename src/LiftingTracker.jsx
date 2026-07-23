@@ -4024,25 +4024,33 @@ function StepsCard({ user }) {
     );
   };
 
-  // one JSON body field, stacked so the Value + its Copy button always get full width
-  const JField = ({ type, name, nameId, valueCopy, valueId, valueNote, valuePick, secret }) => (
-    <div style={{ background:T.input, border:`1px solid ${secret ? T.green : T.line}`, borderRadius:10, overflow:"hidden", marginBottom:8 }}>
-      <div style={{ fontSize:10, fontWeight:700, color:T.sub, textTransform:"uppercase", letterSpacing:.6, padding:"6px 11px", borderBottom:`1px solid ${T.line}`, background:T.cardAlt }}>Field type: {type}</div>
-      <div style={{ padding:"9px 11px" }}>
-        <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10, flexWrap:"wrap" }}>
-          <span style={{ fontSize:9.5, fontWeight:700, color:T.sub, textTransform:"uppercase", letterSpacing:.5 }}>Key</span>
+  // one JSON body field. Consistent layout for all three: a "Key" label + chip, then a
+  // value label that matches the field's TYPE (Text/Number — same word the Shortcuts app
+  // shows), with the value box to the right, wrapping onto multiple lines so nothing clips.
+  const JField = ({ num, type, name, nameId, valueCopy, valueId, valueNote, valuePick, secret }) => (
+    <div style={{ background:T.input, border:`1px solid ${secret ? T.green : T.line}`, borderRadius:10, overflow:"hidden", marginBottom:9 }}>
+      <div style={{ fontSize:10, fontWeight:800, color:T.sub, textTransform:"uppercase", letterSpacing:.6, padding:"6px 11px", borderBottom:`1px solid ${T.line}`, background:T.cardAlt, display:"flex", justifyContent:"space-between" }}>
+        <span>Field {num}</span><span style={{ color:STEP_BLUE }}>type: {type}</span>
+      </div>
+      <div style={{ padding:"10px 11px" }}>
+        <div style={{ display:"flex", alignItems:"center", gap:9, marginBottom:9 }}>
+          <span style={{ fontSize:9.5, fontWeight:800, color:T.sub, textTransform:"uppercase", letterSpacing:.5, width:40, flexShrink:0 }}>Key</span>
           <CopyChip value={name} id={nameId} />
         </div>
-        <div style={{ fontSize:9.5, fontWeight:700, color:T.sub, textTransform:"uppercase", letterSpacing:.5, marginBottom:5 }}>Value</div>
-        {valueCopy != null ? (<>
-          <CopyChip value={valueCopy} id={valueId} secret={secret} block wrap />
-          {valueNote && <div style={{ fontSize:11, fontWeight:800, color: secret ? T.danger : T.sub, marginTop:6 }}>{valueNote}</div>}
-        </>) : (
-          <div style={{ display:"flex", gap:8, alignItems:"flex-start", background:STEP_BLUEBG, border:`1px solid ${STEP_BLUE}`, borderRadius:8, padding:"9px 11px" }}>
-            <span style={{ flexShrink:0, fontSize:14 }}>👆</span>
-            <span style={{ fontSize:12, color:T.ink, lineHeight:1.5 }}>{valuePick}</span>
+        <div style={{ display:"flex", alignItems:"flex-start", gap:9 }}>
+          <span style={{ fontSize:9.5, fontWeight:800, color:T.sub, textTransform:"uppercase", letterSpacing:.5, width:40, flexShrink:0, paddingTop:7 }}>{type}</span>
+          <div style={{ flex:1, minWidth:0 }}>
+            {valueCopy != null ? (<>
+              <CopyChip value={valueCopy} id={valueId} secret={secret} block wrap />
+              {valueNote && <div style={{ fontSize:11, fontWeight:800, color: secret ? T.danger : T.sub, marginTop:6 }}>{valueNote}</div>}
+            </>) : (
+              <div style={{ display:"flex", gap:8, alignItems:"flex-start", background:STEP_BLUEBG, border:`1px solid ${STEP_BLUE}`, borderRadius:8, padding:"9px 11px" }}>
+                <span style={{ flexShrink:0, fontSize:14 }}>👆</span>
+                <span style={{ fontSize:12, color:T.ink, lineHeight:1.5 }}>{valuePick}</span>
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </div>
     </div>
   );
@@ -4101,6 +4109,9 @@ function StepsCard({ user }) {
         </StepBlock>
 
         <StepBlock n="2" title="Repeat  (the 14-day loop)">
+          <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55, marginBottom:10 }}>
+            Open the <b style={{ color:T.ink }}>Shortcuts</b> app → tap <b style={{ color:T.ink }}>+</b> (top-right) to start a new shortcut. Then add your first action:
+          </div>
           <SearchBar text="Repeat" />
           <MockCard glyph="🔁" glyphBg="#8E8E93" title={<>Repeat <Tap>14</Tap> times</>} />
           <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55, marginBottom:10 }}>
@@ -4124,6 +4135,7 @@ function StepsCard({ user }) {
 
         <StepBlock n="3" title="Adjust Date  (inside the loop)">
           <SearchBar text="Adjust Date" />
+          <div style={{ fontSize:11, color:STEP_BLUE, fontWeight:700, marginBottom:8 }}>🔼 After adding it, drag it above “End Repeat.”</div>
           <MockCard glyph="🗓" glyphBg="#E64637" title={<><Tap>Subtract</Tap> <Var icon="🔁" iconBg="#8E8E93">Repeat Index</Var> <Tap>days</Tap> from <Var icon="📅" iconBg="#3B7BEF">Current Date</Var></>} />
           <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55, marginBottom:8 }}>Do these 4 taps, in order:</div>
           <ol style={{ fontSize:12.5, color:T.sub, lineHeight:1.6, paddingLeft:18, margin:"0 0 10px" }}>
@@ -4141,6 +4153,7 @@ function StepsCard({ user }) {
 
         <StepBlock n="4" title="Find Health Samples  (inside the loop)">
           <SearchBar text="Find Health Samples" />
+          <div style={{ fontSize:11, color:STEP_BLUE, fontWeight:700, marginBottom:8 }}>🔼 After adding it, drag it above “End Repeat.”</div>
           {/* mock: the action with its two filter rows (Start Date is on yesterday) */}
           <div style={{ background:T.cardAlt, border:`1px solid ${STEP_BLUE}`, borderRadius:12, padding:"12px", margin:"0 0 10px" }}>
             <div style={{ display:"flex", alignItems:"flex-start", gap:10 }}>
@@ -4181,6 +4194,7 @@ function StepsCard({ user }) {
 
         <StepBlock n="5" title="Calculate Statistics  (inside the loop)">
           <SearchBar text="Calculate Statistics" />
+          <div style={{ fontSize:11, color:STEP_BLUE, fontWeight:700, marginBottom:8 }}>🔼 After adding it, drag it above “End Repeat.”</div>
           <MockCard glyph="📊" glyphBg="#8E8E93" title={<>Calculate the <Tap>Sum</Tap> of <Var icon="❤️" iconBg="#fff">Health Samples</Var></>} />
           <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55, marginBottom:9 }}>It starts as “<b>Average</b> of <b>Input</b>.” Tap <b>Average</b> → pick <b>Sum</b>. Tap <b>Input</b> → pick <b>Health Samples</b>. That adds that day's steps into one number.</div>
           <div style={{ display:"flex", gap:9, alignItems:"flex-start", background:"rgba(76,155,255,.10)", border:`1px solid ${STEP_BLUE}`, borderRadius:10, padding:"10px 12px", fontSize:11.5, color:T.sub, lineHeight:1.55, marginBottom:9 }}>
@@ -4191,6 +4205,7 @@ function StepsCard({ user }) {
 
         <StepBlock n="6" title="Text  (the Health-privacy fix)">
           <SearchBar text="Text" />
+          <div style={{ fontSize:11, color:STEP_BLUE, fontWeight:700, marginBottom:8 }}>🔼 After adding it, drag it above “End Repeat.”</div>
           <MockCard glyph="📝" glyphBg="#EAB308" title={<>Text: <Var icon="📊" iconBg="#8E8E93">Sum</Var></>} />
           <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55, marginBottom:9 }}>
             Add a <b>Text</b> action. Tap the empty text box → insert <b>only the <span style={{ color:STEP_BLUE }}>Sum</span></b> variable (don't type anything).
@@ -4204,10 +4219,11 @@ function StepsCard({ user }) {
 
         <StepBlock n="7" title="Format Date  (inside the loop)">
           <SearchBar text="Format Date" />
+          <div style={{ fontSize:11, color:STEP_BLUE, fontWeight:700, marginBottom:8 }}>🔼 After adding it, drag it above “End Repeat.”</div>
           <MockCard glyph="🗓" glyphBg="#E64637" title={<>Format <Var icon="🗓" iconBg="#E64637">Adjusted Date</Var></>}
             rows={[
               ["Date Format", <span key="a" style={{ color:STEP_BLUE, fontWeight:600 }}>Custom</span>],
-              ["Format String", <code key="b" style={{ fontFamily:"ui-monospace, Menlo, monospace", color:T.ink }}>yyyy-MM-dd</code>],
+              ["Format String", <span key="b" style={{ color:T.sub, fontStyle:"italic" }}>paste from the box below ↓</span>],
               ["Locale", <span key="c" style={{ color:STEP_BLUE, fontWeight:600 }}>Default</span>],
             ]} />
           <div style={{ display:"flex", gap:9, alignItems:"flex-start", background:"rgba(255,80,0,.10)", border:`1px solid ${T.danger}`, borderRadius:10, padding:"10px 12px", fontSize:11.5, color:T.sub, lineHeight:1.55, marginBottom:9 }}>
@@ -4224,6 +4240,7 @@ function StepsCard({ user }) {
 
         <StepBlock n="8" title="Get Contents of URL  (inside the loop)">
           <SearchBar text="Get Contents of URL" />
+          <div style={{ fontSize:11, color:STEP_BLUE, fontWeight:700, marginBottom:8 }}>🔼 After adding it, drag it above “End Repeat.”</div>
           <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55, marginBottom:10 }}>
             Everything here is <b style={{ color:T.ink }}>tap-to-copy right in place</b> — no scrolling around. A blue box = copy it. A grey note = tap that box on your phone and pick a variable.
           </div>
@@ -4237,6 +4254,10 @@ function StepsCard({ user }) {
             {/* URL */}
             <div style={{ marginTop:11, borderTop:`1px solid ${T.line}`, paddingTop:11 }}>
               <div style={{ fontSize:10.5, fontWeight:700, color:T.sub, textTransform:"uppercase", letterSpacing:.5, marginBottom:6 }}>URL — paste this in the top box, then tap “Show More”</div>
+              <div style={{ display:"flex", gap:8, alignItems:"flex-start", background:"rgba(255,80,0,.10)", border:`1px solid ${T.danger}`, borderRadius:8, padding:"9px 11px", fontSize:11.5, color:T.sub, lineHeight:1.55, marginBottom:8 }}>
+                <span style={{ flexShrink:0, fontSize:14 }}>⚠️</span>
+                <span>The URL box often already has a blue variable in it (like <b style={{ color:T.ink }}>Formatted Date</b>). <b style={{ color:T.ink }}>Delete that first</b> — tap it and hit backspace so the box is empty — then paste the URL below.</span>
+              </div>
               <CopyChip value={url} id="url" block />
             </div>
 
@@ -4267,15 +4288,19 @@ function StepsCard({ user }) {
 
             {/* Request Body */}
             <div style={{ marginTop:13 }}>
-              <div style={{ fontSize:10.5, fontWeight:700, color:T.sub, textTransform:"uppercase", letterSpacing:.5, marginBottom:7 }}>Request Body — tap JSON, then “Add new field” ×3</div>
+              <div style={{ fontSize:10.5, fontWeight:700, color:T.sub, textTransform:"uppercase", letterSpacing:.5, marginBottom:7 }}>Request Body — tap JSON, then tap “Add new field” 3 times</div>
               <div style={{ display:"inline-flex", background:T.input, borderRadius:8, padding:3, gap:3, marginBottom:9 }}>
                 <span style={{ padding:"5px 12px", borderRadius:6, fontSize:12.5, fontWeight:700, color:T.sub }}>Form</span>
                 <span style={{ padding:"5px 12px", borderRadius:6, fontSize:12.5, fontWeight:800, background:T.green, color:"#000" }}>JSON</span>
                 <span style={{ padding:"5px 12px", borderRadius:6, fontSize:12.5, fontWeight:700, color:T.sub }}>File</span>
               </div>
-              <JField type="Text" name="p_token" nameId="k-tok" valueCopy={token} valueId="tok" secret valueNote="🔒 Don’t share this with anyone" />
-              <JField type="Text" name="p_day" nameId="k-day" valuePick={<>Tap this Value box. In the bar <b>above the keyboard</b>, tap <b>Formatted Date</b> (from step 7). When it's set it looks like this: <span style={{ display:"inline-block", verticalAlign:"middle" }}><Var icon="📅" iconBg="#3B7BEF">Formatted Date</Var></span></>} />
-              <JField type="Number" name="p_count" nameId="k-cnt" valuePick={<>Tap this Value box → pick the <b>Text</b> variable (from step 6). When it's set it looks like this: <span style={{ display:"inline-block", verticalAlign:"middle" }}><Var icon="📝" iconBg="#EAB308">Text</Var></span> <b style={{ color:T.danger }}>Not Sum directly</b> — that triggers the "share Health items" block.</>} />
+              <div style={{ display:"flex", gap:8, alignItems:"flex-start", background:STEP_BLUEBG, border:`1px solid ${STEP_BLUE}`, borderRadius:8, padding:"9px 11px", fontSize:11.5, color:T.ink, lineHeight:1.55, marginBottom:10 }}>
+                <span style={{ flexShrink:0 }}>ℹ️</span>
+                <span>Set the 3 fields' types in this order: <b>Field 1 = Text</b>, <b>Field 2 = Text</b>, <b>Field 3 = Number</b>. So it's <b>2 Text then 1 Number</b> — the last one must be <b style={{ color:STEP_BLUE }}>Number</b>. Tap the little type label on each field to change it.</span>
+              </div>
+              <JField num="1" type="Text" name="p_token" nameId="k-tok" valueCopy={token} valueId="tok" secret valueNote="🔒 Don’t share this with anyone" />
+              <JField num="2" type="Text" name="p_day" nameId="k-day" valuePick={<>Tap this Text box. In the bar <b>above the keyboard</b>, tap <b>Formatted Date</b> (from step 7). When it's set it looks like this: <span style={{ display:"inline-block", verticalAlign:"middle" }}><Var icon="📅" iconBg="#3B7BEF">Formatted Date</Var></span></>} />
+              <JField num="3" type="Number" name="p_count" nameId="k-cnt" valuePick={<>Tap this Number box → pick the <b>Text</b> variable (from step 6). When it's set it looks like this: <span style={{ display:"inline-block", verticalAlign:"middle" }}><Var icon="📝" iconBg="#EAB308">Text</Var></span> <b style={{ color:T.danger }}>Not Sum directly</b> — that triggers the "share Health items" block.</>} />
               <div style={{ fontSize:10.5, color:T.sub, marginTop:2, lineHeight:1.5 }}>
                 Only <b style={{ color:T.ink }}>p_token</b>’s value is copied. For <b>p_day</b> and <b>p_count</b> the value is a blue variable you <b>pick</b>, not type — they should end up looking exactly like the chips above.
               </div>
@@ -4298,9 +4323,11 @@ function StepsCard({ user }) {
         <div style={{ display:"flex", gap:11, alignItems:"flex-start", background:T.cardAlt, border:`1px solid ${T.line}`, borderRadius:12, padding:"12px 13px", marginBottom:14 }}>
           <span style={{ width:30, height:30, borderRadius:99, background:T.green, color:"#000", flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, paddingLeft:2 }}>▶</span>
           <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55 }}>
-            <b style={{ color:T.ink }}>Test it first:</b> open the shortcut and tap its <b style={{ color:T.ink }}>play button</b> once. iPhone will ask to read
-            Health and send data — tap <b style={{ color:T.ink }}>Allow</b>. Then come back here and you'll see
-            <b style={{ color:T.green }}> yesterday's step total</b> appear at the top ✓.
+            <b style={{ color:T.ink }}>Test it first:</b> open the shortcut and tap its <b style={{ color:T.ink }}>play button</b> once.
+            The very first run, iPhone pops up permission prompts (read Health, then send data to the URL) — tap
+            <b style={{ color:T.ink }}> Always Allow</b> each time. It usually asks <b style={{ color:T.ink }}>about 3 times</b>; keep tapping Always Allow until they stop.
+            Then come back here and you'll see <b style={{ color:T.green }}>yesterday's step total</b> appear at the top ✓.
+            <div style={{ marginTop:6, fontSize:11.5 }}>After that first time it won't ask again — future syncs are one tap.</div>
           </div>
         </div>
 
