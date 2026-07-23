@@ -3097,7 +3097,7 @@ function StepsTab({ user, data, setData }) {
         ) : (
           <div style={{display:"flex", gap:6, alignItems:"center"}}>
             <input type="number" inputMode="numeric" value={goalInput} onChange={e=>setGoalInput(e.target.value)} style={{width:96}} />
-            <button onClick={saveGoal} style={{background:T.green, color:"#000", fontWeight:700, padding:"8px 13px", fontSize:13}}>Save</button>
+            <button onClick={saveGoal} className="btn-primary" style={{padding:"9px 16px", fontSize:13}}>Save</button>
             <button onClick={()=>setEditGoal(false)} style={{background:T.input, color:T.sub, padding:"8px 11px", fontSize:13}}>✕</button>
           </div>
         )}
@@ -5749,7 +5749,7 @@ function FriendsTab({ user, nutritionOn, streaksOn, isPro, openPro }) {
             {profile.user_id !== user.id && (isPro ? (
               <div className="card">
                 {!dueling && !duelMsg && (
-                  <button onClick={()=>{ setDuelDays("7"); setDueling(true); }} style={{width:"100%", background:T.green, color:"#000", fontWeight:800, padding:"11px", borderRadius:10, fontSize:14}}>⚔️ Challenge {profile.username} to a step duel</button>
+                  <button onClick={()=>{ setDuelDays("7"); setDueling(true); }} className="btn-primary" style={{width:"100%", padding:"13px", fontSize:14}}>⚔️ Challenge {profile.username} to a step duel</button>
                 )}
                 {dueling && (
                   <div style={{display:"flex", gap:8, alignItems:"flex-end", flexWrap:"wrap"}}>
@@ -5820,7 +5820,7 @@ function FriendsTab({ user, nutritionOn, streaksOn, isPro, openPro }) {
             <div style={{fontSize:44, marginBottom:8}}>🎉</div>
             <div className="h" style={{fontSize:20, color:T.green, marginBottom:6}}>Whole squad logged!</div>
             <div style={{fontSize:13.5, color:T.sub, lineHeight:1.55, marginBottom:16}}>Everyone in <b style={{color:T.ink}}>{active.name}</b> got their steps in for {squadCel === dAdd(todayStr(), -1) ? "yesterday" : fmtDate(squadCel)}. Momentum. 🔥</div>
-            <button onClick={dismissSquad} style={{background:T.green, color:"#000", fontWeight:800, fontSize:15, padding:"11px 20px", borderRadius:10, width:"100%"}}>Let's go</button>
+            <button onClick={dismissSquad} className="btn-primary" style={{fontSize:15, padding:"13px 20px", width:"100%"}}>Let's go</button>
           </div>
         </div>
       )}
@@ -6100,7 +6100,7 @@ function FriendsTab({ user, nutritionOn, streaksOn, isPro, openPro }) {
       <div className="h" style={{fontSize:16, color:T.tealDk, marginBottom:8}}>Create a group</div>
       <div style={{display:"flex", gap:8}}>
         <input value={gname} onChange={e=>setGname(e.target.value)} placeholder="e.g. Gym Rats" maxLength={40} />
-        <button onClick={doCreate} disabled={busy||!gname.trim()} style={{background:T.green, color:"#000", padding:"0 18px", fontWeight:700, opacity:(busy||!gname.trim())?0.5:1}}>Create</button>
+        <button onClick={doCreate} disabled={busy||!gname.trim()} className="btn-primary" style={{padding:"0 20px"}}>Create</button>
       </div>
     </div>
 
@@ -6108,7 +6108,7 @@ function FriendsTab({ user, nutritionOn, streaksOn, isPro, openPro }) {
       <div className="h" style={{fontSize:16, color:T.tealDk, marginBottom:8}}>Join with an invite code</div>
       <div style={{display:"flex", gap:8}}>
         <input value={code} onChange={e=>setCode(e.target.value.toUpperCase())} placeholder="6-character code" maxLength={6} style={{letterSpacing:"2px"}} />
-        <button onClick={doJoin} disabled={busy||code.trim().length<6} style={{background:T.green, color:"#000", padding:"0 18px", fontWeight:700, opacity:(busy||code.trim().length<6)?0.5:1}}>Join</button>
+        <button onClick={doJoin} disabled={busy||code.trim().length<6} className="btn-primary" style={{padding:"0 20px"}}>Join</button>
       </div>
     </div>
 
