@@ -4903,6 +4903,7 @@ const SPLITS = {
   phul:       { label: "PHUL / Power-Hypertrophy (Upper/Lower)" },
   fullbody:   { label: "Full body" },
   bro:        { label: "Body-part (bro) split" },
+  custom:     { label: "Custom — build your own days" },
   other:      { label: "Other / no fixed split" },
 };
 const maxDate = (...ds) => ds.filter(Boolean).sort().reverse()[0] || null;
@@ -4991,6 +4992,23 @@ function coachTips(data, exMap, units) {
     if (bm && dayGap(today, bd) >= 4)
       tips.push({ key: `train-bro-${bm}-${bd}`, icon: "📅", cat: "Train today",
         text: `It's been ${dayGap(today, bd)} days since you hit ${bm.toLowerCase()} — a good muscle to target today.` });
+  } else if (split === "custom") {
+    // user-defined days (data.profile.customSplit). A day is "trained" whenever any of
+    // its muscles were logged — the coach suggests the day you've rested longest, and
+    // prioritizes any day you haven't logged yet.
+    const days = (Array.isArray(data.profile?.customSplit) ? data.profile.customSplit : []).filter(d => d.muscles?.length && d.name?.trim());
+    const lastFor = (musc) => { let last = null; for (const e of log) { const m = exMap[e.exercise]?.muscle; if (m && musc.includes(m) && (!last || e.date > last)) last = e.date; } return last; };
+    const withDates = days.map(d => ({ d, last: lastFor(d.muscles) }));
+    const never = withDates.find(x => !x.last);
+    if (never) {
+      tips.push({ key: `train-cust-${never.d.id}-new`, icon: "📅", cat: "Train today",
+        text: `You haven't logged your "${never.d.name.trim()}" day yet — a good one to hit today.` });
+    } else if (withDates.length) {
+      const oldest = withDates.reduce((a, b) => (b.last < a.last ? b : a));
+      if (dayGap(today, oldest.last) >= 2)
+        tips.push({ key: `train-cust-${oldest.d.id}-${oldest.last}`, icon: "📅", cat: "Train today",
+          text: `It's been ${dayGap(today, oldest.last)} days since your "${oldest.d.name.trim()}" day — a solid pick for today.` });
+    }
   }
   // split === "other" or unset: no rotation nudge (the card asks you to pick a split)
 
@@ -5077,6 +5095,13 @@ function CoachCard({ data, exMap, user, setData }) {
   const dismiss = (key) => setData(d => ({ ...d, profile: { ...(d.profile || {}), coachDismissed: [...(d.profile?.coachDismissed || []), key] } }));
   const split = data.profile?.split || "";
   const setSplit = (v) => setData(d => ({ ...d, profile: { ...(d.profile || {}), split: v } }));
+  // custom split builder — a list of named days, each targeting some muscles
+  const customDays = Array.isArray(data.profile?.customSplit) ? data.profile.customSplit : [];
+  const setCustom = (fn) => setData(d => { const cur = Array.isArray(d.profile?.customSplit) ? d.profile.customSplit : []; return { ...d, profile: { ...(d.profile || {}), customSplit: fn(cur) } }; });
+  const addDay = () => setCustom(days => [...days, { id: Math.random().toString(36).slice(2), name: "", muscles: [] }]);
+  const updateDay = (id, patch) => setCustom(days => days.map(x => x.id === id ? { ...x, ...patch } : x));
+  const toggleMuscle = (id, m) => setCustom(days => days.map(x => x.id === id ? { ...x, muscles: x.muscles.includes(m) ? x.muscles.filter(z => z !== m) : [...x.muscles, m] } : x));
+  const removeDay = (id) => setCustom(days => days.filter(x => x.id !== id));
 
   useEffect(() => {
     let alive = true;
@@ -5129,6 +5154,40 @@ function CoachCard({ data, exMap, user, setData }) {
       {!split && (
         <div style={{ fontSize: 12.5, color: T.sub, lineHeight: 1.5, marginBottom: all.length ? 12 : 0 }}>
           Tell me your split and I'll tell you what to train each day. Everything below (progressions, plateaus, PRs, balance) works no matter what.
+        </div>
+      )}
+
+      {/* custom split builder */}
+      {split === "custom" && (
+        <div style={{ marginBottom: all.length ? 12 : 0 }}>
+          <div style={{ fontSize: 12.5, color: T.sub, lineHeight: 1.5, marginBottom: 11 }}>
+            Add a day for each workout you run, name it, then tap the muscles it hits. I'll track when you last did each and tell you what's due — including <b style={{ color: T.ink }}>Abs</b>.
+          </div>
+          {customDays.map((day, idx) => (
+            <div key={day.id} style={{ background: T.input, border: `1px solid ${T.line}`, borderRadius: 13, padding: 12, marginBottom: 9 }}>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10 }}>
+                <span className="eyebrow" style={{ fontSize: 9, color: T.sub, flexShrink: 0 }}>Day {idx + 1}</span>
+                <input value={day.name} onChange={e => updateDay(day.id, { name: e.target.value })} placeholder="e.g. Chest & Triceps"
+                  style={{ flex: 1, minWidth: 0, minHeight: 40, fontWeight: 700 }} />
+                <button onClick={() => removeDay(day.id)} title="Remove this day" style={{ flexShrink: 0, background: "none", border: `1px solid ${T.line}`, color: T.danger, width: 40, height: 40, borderRadius: 10, fontSize: 15 }}>🗑</button>
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {MUSCLES.map(m => {
+                  const on = day.muscles.includes(m);
+                  return (
+                    <button key={m} onClick={() => toggleMuscle(day.id, m)} style={{
+                      padding: "6px 13px", borderRadius: 99, fontSize: 12.5, fontWeight: 700,
+                      background: on ? "linear-gradient(180deg, rgba(var(--accent-rgb),.22), rgba(var(--accent-rgb),.12))" : T.card,
+                      color: on ? T.green : T.sub, border: `1px solid ${on ? "rgba(var(--accent-rgb),.4)" : T.line}`,
+                    }}>{on ? "✓ " : ""}{m}</button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+          <button onClick={addDay} style={{ width: "100%", background: T.input, border: `1px dashed ${T.line}`, color: T.green, fontWeight: 800, padding: "12px", borderRadius: 12, fontSize: 13.5 }}>
+            + Add a training day
+          </button>
         </div>
       )}
 
