@@ -709,7 +709,7 @@ export default function LiftingTracker({ user }) {
           {tab==="log" && liftingOn && <LogTab data={data} exMap={exMap} setData={setData} routinesOn={routinesOn} />}
           {tab==="records" && liftingOn && <RecordsTab data={data} exMap={exMap} setData={setData} />}
           {tab==="journal" && <JournalTab data={data} setData={setData} />}
-          {tab==="friends" && <FriendsTab user={user} nutritionOn={nutritionOn} streaksOn={streaksOn} />}
+          {tab==="friends" && <FriendsTab user={user} nutritionOn={nutritionOn} streaksOn={streaksOn} isPro={isPro} openPro={()=>setShowSettings(true)} />}
           {tab==="macros" && nutritionOn && <MacroTab data={data} setData={setData} streaksOn={streaksOn} waterOn={waterOn} />}
           {tab==="body" && liftingOn && <BodyTab data={data} setData={setData} hunit={hunit} />}
           {tab==="cardio" && liftingOn && <CardioTab data={data} setData={setData} latestBW={latestBW} user={user} stepsOn={stepsEnabled} />}
@@ -3616,23 +3616,40 @@ function ProBadge({ small }) {
   return <span style={{ fontSize: small ? 8.5 : 9.5, fontWeight: 800, color: "#000", background: T.green, padding: small ? "1px 5px" : "1px 6px", borderRadius: 99, letterSpacing: .3, marginLeft: 5, verticalAlign: "middle" }}>PRO</span>;
 }
 
-/* A locked Pro feature placeholder shown to non-Pro members in Settings. */
-function ProLocked({ feature, note }) {
+/* A tappable "advertising" card for a locked Pro feature (shown in-context to non-Pro).
+   Clicking it takes them to Go Pro. Wire real checkout here later. */
+function ProTeaser({ icon, title, desc, onGoPro }) {
   return (
-    <div style={{ ...sCard, borderColor: T.line, display: "flex", gap: 11, alignItems: "flex-start" }}>
+    <button onClick={onGoPro} className="card" style={{ display:"block", width:"100%", textAlign:"left", cursor:"pointer",
+      border:`1px solid ${T.green}`, background:"linear-gradient(180deg,rgba(var(--accent-rgb),.08),transparent 62%)" }}>
+      <div style={{ display:"flex", alignItems:"center", gap:9, marginBottom:5, flexWrap:"wrap" }}>
+        <span style={{ fontSize:22 }}>{icon}</span>
+        <span style={{ fontSize:16, fontWeight:800, color:T.ink }}>{title}</span>
+        <span style={{ fontSize:9.5, fontWeight:800, color:"#000", background:T.green, padding:"2px 7px", borderRadius:99, letterSpacing:.3 }}>🔒 PRO</span>
+      </div>
+      <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.5, marginBottom:11 }}>{desc}</div>
+      <span style={{ display:"inline-flex", alignItems:"center", gap:6, background:T.green, color:"#000", fontWeight:800, fontSize:13.5, padding:"9px 15px", borderRadius:10 }}>✨ Unlock with Pro →</span>
+    </button>
+  );
+}
+
+/* A locked Pro feature placeholder shown to non-Pro members in Settings — tappable to Go Pro. */
+function ProLocked({ feature, note, onGoPro }) {
+  return (
+    <button onClick={onGoPro} style={{ ...sCard, borderColor: T.line, display: "flex", gap: 11, alignItems: "flex-start", width: "100%", textAlign: "left", cursor: "pointer" }}>
       <span style={{ fontSize: 20, flexShrink: 0 }}>🔒</span>
       <div>
         <div style={{ fontSize: 14, fontWeight: 800, color: T.ink }}>{feature} <span style={{ fontSize: 10, fontWeight: 800, color: "#000", background: T.green, padding: "1px 7px", borderRadius: 99, marginLeft: 4, letterSpacing: .3 }}>PRO</span></div>
-        <div style={{ fontSize: 12, color: T.sub, marginTop: 3, lineHeight: 1.5 }}>{note} Unlock it with The Lab Pro (top of Settings).</div>
+        <div style={{ fontSize: 12, color: T.sub, marginTop: 3, lineHeight: 1.5 }}>{note} <span style={{ color: T.green, fontWeight: 700 }}>Tap to unlock →</span></div>
       </div>
-    </div>
+    </button>
   );
 }
 
 /* Theme picker: accent color swatches + dark palette chips. Free tiers usable by all;
    the rest need Pro (tapping a locked one nudges toward upgrading). */
-function ThemePicker({ theme, setTheme, isPro }) {
-  const pick = (patch, locked) => { if (locked && !isPro) return; setTheme({ ...theme, ...patch }); };
+function ThemePicker({ theme, setTheme, isPro, onGoPro }) {
+  const pick = (patch, locked) => { if (locked && !isPro) { onGoPro?.(); return; } setTheme({ ...theme, ...patch }); };
   return (
     <div style={{ ...sCard }}>
       <div style={{ fontSize: 14, fontWeight: 700, color: T.ink, marginBottom: 2 }}>Accent color</div>
@@ -3732,6 +3749,7 @@ function SectionHead({ icon, label }) {
 function SettingsModal({ user, username, data, setData, startTab, setStartTab, tabs, units, setUnits, hunit, setHunit, routinesOn, setRoutinesOn, stepsOn, setStepsOn, coachOn, setCoachOn, theme, setTheme, streaksOn, setStreaksOn, waterOn, setWaterOn, nutritionOn, isPro, onClose }) {
   const memberSince = user.created_at ? new Date(user.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}) : "—";
   const totalSets = (data.log||[]).length;
+  const goPro = () => document.getElementById("pro-section")?.scrollIntoView({ behavior:"smooth", block:"start" });
 
   // close on Escape
   useEffect(() => {
@@ -3871,14 +3889,14 @@ function SettingsModal({ user, username, data, setData, startTab, setStartTab, t
         </SettingsSection>
 
         <SettingsSection icon="🎨" title="Themes" desc={isPro ? "Recolor the app your way" : "Accent colors + palettes · Pro"} defaultOpen={false}>
-          <ThemePicker theme={theme} setTheme={setTheme} isPro={isPro} />
+          <ThemePicker theme={theme} setTheme={setTheme} isPro={isPro} onGoPro={goPro} />
         </SettingsSection>
 
         <SettingsSection icon="💪" title="Lab's AI Coach" desc={isPro ? "Personalized tips on your dashboard" : "Smart training tips · Pro"}>
           {isPro ? (
             <FeatureToggle label="Show the AI Coach" on={coachOn} setOn={setCoachOn}
               desc="Puts a coach card on your Home tab with progression, plateau, volume, weak-point and recovery tips built from your logs. Dismiss any tip with ✕. On by default." />
-          ) : <ProLocked feature="Lab's AI Coach" note="Personalized progression, plateau, and weak-point coaching from your own logs." />}
+          ) : <ProLocked feature="Lab's AI Coach" note="Personalized progression, plateau, and weak-point coaching from your own logs." onGoPro={goPro} />}
         </SettingsSection>
 
         <SettingsSection icon="🚶" title="Apple Health steps" desc={isPro ? "Auto-log your daily steps from your iPhone" : "Auto step tracking · Pro"}>
@@ -3886,7 +3904,7 @@ function SettingsModal({ user, username, data, setData, startTab, setStartTab, t
             <FeatureToggle label="Show the Steps tab" on={stepsOn} setOn={setStepsOn}
               desc="Adds a 👟 Steps tab (goal ring, 1D/W/M/6M/Y/5Y charts, group leaderboard, step duels) and a steps recap on the Cardio tab. On by default. Set up syncing below." />
             <StepsCard user={user} />
-          </>) : <ProLocked feature="Apple Health steps" note="Auto-track your steps, battle friends in step duels, and climb the group steps board." />}
+          </>) : <ProLocked feature="Apple Health steps" note="Auto-track your steps, battle friends in step duels, and climb the group steps board." onGoPro={goPro} />}
         </SettingsSection>
 
         <SettingsSection icon="🛟" title="Data safety" desc="Automatic backups — in the cloud and on this device">
@@ -5167,7 +5185,7 @@ function StepFactsModal({ name, isMe, map, rank, onClose }) {
   );
 }
 
-function FriendsTab({ user, nutritionOn, streaksOn }) {
+function FriendsTab({ user, nutritionOn, streaksOn, isPro, openPro }) {
   const units = useUnit();
   const [groups, setGroups] = useState(null);        // null = loading
   const [active, setActive] = useState(null);        // selected group
@@ -5643,7 +5661,7 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
           </>)}
 
           {tab==="steps" && (<>
-            {profile.user_id !== user.id && (
+            {profile.user_id !== user.id && (isPro ? (
               <div className="card">
                 {!dueling && !duelMsg && (
                   <button onClick={()=>{ setDuelDays("7"); setDueling(true); }} style={{width:"100%", background:T.green, color:"#000", fontWeight:800, padding:"11px", borderRadius:10, fontSize:14}}>⚔️ Challenge {profile.username} to a step duel</button>
@@ -5657,7 +5675,10 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
                 )}
                 {duelMsg && <div style={{fontSize:13, color:T.green, fontWeight:700}}>{duelMsg}</div>}
               </div>
-            )}
+            ) : (
+              <ProTeaser icon="⚔️" title="Step duels" onGoPro={openPro}
+                desc={`Go Pro to challenge ${profile.username} to a step duel — most steps over your chosen number of days wins.`} />
+            ))}
             {profileLastSync && (
               <div className="card" style={{display:"flex", alignItems:"center", gap:9, padding:"11px 14px"}}>
                 <span style={{fontSize:16}}>🕐</span>
@@ -5881,7 +5902,10 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
           })}
         </div>
 
-        <DuelsCard user={user} all={memberSteps} nameOf={Object.fromEntries((members||[]).map(m=>[m.user_id,m.username]))} myId={user.id} myName={myName} />
+        {isPro
+          ? <DuelsCard user={user} all={memberSteps} nameOf={Object.fromEntries((members||[]).map(m=>[m.user_id,m.username]))} myId={user.id} myName={myName} />
+          : <ProTeaser icon="👟" title="Join the steps game" onGoPro={openPro}
+              desc="You can see the squad's steps here — go Pro to auto-track your own, climb the board, and challenge friends to head-to-head step duels ⚔️" />}
 
         <div className="card">
           <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:2}}>🏋️ Strength — best est. 1RM ({uLabel(units)})</div>
