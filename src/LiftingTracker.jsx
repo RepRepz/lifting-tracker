@@ -5713,13 +5713,11 @@ function FriendsTab({ user, nutritionOn, streaksOn, isPro, openPro }) {
         const ptabs = [["lifting","Lifting","🏋️"], ["steps","Steps","👟"], ...(nutritionOn ? [["macros","Macros","🥗"]] : [])];
         const tab = ptabs.some(t=>t[0]===profileTab) ? profileTab : "lifting";
         return (<>
-          <div className="card" style={{padding:6, marginBottom:14}}>
-            <div style={{display:"flex", gap:4}}>
-              {ptabs.map(([id,label,icon])=>(
-                <button key={id} onClick={()=>setProfileTab(id)} style={{flex:1, padding:"9px 0", borderRadius:8, fontWeight:800, fontSize:13,
-                  background: tab===id?T.green:"none", color: tab===id?"#000":T.sub}}>{icon} {label}</button>
-              ))}
-            </div>
+          <div className="seg" style={{display:"flex", width:"100%", marginBottom:14, borderRadius:14, padding:4}}>
+            {ptabs.map(([id,label,icon])=>(
+              <button key={id} onClick={()=>setProfileTab(id)} className={"seg-btn"+(tab===id?" on":"")}
+                style={{flex:1, padding:"10px 0", borderRadius:11, fontWeight:800, fontSize:13}}>{icon} {label}</button>
+            ))}
           </div>
 
           {tab==="lifting" && (<>
@@ -5728,10 +5726,10 @@ function FriendsTab({ user, nutritionOn, streaksOn, isPro, openPro }) {
             <MemberLog pdata={pdata} who={profile.username} />
             <GoalCard data={pdata} setData={()=>{}} current={bw.length ? bw[bw.length-1] : null} rows={bw}
               readOnly who={`${profile.username} hasn't`} />
-            <div className="card" style={{display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, textAlign:"center"}}>
-              <div><div style={kpiN}>{bw.length ? dispW(bw[bw.length-1].weight, units) : "—"}</div><div style={kpiL}>Body wt ({uLabel(units)})</div></div>
-              <div><div style={kpiN}>{bw.length ? (b=>{const c=dispW(bw[bw.length-1].weight-bw[0].weight, units); return (c>0?"+":"")+c;})() : "—"}</div><div style={kpiL}>Change ({uLabel(units)})</div></div>
-              <div><div style={kpiN}>{pdata.cardio.length}</div><div style={kpiL}>Cardio sessions</div></div>
+            <div style={{display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginBottom:14}}>
+              <StatTile icon="⚖️" value={bw.length ? dispW(bw[bw.length-1].weight, units) : "—"} label={`Body wt (${uLabel(units)})`} />
+              <StatTile icon="📉" value={bw.length ? (b=>{const c=dispW(bw[bw.length-1].weight-bw[0].weight, units); return (c>0?"+":"")+c;})() : "—"} label={`Change (${uLabel(units)})`} />
+              <StatTile icon="🏃" value={pdata.cardio.length} label="Cardio sessions" />
             </div>
             {recentCardio.length > 0 && (
               <div className="card">
