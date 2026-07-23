@@ -3779,12 +3779,22 @@ function SettingsModal({ user, username, data, setData, startTab, setStartTab, t
             <div className="h" style={{ fontSize:22, color:T.tealDk }}>💪 {username}</div>
             <div style={{ fontSize:12.5, color:T.sub, marginTop:2 }}>Member since {memberSince} · {totalSets} sets logged</div>
           </div>
-          <button onClick={onClose} style={{ background:T.input, color:T.sub, width:34, height:34, borderRadius:99, fontSize:16, flexShrink:0 }}>✕</button>
+          <div style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>
+            {isPro ? (
+              <span style={{ display:"inline-flex", alignItems:"center", gap:5, background:"linear-gradient(100deg, rgb(var(--accent-rgb)), #8fe3a0)", color:"#000", fontWeight:800, fontSize:12.5, padding:"6px 12px", borderRadius:99, letterSpacing:.3, boxShadow:"0 2px 10px rgba(var(--accent-rgb),.35)" }}>✨ PRO</span>
+            ) : (
+              <button onClick={()=>document.getElementById("pro-section")?.scrollIntoView({ behavior:"smooth", block:"start" })}
+                style={{ background:T.green, color:"#000", fontWeight:800, fontSize:12.5, padding:"6px 13px", borderRadius:99, cursor:"pointer", letterSpacing:.3 }}>✨ Go Pro</button>
+            )}
+            <button onClick={onClose} style={{ background:T.input, color:T.sub, width:34, height:34, borderRadius:99, fontSize:16 }}>✕</button>
+          </div>
         </div>
 
-        <SettingsSection icon="✨" title={isPro ? "The Lab Pro — active" : "Go Pro"} desc={isPro ? "You're a Pro member 🎉" : "Nutrition, themes & an AI coach"} defaultOpen={!isPro}>
-          <ProCard isPro={isPro} />
-        </SettingsSection>
+        <div id="pro-section">
+          <SettingsSection icon="✨" title={isPro ? "The Lab Pro — active" : "Go Pro"} desc={isPro ? "You're a Pro member 🎉" : "Nutrition, themes & an AI coach"} defaultOpen={!isPro}>
+            <ProCard isPro={isPro} />
+          </SettingsSection>
+        </div>
 
         {/* the install guide only exists on a phone browser that hasn't installed yet */}
         {IS_MOBILE && !IS_STANDALONE && localStorage.getItem("lt-a2hs-done") !== "1" && (
