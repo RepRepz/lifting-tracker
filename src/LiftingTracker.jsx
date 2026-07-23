@@ -2200,9 +2200,9 @@ function RecordsTab({ data, exMap, setData }) {
           <div style={{display:"flex", alignItems:"center", gap:10}}>
             <div style={{flex:1, minWidth:0}}>
               <div style={{fontSize:15.5, fontWeight:700, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis"}}>{r.name}</div>
-              {data.prNotes?.[r.name]
+              {BIG_LIFT_SET.has(r.name) && (data.prNotes?.[r.name]
                 ? <div style={{fontSize:11.5, color:T.ink, marginTop:2, fontStyle:"italic", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis"}}>💬 {data.prNotes[r.name]}</div>
-                : <div style={{fontSize:11, color:T.sub, marginTop:2}}>Tap to add a PR note</div>}
+                : <div style={{fontSize:11, color:T.sub, marginTop:2}}>Tap to add a PR note</div>)}
             </div>
             <div style={{textAlign:"right", flexShrink:0}}>
               <div style={{fontSize:17, fontWeight:800, color:T.green}}>
@@ -2223,12 +2223,14 @@ function RecordsTab({ data, exMap, setData }) {
                 <div style={statBox}><div style={statL}>Sessions</div><div style={statV}>{r.sessions}</div></div>
                 <div style={statBox}><div style={statL}>Last done</div><div style={statV}>{fmtDate(r.lastDone)}</div></div>
               </div>
-              <div style={{marginTop:11}}>
-                <div style={{...statL, marginBottom:5}}>💬 PR note — shows in your groups</div>
-                <input value={data.prNotes?.[r.name] || ""} onChange={e=>setNote(r.name, e.target.value.slice(0,50))} maxLength={50}
-                  placeholder="e.g. finally 2 plates 🔥" style={{width:"100%"}} />
-                <div style={{fontSize:10.5, color:T.sub, textAlign:"right", marginTop:3}}>{(data.prNotes?.[r.name]||"").length}/50</div>
-              </div>
+              {BIG_LIFT_SET.has(r.name) && (
+                <div style={{marginTop:11}}>
+                  <div style={{...statL, marginBottom:5}}>💬 PR note — shows in your groups</div>
+                  <input value={data.prNotes?.[r.name] || ""} onChange={e=>setNote(r.name, e.target.value.slice(0,50))} maxLength={50}
+                    placeholder="e.g. finally 2 plates 🔥" style={{width:"100%"}} />
+                  <div style={{fontSize:10.5, color:T.sub, textAlign:"right", marginTop:3}}>{(data.prNotes?.[r.name]||"").length}/50</div>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -5241,16 +5243,23 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
   }, [members]);
 
   // "whole squad logged their steps" — only when THIS group is open and everyone in it
-  // has yesterday's steps in. Shown once per group per day.
+  // has YESTERDAY's steps in. Shows at most ONCE per group per all-logged day: we only
+  // ever check yesterday (so being away for days can't stack popups), and once dismissed
+  // (localStorage) or shown-this-session (ref) it never comes back.
+  const squadSeen = useRef(new Set());
   useEffect(() => {
     if (!active || !members || members.length < 2) { setSquadCel(null); return; }
     const yStr = dAdd(todayStr(), -1);
+    const tag = `${active.id}-${yStr}`;
+    if (squadSeen.current.has(tag)) return;
+    let dismissed = false; try { dismissed = localStorage.getItem(`lt-squad-${tag}`) === "1"; } catch {}
+    if (dismissed) { squadSeen.current.add(tag); return; }
     const allIn = members.every(m => (memberSteps[m.user_id] || {})[yStr] != null);
-    if (allIn) { try { if (localStorage.getItem(`lt-squad-${active.id}-${yStr}`) === "1") return; } catch {} setSquadCel(yStr); }
-    else setSquadCel(null);
+    setSquadCel(allIn ? yStr : null);
   }, [active, members, memberSteps]);
   const dismissSquad = () => {
-    if (active) { try { localStorage.setItem(`lt-squad-${active.id}-${dAdd(todayStr(), -1)}`, "1"); } catch {} }
+    const yStr = dAdd(todayStr(), -1);
+    if (active) { const tag = `${active.id}-${yStr}`; squadSeen.current.add(tag); try { localStorage.setItem(`lt-squad-${tag}`, "1"); } catch {} }
     setSquadCel(null);
   };
 
