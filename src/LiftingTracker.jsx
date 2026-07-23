@@ -659,9 +659,14 @@ export default function LiftingTracker({ user }) {
               </button>
             ))}
           </nav>
-          <button onClick={()=>setShowSettings(true)} style={{ display:"flex", alignItems:"center", gap:6, flexShrink:0, marginLeft:"auto", background:"rgba(255,255,255,.10)", color:"#fff", padding:"6px 12px 6px 13px", fontSize:13, fontWeight:600 }}>
-            💪 {username} <span style={{ fontSize:15, opacity:.8 }}>⚙️</span>
-          </button>
+          <div style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0, marginLeft:"auto" }}>
+            {isPro && (
+              <span style={{ display:"inline-flex", alignItems:"center", gap:4, background:"linear-gradient(100deg, rgb(var(--accent-rgb)), #8fe3a0)", color:"#000", fontWeight:800, fontSize:11.5, padding:"5px 10px", borderRadius:99, letterSpacing:.3, boxShadow:"0 2px 10px rgba(var(--accent-rgb),.35)", whiteSpace:"nowrap" }}>✨ PRO</span>
+            )}
+            <button onClick={()=>setShowSettings(true)} style={{ display:"flex", alignItems:"center", gap:6, flexShrink:0, background:"rgba(255,255,255,.10)", color:"#fff", padding:"6px 12px 6px 13px", fontSize:13, fontWeight:600 }}>
+              💪 {username} <span style={{ fontSize:15, opacity:.8 }}>⚙️</span>
+            </button>
+          </div>
         </div>
       </div>
 
