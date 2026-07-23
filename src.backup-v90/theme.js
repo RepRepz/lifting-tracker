@@ -33,10 +33,10 @@ export const ACCENTS = {
 
 /* Background palettes (all dark, tuned to stay legible). Midnight is the free default. */
 export const PALETTES = {
-  midnight: { name: "Midnight", free: true,  bg: "#070809", card: "#101215", cardAlt: "#171A1F", input: "#15181C", line: "#242A31", ink: "#FFFFFF", sub: "#8A9098", creamLine: "#26302B" },
-  slate:    { name: "Slate",    free: false, bg: "#0C0F12", card: "#171B20", cardAlt: "#1E242A", input: "#1B2127", line: "#2C343C", ink: "#F2F5F7", sub: "#8A949C", creamLine: "#2A3138" },
-  navy:     { name: "Deep Navy", free: false, bg: "#080B15", card: "#121828", cardAlt: "#192134", input: "#161D2E", line: "#26304A", ink: "#EEF2FF", sub: "#8890A8", creamLine: "#232C42" },
-  graphite: { name: "Graphite", free: false, bg: "#101011", card: "#1C1C1E", cardAlt: "#252528", input: "#232325", line: "#35353A", ink: "#F5F5F7", sub: "#9A9AA0", creamLine: "#333336" },
+  midnight: { name: "Midnight", free: true,  bg: "#000000", card: "#0C0D0D", cardAlt: "#111213", input: "#111213", line: "#222527", ink: "#FFFFFF", sub: "#8C8F90", creamLine: "#26302B" },
+  slate:    { name: "Slate",    free: false, bg: "#0E1113", card: "#161A1D", cardAlt: "#1B2024", input: "#1B2024", line: "#2A3138", ink: "#F2F5F7", sub: "#8A949C", creamLine: "#2A3138" },
+  navy:     { name: "Deep Navy", free: false, bg: "#0A0E1A", card: "#111725", cardAlt: "#161D2E", input: "#161D2E", line: "#232C42", ink: "#EEF2FF", sub: "#8890A8", creamLine: "#232C42" },
+  graphite: { name: "Graphite", free: false, bg: "#141414", card: "#1C1C1E", cardAlt: "#232325", input: "#232325", line: "#333336", ink: "#F5F5F7", sub: "#9A9AA0", creamLine: "#333336" },
 };
 
 export const DEFAULT_THEME = { accent: "green", palette: "midnight" };

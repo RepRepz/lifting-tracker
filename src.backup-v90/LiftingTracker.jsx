@@ -497,41 +497,28 @@ export default function LiftingTracker({ user }) {
         input,select,button { font-family:inherit; font-size:16px; }
         input,select,button { touch-action:manipulation; }
         button { -webkit-touch-callout:none; user-select:none; }
-        input,select,textarea { border:1px solid ${T.line}; border-radius:12px; padding:10px 12px; background:${T.input}; color:${T.ink}; width:100%; transition:border-color .18s ease, box-shadow .22s ease, background .18s ease; min-height:46px; -webkit-appearance:none; appearance:none; }
+        input,select,textarea { border:1px solid ${T.line}; border-radius:10px; padding:9px 10px; background:${T.input}; color:${T.ink}; width:100%; transition:border-color .18s ease, box-shadow .22s ease; min-height:44px; -webkit-appearance:none; appearance:none; }
         select { background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%238C8F90' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position:right 12px center; padding-right:32px; }
         input[type=date] { min-width:0; }
         input[type=date]::-webkit-date-and-time-value { text-align:left; }
         input::placeholder,textarea::placeholder { color:${T.sub}; opacity:.75; }
         /* soft green focus glow instead of a hard outline jump */
         input:focus,select:focus,textarea:focus { outline:none; border-color:${T.green}; box-shadow:0 0 0 3px rgba(var(--accent-rgb),.18); }
-        button { cursor:pointer; border:none; border-radius:24px; font-weight:600; transition:transform .14s cubic-bezier(.34,1.56,.64,1), background-color .18s ease, color .18s ease, border-color .18s ease, opacity .18s ease, box-shadow .18s ease, filter .18s ease; }
+        button { cursor:pointer; border:none; border-radius:24px; transition:transform .14s cubic-bezier(.34,1.56,.64,1), background-color .18s ease, color .18s ease, border-color .18s ease, opacity .18s ease, box-shadow .18s ease, filter .18s ease; }
         button:active { transform:scale(.95); }
         @media(hover:hover){ button:hover:not(:disabled){ filter:brightness(1.08); } }
         table { border-collapse:collapse; width:100%; } td,th { padding:9px 10px; text-align:left; font-size:13.5px; }
         th { background:none; color:${T.sub}; font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.8px; white-space:nowrap; border-bottom:1px solid ${T.line}; }
-        td { border-bottom:1px solid color-mix(in srgb, var(--line) 65%, transparent); }
-        @media(hover:hover){ tbody tr { transition:background .15s ease; } tbody tr:hover { background:rgba(var(--accent-rgb),.05); } }
-        /* slim themed scrollbars (desktop) */
-        *::-webkit-scrollbar { width:10px; height:10px; }
-        *::-webkit-scrollbar-thumb { background:color-mix(in srgb, var(--line) 70%, transparent); border-radius:99px; border:2px solid transparent; background-clip:content-box; }
-        *::-webkit-scrollbar-thumb:hover { background:color-mix(in srgb, var(--accent) 45%, var(--line)); background-clip:content-box; }
-        *::-webkit-scrollbar-track { background:transparent; }
-        .card { position:relative; background:linear-gradient(180deg, color-mix(in srgb, var(--card) 92%, #fff 8%), var(--card) 60%); border:1px solid color-mix(in srgb, var(--line) 88%, transparent); border-radius:20px; padding:17px; margin-bottom:14px; box-shadow:0 1px 0 rgba(255,255,255,.04) inset, 0 10px 26px -16px rgba(0,0,0,.75); animation:rise .34s cubic-bezier(.22,1,.36,1) both; }
+        td { border-bottom:1px solid ${T.line}; }
+        .card { background:${T.card}; border:1px solid ${T.line}; border-radius:14px; padding:16px; margin-bottom:14px; animation:rise .34s cubic-bezier(.22,1,.36,1) both; }
         .recharts-text { fill:${T.sub}; }
         .h { font-weight:800; letter-spacing:.2px; }
-        /* glass sticky app bar */
-        .app-bar { position:sticky; top:0; z-index:10; background:color-mix(in srgb, var(--bg) 72%, transparent); -webkit-backdrop-filter:blur(20px) saturate(1.5); backdrop-filter:blur(20px) saturate(1.5); border-bottom:1px solid color-mix(in srgb, var(--line) 70%, transparent); }
-        /* gradient wordmark */
-        .brand-word { font-weight:900; letter-spacing:1.2px; background:linear-gradient(96deg, var(--ink) 10%, var(--accent) 130%); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; color:transparent; }
-        /* pill for the settings/profile chip */
-        .profile-chip { display:flex; align-items:center; gap:7px; flex-shrink:0; background:color-mix(in srgb, var(--card) 90%, #fff 4%); border:1px solid color-mix(in srgb, var(--line) 90%, transparent); color:var(--ink); border-radius:99px; box-shadow:0 4px 14px -8px rgba(0,0,0,.6); transition:border-color .18s ease, background .18s ease; }
-        @media(hover:hover){ .profile-chip:hover { border-color:color-mix(in srgb, var(--accent) 30%, var(--line)); } }
         @keyframes rise { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:none; } }
         @keyframes pop { 0% { transform:scale(.6); opacity:0; } 70% { transform:scale(1.06); opacity:1; } 100% { transform:scale(1); opacity:1; } }
         @keyframes grow { from { transform:scaleY(0); } }
         .vbar { transform-origin:bottom; animation:grow .5s ease-out both; }
         .chip { animation:pop .25s ease-out both; }
-        .chip { display:inline-block; padding:3px 11px; border-radius:99px; font-size:12px; font-weight:600; border:1px solid color-mix(in srgb, currentColor 22%, transparent); }
+        .chip { display:inline-block; padding:2px 10px; border-radius:99px; font-size:12px; font-weight:600; }
         @keyframes fadeSwap { from { opacity:0; transform:translateY(8px) scale(.994); } to { opacity:1; transform:none; } }
         @keyframes sheetUp { from { transform:translateY(100%); } to { transform:none; } }
         .tabview { animation:fadeSwap .28s cubic-bezier(.22,1,.36,1) both; }
@@ -542,7 +529,7 @@ export default function LiftingTracker({ user }) {
         .tabview > .card:nth-child(5) { animation-delay:.20s; }
         .tabview > .card:nth-child(n+6) { animation-delay:.24s; }
         /* desktop depth: cards lift slightly and cast a soft shadow on hover */
-        @media(hover:hover){ .card { transition:border-color .2s ease, transform .2s ease, box-shadow .2s ease; } .card:hover { border-color:color-mix(in srgb, var(--accent) 22%, var(--line)); transform:translateY(-2px); box-shadow:0 1px 0 rgba(255,255,255,.05) inset, 0 16px 40px -18px rgba(0,0,0,.85); } }
+        @media(hover:hover){ .card { transition:border-color .2s ease, transform .2s ease, box-shadow .2s ease; } .card:hover { border-color:#2E3234; transform:translateY(-2px); box-shadow:0 8px 24px rgba(0,0,0,.28); } }
         .navicon { transition:transform .2s cubic-bezier(.34,1.56,.64,1); font-size:19px; }
         .navicon.on { transform:translateY(-1px) scale(1.16); }
         @media(prefers-reduced-motion:reduce){ *{transition:none!important;animation:none!important} }
@@ -598,41 +585,37 @@ export default function LiftingTracker({ user }) {
         /* mobile-first: tabs live in a fixed BOTTOM bar for thumb reach */
         .nav-top { display:none; }
         .nav-bottom {
-          /* Floating glass pill — detached from the screen edges, blurred backdrop,
-             lifted with a soft shadow. Feels like a modern app dock. */
-          position:fixed; bottom:calc(9px + min(env(safe-area-inset-bottom), 34px)); left:11px; right:11px; z-index:20;
-          /* GRID, not flex-wrap: columns are set inline to balance the rows evenly.
-             Flex-wrap used to spill a button onto a phantom extra row at launch on iOS
-             when the viewport width wasn't settled; grid can't. */
-          display:grid; grid-template-columns:repeat(5, 1fr); row-gap:2px; column-gap:2px;
-          padding:7px 7px; border-radius:24px;
-          background:color-mix(in srgb, var(--card) 78%, transparent);
-          -webkit-backdrop-filter:blur(24px) saturate(1.6); backdrop-filter:blur(24px) saturate(1.6);
-          border:1px solid color-mix(in srgb, var(--line) 85%, transparent);
-          box-shadow:0 1px 0 rgba(255,255,255,.05) inset, 0 12px 34px -8px rgba(0,0,0,.7);
-          transition:transform .34s cubic-bezier(.4,0,.2,1), opacity .3s ease;
+          position:fixed; bottom:0; left:0; right:0; z-index:20;
+          /* GRID, not flex-wrap: 5 columns → up to 10 tabs make exactly two tight rows
+             (icons sit closer together). Flex-wrap used to spill a button onto a phantom
+             extra row at launch on iOS when the viewport width wasn't settled; grid can't. */
+          display:grid; grid-template-columns:repeat(5, 1fr); row-gap:1px;
+          padding:4px 3px calc(4px + min(env(safe-area-inset-bottom), 34px));
+          background:${T.bg}; border-top:1px solid ${T.line};
+          transition:transform .3s cubic-bezier(.4,0,.2,1);
           /* Keep the bar on its OWN GPU layer at all times. Without a persistent
              non-none transform, iOS Safari doesn't give a position:fixed element a
              compositor layer, so during momentum/rubber-band scrolling it gets
-             "stranded" mid-page until the scroll settles. translateZ(0) pins it. */
+             "stranded" mid-page until the scroll settles (looked like the bar was
+             floating in the middle of the screen). translateZ(0) pins it. */
           transform:translateY(0) translateZ(0); will-change:transform; backface-visibility:hidden;
         }
         /* slide the bar down out of view while scrolling down; back up on scroll-up */
-        .nav-bottom.nav-hidden { transform:translateY(200%) translateZ(0); opacity:0; }
-        /* tab button — glowing green pill on the active one */
+        .nav-bottom.nav-hidden { transform:translateY(140%) translateZ(0); }
+        /* tab button — soft green pill on the active one, Robinhood style */
         .navbtn {
-          display:flex; flex-direction:column; align-items:center; gap:2px; min-width:0;
-          padding:7px 0 6px; border:none; border-radius:15px; background:transparent;
+          display:flex; flex-direction:column; align-items:center; gap:1px; min-width:0;
+          padding:6px 0 5px; border:none; border-radius:11px; background:transparent;
           color:${T.sub}; font-weight:500; font-size:9.5px; cursor:pointer;
           transition:background .22s ease, color .22s ease, transform .16s cubic-bezier(.34,1.56,.64,1);
         }
         .navbtn .navlbl { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-        .navbtn.on { background:linear-gradient(180deg, rgba(var(--accent-rgb),.20), rgba(var(--accent-rgb),.10)); color:${T.green}; font-weight:700; box-shadow:0 0 0 1px rgba(var(--accent-rgb),.22) inset, 0 4px 14px -6px rgba(var(--accent-rgb),.5); }
-        @media(hover:hover){ .navbtn:hover:not(.on){ background:rgba(255,255,255,.06); color:${T.ink}; } }
+        .navbtn.on { background:rgba(var(--accent-rgb),.12); color:${T.green}; font-weight:700; }
+        @media(hover:hover){ .navbtn:hover:not(.on){ background:rgba(255,255,255,.05); color:${T.ink}; } }
         .navbtn:active { transform:scale(.9); }
         .app-main { max-width:860px; margin:0 auto; padding:16px 14px; }
-        /* floating two-row nav pill sits ~9px off the bottom — reserve clearance */
-        .app-root { padding-bottom:calc(132px + min(env(safe-area-inset-bottom), 34px)); }
+        /* bottom bar is two tight rows of five now — reserve room for two */
+        .app-root { padding-bottom:calc(120px + min(env(safe-area-inset-bottom), 34px)); }
         /* floating "back" on member profiles — above the bottom nav on phones */
         .profile-back-fab { position:fixed; right:16px; z-index:40; bottom:calc(96px + min(env(safe-area-inset-bottom), 34px)); }
 
@@ -671,13 +654,10 @@ export default function LiftingTracker({ user }) {
         .drag-over-bot { box-shadow:0 3px 0 ${T.green}; }
       `}</style>
 
-      <div className="app-bar">
+      <div style={{ position:"sticky", top:0, zIndex:10, background:T.bg, borderBottom:`1px solid ${T.line}` }}>
         <div style={{ maxWidth:1240, margin:"0 auto", display:"flex", alignItems:"center", gap:14,
-          padding:"calc(12px + env(safe-area-inset-top)) 18px 11px", color:"#fff" }}>
-          <div onClick={()=>setTab("dash")} style={{ display:"flex", alignItems:"center", gap:9, cursor:"pointer", userSelect:"none", whiteSpace:"nowrap", minWidth:0, overflow:"hidden" }}>
-            <span style={{ fontSize:21, filter:"drop-shadow(0 2px 6px rgba(var(--accent-rgb),.35))" }}>🏋️</span>
-            <span className="brand-word" style={{ fontSize:19.5, overflow:"hidden", textOverflow:"ellipsis" }}>THE LAB</span>
-          </div>
+          padding:"calc(12px + env(safe-area-inset-top)) 20px 8px", color:"#fff" }}>
+          <div className="h" onClick={()=>setTab("dash")} style={{ fontSize:19, cursor:"pointer", userSelect:"none", whiteSpace:"nowrap", minWidth:0, overflow:"hidden", textOverflow:"ellipsis" }}>🏋️ THE LAB</div>
           {/* tabs: inline & centered in the app bar on desktop; hidden on phone (bottom bar used) */}
           <nav className="nav-top" style={{ flex:1, justifyContent:"center" }}>
             {tabs.map(([id,label,icon]) => (
@@ -687,7 +667,7 @@ export default function LiftingTracker({ user }) {
               </button>
             ))}
           </nav>
-          <button onClick={()=>setShowSettings(true)} className="profile-chip" style={{ marginLeft:"auto", padding: isPro ? "5px 11px 5px 6px" : "6px 13px", fontSize:13, fontWeight:600 }}>
+          <button onClick={()=>setShowSettings(true)} style={{ display:"flex", alignItems:"center", gap:7, flexShrink:0, marginLeft:"auto", background:"rgba(255,255,255,.10)", color:"#fff", padding: isPro ? "5px 11px 5px 6px" : "6px 12px 6px 13px", fontSize:13, fontWeight:600, borderRadius:99 }}>
             {isPro && <span style={{ fontSize:10, fontWeight:800, color:"#000", background:"linear-gradient(100deg, rgb(var(--accent-rgb)), #8fe3a0)", padding:"3px 8px", borderRadius:99, letterSpacing:.4, boxShadow:"0 1px 6px rgba(var(--accent-rgb),.4)", whiteSpace:"nowrap" }}>✨ PRO</span>}
             <span style={{ whiteSpace:"nowrap" }}>💪 {username}</span> <span style={{ fontSize:15, opacity:.8 }}>⚙️</span>
           </button>
