@@ -3979,7 +3979,7 @@ function SettingsModal({ user, username, data, setData, startTab, setStartTab, t
         <SettingsSection icon="💪" title="Lab's AI Coach" desc={isPro ? "Personalized tips on your dashboard" : "Smart training tips · Pro"}>
           {isPro ? (
             <FeatureToggle label="Show the AI Coach" on={coachOn} setOn={setCoachOn}
-              desc="Puts a coach card on your Home tab with progression, plateau, volume, weak-point and recovery tips built from your logs. Dismiss any tip with ✕. On by default." />
+              desc="Puts a coach card on your Home tab with progression, plateau, volume, weak-point and recovery tips built from your logs. Tap ➖ on the card to hide it just for today; dismiss any single tip with ✕. Turn this off to remove it entirely. On by default." />
           ) : <ProLocked feature="Lab's AI Coach" note="Personalized progression, plateau, and weak-point coaching from your own logs." onGoPro={goPro} />}
         </SettingsSection>
 
@@ -5138,17 +5138,33 @@ function CoachCard({ data, exMap, user, setData }) {
   const otherTips = all.filter(t => t.cat !== "Train today");
   const CAT_COLOR = { Progression: T.green, "Train today": STEP_BLUE, Projection: "#9D5CFF", Plateau: "#E9C46A", Volume: STEP_BLUE, Balance: STEP_BLUE, Recovery: "#00D1B2", "Weak point": "#FF7A45" };
 
+  // "Hide for today" — snoozes the whole card until tomorrow (stores today's date).
+  const setHideToday = (v) => setData(d => ({ ...d, profile: { ...(d.profile || {}), coachHideDate: v } }));
+  const hiddenToday = data.profile?.coachHideDate === todayStr();
+  if (hiddenToday) {
+    return (
+      <div className="card" style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 14px" }}>
+        <span style={{ fontSize: 16 }}>💪</span>
+        <span style={{ fontSize: 13, color: T.sub, fontWeight: 600, flex: 1, minWidth: 0 }}>Coach hidden for today{trainTip ? " — you're set" : ""}.</span>
+        <button onClick={() => setHideToday("")} style={{ flexShrink: 0, background: T.input, border: `1px solid ${T.line}`, color: T.green, fontWeight: 800, fontSize: 12.5, padding: "6px 14px", borderRadius: 99 }}>Show</button>
+      </div>
+    );
+  }
+
   return (
     <div className="card" style={{ border: "1px solid rgba(var(--accent-rgb),.4)", background: "radial-gradient(120% 90% at 0% 0%, rgba(var(--accent-rgb),.12), transparent 55%), linear-gradient(180deg, color-mix(in srgb, var(--card) 90%, #fff 5%), var(--card) 70%)" }}>
-      {/* header — with a compact split chip on the right when collapsed */}
+      {/* header — split chip + "hide for today" on the right */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 13 }}>
         <div className="h" style={{ fontSize: 18, color: T.ink }}>💪 Lab's AI Coach</div>
         <span style={{ fontSize: 9.5, fontWeight: 800, color: T.green, background: "rgba(var(--accent-rgb),.14)", padding: "3px 9px", borderRadius: 99, letterSpacing: .5 }}>SMART</span>
-        {split && !editing && (
-          <button onClick={() => setEditing(true)} title="Change split" style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 5, background: T.input, border: `1px solid ${T.line}`, color: T.ink, fontSize: 11.5, fontWeight: 700, padding: "5px 11px", borderRadius: 99 }}>
-            {SPLITS[split].icon} {SPLITS[split].short}{split === "custom" && customDays.length ? ` · ${customDays.length}d` : ""} <span style={{ color: T.sub }}>✎</span>
-          </button>
-        )}
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 7, flexShrink: 0 }}>
+          {split && !editing && (
+            <button onClick={() => setEditing(true)} title="Change split" style={{ display: "flex", alignItems: "center", gap: 5, background: T.input, border: `1px solid ${T.line}`, color: T.ink, fontSize: 11.5, fontWeight: 700, padding: "5px 11px", borderRadius: 99 }}>
+              {SPLITS[split].icon} {SPLITS[split].short}{split === "custom" && customDays.length ? ` · ${customDays.length}d` : ""} <span style={{ color: T.sub }}>✎</span>
+            </button>
+          )}
+          <button onClick={() => setHideToday(todayStr())} title="Hide the coach until tomorrow" style={{ background: "none", border: "none", color: T.sub, fontSize: 15, lineHeight: 1, padding: "4px 5px", cursor: "pointer" }}>➖</button>
+        </div>
       </div>
 
       {/* TODAY'S FOCUS — the headline: what to hit right now */}
