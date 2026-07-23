@@ -4032,24 +4032,20 @@ function StepsCard({ user }) {
       <div style={{ fontSize:10, fontWeight:800, color:T.sub, textTransform:"uppercase", letterSpacing:.6, padding:"6px 11px", borderBottom:`1px solid ${T.line}`, background:T.cardAlt, display:"flex", justifyContent:"space-between" }}>
         <span>Field {num}</span><span style={{ color:STEP_BLUE }}>type: {type}</span>
       </div>
-      <div style={{ padding:"10px 11px" }}>
-        <div style={{ display:"flex", alignItems:"center", gap:9, marginBottom:9 }}>
-          <span style={{ fontSize:9.5, fontWeight:800, color:T.sub, textTransform:"uppercase", letterSpacing:.5, width:40, flexShrink:0 }}>Key</span>
-          <CopyChip value={name} id={nameId} />
-        </div>
-        <div style={{ display:"flex", alignItems:"flex-start", gap:9 }}>
-          <span style={{ fontSize:9.5, fontWeight:800, color:T.sub, textTransform:"uppercase", letterSpacing:.5, width:40, flexShrink:0, paddingTop:7 }}>{type}</span>
-          <div style={{ flex:1, minWidth:0 }}>
-            {valueCopy != null ? (<>
-              <CopyChip value={valueCopy} id={valueId} secret={secret} block wrap />
-              {valueNote && <div style={{ fontSize:11, fontWeight:800, color: secret ? T.danger : T.sub, marginTop:6 }}>{valueNote}</div>}
-            </>) : (
-              <div style={{ display:"flex", gap:8, alignItems:"flex-start", background:STEP_BLUEBG, border:`1px solid ${STEP_BLUE}`, borderRadius:8, padding:"9px 11px" }}>
-                <span style={{ flexShrink:0, fontSize:14 }}>👆</span>
-                <span style={{ fontSize:12, color:T.ink, lineHeight:1.5 }}>{valuePick}</span>
-              </div>
-            )}
-          </div>
+      {/* same key → value, left-to-right layout as the Headers above */}
+      <div style={{ padding:"10px 11px", display:"flex", alignItems:"flex-start", gap:8 }}>
+        <div style={{ flexShrink:0, paddingTop:2 }}><CopyChip value={name} id={nameId} /></div>
+        <span style={{ color:T.sub, flexShrink:0, paddingTop:6, fontWeight:700 }}>→</span>
+        <div style={{ flex:1, minWidth:0 }}>
+          {valueCopy != null ? (<>
+            <CopyChip value={valueCopy} id={valueId} secret={secret} block wrap />
+            {valueNote && <div style={{ fontSize:11, fontWeight:800, color: secret ? T.danger : T.sub, marginTop:6 }}>{valueNote}</div>}
+          </>) : (
+            <div style={{ display:"flex", gap:8, alignItems:"flex-start", background:STEP_BLUEBG, border:`1px solid ${STEP_BLUE}`, borderRadius:8, padding:"9px 11px" }}>
+              <span style={{ flexShrink:0, fontSize:14 }}>👆</span>
+              <span style={{ fontSize:12, color:T.ink, lineHeight:1.5 }}>{valuePick}</span>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -4258,7 +4254,7 @@ function StepsCard({ user }) {
                 <span style={{ flexShrink:0, fontSize:14 }}>⚠️</span>
                 <span>The URL box often already has a blue variable in it (like <b style={{ color:T.ink }}>Formatted Date</b>). <b style={{ color:T.ink }}>Delete that first</b> — tap it and hit backspace so the box is empty — then paste the URL below.</span>
               </div>
-              <CopyChip value={url} id="url" block />
+              <CopyChip value={url} id="url" block wrap />
             </div>
 
             {/* Method */}
@@ -4273,10 +4269,10 @@ function StepsCard({ user }) {
             {/* Headers — both key and value copyable */}
             <div style={{ marginTop:13 }}>
               <div style={{ fontSize:10.5, fontWeight:700, color:T.sub, textTransform:"uppercase", letterSpacing:.5, marginBottom:7 }}>Headers — tap “Add new header” twice</div>
-              <div style={{ display:"flex", alignItems:"center", gap:7, marginBottom:8, flexWrap:"nowrap" }}>
-                <CopyChip value="apikey" id="k-api" />
-                <span style={{ color:T.sub, flexShrink:0 }}>→</span>
-                <div style={{ flex:1, minWidth:0 }}><CopyChip value={apikey} id="v-api" block /></div>
+              <div style={{ display:"flex", alignItems:"flex-start", gap:7, marginBottom:8, flexWrap:"nowrap" }}>
+                <div style={{ flexShrink:0, paddingTop:2 }}><CopyChip value="apikey" id="k-api" /></div>
+                <span style={{ color:T.sub, flexShrink:0, paddingTop:6 }}>→</span>
+                <div style={{ flex:1, minWidth:0 }}><CopyChip value={apikey} id="v-api" block wrap /></div>
               </div>
               <div style={{ display:"flex", alignItems:"center", gap:7, flexWrap:"nowrap" }}>
                 <CopyChip value="Content-Type" id="k-ct" />
