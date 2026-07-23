@@ -2888,18 +2888,21 @@ function StepsTab({ user, data, setData }) {
           </div>
         )}
       </div>
-      <SyncNowButton block />
+      {IS_MOBILE && <SyncNowButton block />}
       {(() => {
-        if (!lastSync) return <div style={{fontSize:11, color:T.sub, textAlign:"center", marginTop:7, lineHeight:1.5}}>Runs your <b style={{color:T.ink}}>“The Lab: Steps”</b> shortcut — this page updates the moment you come back.</div>;
-        const ms = Date.now() - new Date(lastSync).getTime();
-        const recent = ms < 120000;
-        const rel = ms<60000 ? "just now" : ms<3600000 ? `${Math.floor(ms/60000)} min ago` : ms<86400000 ? `${Math.floor(ms/3600000)}h ago` : `${Math.floor(ms/86400000)}d ago`;
-        return (
-          <div style={{textAlign:"center", marginTop:9, fontSize:12.5, fontWeight:800, color: recent?T.green:T.sub,
-            background: recent?"rgba(0,200,5,.10)":"transparent", borderRadius:99, padding:recent?"6px 0":"2px 0", transition:"all .2s ease"}}>
-            {recent ? "✓ Synced " : "🕐 Last synced "}{rel}
-          </div>
-        );
+        if (lastSync) {
+          const ms = Date.now() - new Date(lastSync).getTime();
+          const recent = ms < 120000;
+          const rel = ms<60000 ? "just now" : ms<3600000 ? `${Math.floor(ms/60000)} min ago` : ms<86400000 ? `${Math.floor(ms/3600000)}h ago` : `${Math.floor(ms/86400000)}d ago`;
+          return (
+            <div style={{textAlign:"center", marginTop: IS_MOBILE?9:0, fontSize:12.5, fontWeight:800, color: recent?T.green:T.sub,
+              background: recent?"rgba(0,200,5,.10)":"transparent", borderRadius:99, padding:recent?"6px 0":"2px 0", transition:"all .2s ease"}}>
+              {recent ? "✓ Synced " : "🕐 Last synced "}{rel}
+            </div>
+          );
+        }
+        if (IS_MOBILE) return <div style={{fontSize:11, color:T.sub, textAlign:"center", marginTop:7, lineHeight:1.5}}>Runs your <b style={{color:T.ink}}>“The Lab: Steps”</b> shortcut — this page updates the moment you come back.</div>;
+        return <div style={{fontSize:11.5, color:T.sub, textAlign:"center", lineHeight:1.5}}>Steps sync from your iPhone — open The Lab on your phone and tap <b style={{color:T.ink}}>🔄 Sync now</b>.</div>;
       })()}
     </div>
 
