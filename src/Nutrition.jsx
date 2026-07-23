@@ -145,21 +145,22 @@ function CalorieRing({ eaten, goal, size = 150 }) {
       <svg width={size} height={size}>
         <defs>
           <linearGradient id={gid} x1="0%" y1="100%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor={over ? "#FF5000" : "#007A03"} />
-            <stop offset="100%" stopColor={over ? "#FF8A50" : "#00E606"} />
+            <stop offset="0%" style={{ stopColor: over ? "#FF5000" : "color-mix(in srgb, var(--accent) 72%, #000)" }} />
+            <stop offset="100%" style={{ stopColor: over ? "#FF8A50" : "color-mix(in srgb, var(--accent) 85%, #fff)" }} />
           </linearGradient>
           <filter id={gid + "f"} x="-40%" y="-40%" width="180%" height="180%">
             <feGaussianBlur stdDeviation={sw * 0.4} result="b" />
             <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
           </filter>
         </defs>
-        <path d={path(sweep)} stroke={T.line} strokeWidth={sw} fill="none" strokeLinecap="round" />
+        <path d={path(sweep)} stroke={T.input} strokeWidth={sw} fill="none" strokeLinecap="round" />
         <path d={path(pct * sweep)} stroke={`url(#${gid})`} strokeWidth={sw} fill="none" strokeLinecap="round"
           filter={`url(#${gid}f)`} style={{ transition: "d .5s ease" }} />
       </svg>
       <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-        <div style={{ fontSize: size * 0.24, fontWeight: 800, color: over ? T.down : T.ink, lineHeight: 1 }}>{Math.abs(left).toLocaleString()}</div>
-        <div style={{ fontSize: size * 0.088, color: T.sub, marginTop: 3, fontWeight: 600 }}>{over ? "cal over" : "cal left"}</div>
+        <div style={{ fontSize: size * 0.088, color: over ? T.down : T.sub, marginBottom: 2, fontWeight: 800, letterSpacing: "1.2px", textTransform: "uppercase" }}>{over ? "over by" : "remaining"}</div>
+        <div style={{ fontSize: size * 0.26, fontWeight: 900, color: over ? T.down : T.ink, lineHeight: .95, letterSpacing: "-1.5px", fontVariantNumeric: "tabular-nums", textShadow: over ? "none" : "0 0 26px rgba(var(--accent-rgb),.4)" }}>{Math.abs(left).toLocaleString()}</div>
+        <div style={{ fontSize: size * 0.078, color: T.sub, marginTop: 4, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{Math.round(eaten).toLocaleString()} / {Math.round(goal).toLocaleString()} cal</div>
       </div>
     </div>
   );
@@ -923,27 +924,30 @@ function DiaryRow({ f, onDelete, onMenu }) {
   return (
     <div ref={setNodeRef} {...attributes} {...listeners}
       onContextMenu={(e) => { e.preventDefault(); onMenu(f, e.clientX, e.clientY); }}
-      style={{ position: "relative", background: "#17191B", border: `1px solid ${isDragging ? T.green : "#22262A"}`, borderRadius: 12,
-        marginTop: 7, padding: "10px 10px 10px 9px", display: "flex", alignItems: "center", gap: 8,
+      style={{ position: "relative", background: "color-mix(in srgb, var(--cardAlt) 80%, var(--card))", border: `1px solid ${isDragging ? T.green : T.line}`, borderRadius: 13,
+        marginTop: 8, padding: "10px 8px 10px 9px", display: "flex", alignItems: "center", gap: 9,
         // move the real row with the finger from where it was grabbed (no floating clone that
         // mis-anchors on iOS); lift it above the other cards while dragging
         transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
         zIndex: isDragging ? 9999 : "auto",
-        boxShadow: isDragging ? "0 14px 34px rgba(0,0,0,.6)" : "none",
+        boxShadow: isDragging ? "0 16px 38px rgba(0,0,0,.65)" : "none",
         transition: isDragging ? "none" : "box-shadow .15s ease, border-color .15s ease",
         opacity: 1, cursor: "grab", touchAction: "manipulation", outline: "none", ...noSelect }}>
-      <span style={{ color: "#4A4E52", fontSize: 15, lineHeight: 1, flexShrink: 0, ...noSelect }}>⠿</span>
+      <span style={{ color: T.sub, opacity: .45, fontSize: 15, lineHeight: 1, flexShrink: 0, ...noSelect }}>⠿</span>
       <div style={{ minWidth: 0, flex: 1, ...noSelect }}>
-        <div style={{ fontSize: 13.5, color: T.ink, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.recurringId ? "🔁 " : ""}{f.name}{f.grams ? <span style={{ color: T.sub, fontWeight: 400 }}> · {f.grams}g</span> : ""}</div>
-        <div style={{ fontSize: 11.5, color: T.sub, marginTop: 3, display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <span style={{ color: T.ink, fontWeight: 700 }}>{f.kcal} cal</span>
-          <span><MacroDot c={T.green} />{f.protein}</span>
-          <span><MacroDot c={CARB_BLUE} />{f.carb}</span>
-          <span><MacroDot c={FAT_ORANGE} />{f.fat}</span>
+        <div style={{ fontSize: 13.5, color: T.ink, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.recurringId ? "🔁 " : ""}{f.name}{f.grams ? <span style={{ color: T.sub, fontWeight: 500 }}> · {f.grams}g</span> : ""}</div>
+        <div style={{ fontSize: 11.5, color: T.sub, marginTop: 4, display: "flex", gap: 8, flexWrap: "wrap", fontVariantNumeric: "tabular-nums" }}>
+          <span style={{ background: T.input, borderRadius: 99, padding: "1px 8px", fontWeight: 600 }}><MacroDot c={T.green} />{f.protein}g</span>
+          <span style={{ background: T.input, borderRadius: 99, padding: "1px 8px", fontWeight: 600 }}><MacroDot c={CARB_BLUE} />{f.carb}g</span>
+          <span style={{ background: T.input, borderRadius: 99, padding: "1px 8px", fontWeight: 600 }}><MacroDot c={FAT_ORANGE} />{f.fat}g</span>
         </div>
       </div>
+      <div style={{ textAlign: "right", flexShrink: 0, ...noSelect }}>
+        <div style={{ fontSize: 15.5, fontWeight: 900, color: T.ink, lineHeight: 1, fontVariantNumeric: "tabular-nums", letterSpacing: "-.4px" }}>{f.kcal}</div>
+        <div className="eyebrow" style={{ fontSize: 8.5, color: T.sub, marginTop: 2 }}>cal</div>
+      </div>
       <button className="nt-press" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onMenu(f, e.clientX, e.clientY); }} title="More"
-        style={{ background: "none", border: "none", color: T.sub, fontSize: 20, padding: "4px 8px", flexShrink: 0, lineHeight: 1, ...noSelect }}>⋯</button>
+        style={{ background: "none", border: "none", color: T.sub, fontSize: 20, padding: "4px 6px", flexShrink: 0, lineHeight: 1, ...noSelect }}>⋯</button>
     </div>
   );
 }
@@ -963,14 +967,16 @@ function MenuItem({ label, onClick, danger }) {
 function MealDrop({ meal, children, header, empty }) {
   const { setNodeRef, isOver } = useDroppable({ id: `meal:${meal}` });
   return (
-    <div ref={setNodeRef} className="card nt-card" style={{ marginBottom: 8, padding: "12px 14px",
-      background: isOver ? "rgba(var(--accent-rgb),.09)" : T.card, borderColor: isOver ? T.green : undefined,
-      transition: "background .15s ease, border-color .15s ease" }}>
+    <div ref={setNodeRef} className="card nt-card" style={{ marginBottom: 8, padding: "13px 14px",
+      background: isOver ? "rgba(var(--accent-rgb),.09)" : undefined, borderColor: isOver ? T.green : undefined,
+      boxShadow: isOver ? "0 0 0 1px rgba(var(--accent-rgb),.3) inset, 0 12px 30px -18px rgba(0,0,0,.85)" : undefined,
+      transition: "background .15s ease, border-color .15s ease, box-shadow .15s ease" }}>
       {header}
       {children}
       {empty && (
-        <div style={{ marginTop: 8, border: `1.5px dashed ${isOver ? T.green : "#22262A"}`, borderRadius: 12,
-          height: 42, transition: "border-color .15s ease" }} />
+        <div style={{ marginTop: 9, border: `1.5px dashed ${isOver ? T.green : T.line}`, borderRadius: 12,
+          height: 44, display: "flex", alignItems: "center", justifyContent: "center", color: T.sub, fontSize: 11.5, fontWeight: 600,
+          transition: "border-color .15s ease" }}>{isOver ? "Drop here" : "Drag a food here or tap +"}</div>
       )}
     </div>
   );
@@ -1083,18 +1089,20 @@ export function MacroTab({ data, setData, streaksOn = true, waterOn = true }) {
   return (
     <div className="nt-col">
       <style>{NT_CSS}</style>
-      {/* slim header: add-food top left, small date picker + finish-check top right */}
-      <div className="nt-card" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8, padding: "2px 2px 6px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-          <button className="nt-press" onClick={() => setAddMeal("Uncategorized")} style={{ ...btnGreen, padding: "7px 13px", fontSize: 13.5 }}>🍎 Add food</button>
-          {streaksOn && streak > 0 && <span style={{ fontSize: 12, color: T.sub, fontWeight: 600, whiteSpace: "nowrap" }}>🔥 {streak}</span>}
+      {/* control bar: add-food + streak on the left, date scrubber + finish-check on the right */}
+      <div className="card nt-card" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8, padding: "10px 12px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
+          <button className="nt-press" onClick={() => setAddMeal("Uncategorized")} style={{ ...btnGreen, padding: "9px 15px", fontSize: 13.5, textTransform: "uppercase", letterSpacing: ".5px" }}>🍎 Add food</button>
+          {streaksOn && streak > 0 && <span style={{ fontSize: 12.5, color: T.green, fontWeight: 800, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>🔥 {streak}</span>}
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <button className="nt-press" onClick={() => shiftDay(-1)} style={{ ...btnGhost, color: T.ink, padding: "4px 11px", fontSize: 14 }}>‹</button>
-          <button className="nt-press" onClick={() => setSel(todayStr())} style={{ background: "none", border: "none", fontSize: 13.5, fontWeight: 800, color: sel === todayStr() ? T.ink : T.green, minWidth: 52 }}>
-            {sel === todayStr() ? "Today" : fmtShort(sel)}
-          </button>
-          <button className="nt-press" onClick={() => shiftDay(1)} style={{ ...btnGhost, color: T.ink, padding: "4px 11px", fontSize: 14 }}>›</button>
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 2, background: T.input, border: `1px solid ${T.line}`, borderRadius: 99, padding: 2 }}>
+            <button className="nt-press" onClick={() => shiftDay(-1)} style={{ background: "none", border: "none", color: T.ink, padding: "5px 10px", fontSize: 15, borderRadius: 99 }}>‹</button>
+            <button className="nt-press" onClick={() => setSel(todayStr())} style={{ background: "none", border: "none", fontSize: 13, fontWeight: 800, color: sel === todayStr() ? T.ink : T.green, minWidth: 50 }}>
+              {sel === todayStr() ? "Today" : fmtShort(sel)}
+            </button>
+            <button className="nt-press" onClick={() => shiftDay(1)} style={{ background: "none", border: "none", color: T.ink, padding: "5px 10px", fontSize: 15, borderRadius: 99 }}>›</button>
+          </div>
           <button className="nt-press" onClick={toggleDone} title="Finish logging for the day" style={{
             width: 34, height: 34, borderRadius: 10, fontSize: 15, fontWeight: 800,
             background: isDone ? T.green : T.input, color: isDone ? "#000" : T.sub,
@@ -1107,8 +1115,11 @@ export function MacroTab({ data, setData, streaksOn = true, waterOn = true }) {
       <div className="nt-left">
       {/* summary hero: big calorie gauge, then three macro stat blocks */}
       <div className="card nt-card nt-summary" style={{ marginBottom: 8, padding: 18 }}>
+        <div className="eyebrow" style={{ marginBottom: 15, color: T.sub, display: "flex", alignItems: "center", gap: 7 }}>
+          <span className="status-dot" style={{ width: 5, height: 5 }} />Today's fuel
+        </div>
         <div className="nt-summary-top">
-          <CalorieRing eaten={totals.kcal} goal={goals.kcal} size={148} />
+          <CalorieRing eaten={totals.kcal} goal={goals.kcal} size={150} />
           <div className="nt-macro-stats">
             {[
               ["Protein", T.green, totals.protein, goals.protein],
@@ -1117,29 +1128,38 @@ export function MacroTab({ data, setData, streaksOn = true, waterOn = true }) {
             ].map(([label, color, eaten, goal]) => {
               const pct = goal ? Math.min(1, eaten / goal) : 0;
               return (
-                <div key={label} style={{ marginBottom: 12 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
-                    <span style={{ fontSize: 13.5, color: T.ink, fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}>
-                      <span style={{ width: 9, height: 9, borderRadius: 99, background: color, display: "inline-block" }} />{label}
+                <div key={label} style={{ marginBottom: 14 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                    <span className="eyebrow" style={{ fontSize: 10, color: T.sub, display: "flex", alignItems: "center", gap: 7 }}>
+                      <span style={{ width: 8, height: 8, borderRadius: 99, background: color, display: "inline-block", boxShadow: `0 0 9px ${color}` }} />{label}
                     </span>
-                    <span style={{ fontSize: 13, color: T.sub, fontWeight: 600 }}><b style={{ color: T.ink }}>{Math.round(eaten)}</b> / {Math.round(goal)}g</span>
+                    <span style={{ fontSize: 12.5, color: T.sub, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}><b style={{ color: T.ink, fontSize: 15, letterSpacing: "-.3px" }}>{Math.round(eaten)}</b> / {Math.round(goal)}g</span>
                   </div>
-                  <div style={{ height: 8, borderRadius: 5, background: T.input, overflow: "hidden" }}>
-                    <div style={{ height: "100%", width: `${pct * 100}%`, background: color, borderRadius: 5, transition: "width .3s ease" }} />
+                  <div style={{ height: 9, borderRadius: 99, background: T.input, overflow: "hidden", boxShadow: "inset 0 1px 3px rgba(0,0,0,.45)" }}>
+                    <div style={{ height: "100%", width: `${pct * 100}%`, borderRadius: 99, background: `linear-gradient(90deg, color-mix(in srgb, ${color} 78%, #000), ${color})`, boxShadow: `0 0 12px ${color}`, transition: "width .45s cubic-bezier(.22,1,.36,1)" }} />
                   </div>
                 </div>
               );
             })}
           </div>
         </div>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 14 }}>
-          <button className="nt-press" onClick={() => setShowGoals(true)} style={{ background: T.input, border: "none", color: T.green, fontSize: 13, fontWeight: 700, padding: "7px 14px", borderRadius: 99 }}>🎯 Edit goals</button>
-          <button className="nt-press" onClick={() => setExpanded(x => !x)} style={{ background: "none", border: "none", color: T.sub, fontSize: 12.5, padding: 0 }}>{expanded ? "Less ▴" : "More ▾"}</button>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6, paddingTop: 14, borderTop: `1px solid ${T.line}` }}>
+          <button className="nt-press" onClick={() => setShowGoals(true)} style={{ background: T.input, border: `1px solid ${T.line}`, color: T.green, fontSize: 12.5, fontWeight: 800, padding: "8px 15px", borderRadius: 99 }}>🎯 Edit goals</button>
+          <button className="nt-press" onClick={() => setExpanded(x => !x)} style={{ background: "none", border: "none", color: T.sub, fontSize: 12.5, fontWeight: 700, padding: "6px 4px" }}>{expanded ? "Less ▴" : "More ▾"}</button>
         </div>
         {expanded && (
-          <div style={{ fontSize: 12.5, color: T.sub, marginTop: 8, animation: "ntUp .25s ease both" }}>
-            Fiber: {Math.round(totals.fiber)}g · Sodium: {Math.round(totals.sodium)}mg
-            <br />Remaining today: {Math.max(0, goals.kcal - Math.round(totals.kcal))} cal · {Math.max(0, goals.protein - Math.round(totals.protein))}g protein · {Math.max(0, goals.carb - Math.round(totals.carb))}g carbs · {Math.max(0, goals.fat - Math.round(totals.fat))}g fat
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 12, animation: "ntUp .25s ease both" }}>
+            {[
+              ["Fiber", `${Math.round(totals.fiber)}g`],
+              ["Sodium", `${Math.round(totals.sodium)}mg`],
+              ["Cal left", `${Math.max(0, goals.kcal - Math.round(totals.kcal)).toLocaleString()}`],
+              ["Protein left", `${Math.max(0, goals.protein - Math.round(totals.protein))}g`],
+            ].map(([k, v]) => (
+              <div key={k} style={{ background: T.input, border: `1px solid ${T.line}`, borderRadius: 12, padding: "9px 12px" }}>
+                <div className="eyebrow" style={{ fontSize: 9, color: T.sub }}>{k}</div>
+                <div style={{ fontSize: 16, fontWeight: 800, color: T.ink, marginTop: 3, fontVariantNumeric: "tabular-nums" }}>{v}</div>
+              </div>
+            ))}
           </div>
         )}
       </div>
