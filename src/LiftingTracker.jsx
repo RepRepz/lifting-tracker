@@ -442,16 +442,16 @@ export default function LiftingTracker({ user }) {
 
   if (!loaded) return <LoadingScreen />;
 
-  // order chosen so the phone bottom bar reads as two clean rows of four:
-  //   row 1: Dash · Log · Records · Library     row 2: Macros · Groups · Cardio · Body
+  // Grouped by how they're used so the two rows read logically:
+  //   row 1 (do it / check daily): Dash · Log · Cardio · Steps · Groups
+  //   row 2 (look it up / less often): Records · Library · Body · Journal · Macros
   const tabs = [
-    ...(liftingOn ? [["dash","Dash","📊"],["log","Log","📝"],["records","Records","🏆"],["ex","Library","📚"]] : []),
-    ...(nutritionOn ? [["macros","Macros","🥗"]] : []),
-    ["journal","Journal","📓"],
-    ["friends","Groups","👥"],
-    ...(liftingOn ? [["cardio","Cardio","🏃"]] : []),
+    ...(liftingOn ? [["dash","Dash","📊"],["log","Log","📝"],["cardio","Cardio","🏃"]] : []),
     ...(liftingOn && stepsOn ? [["steps","Steps","👟"]] : []),
-    ...(liftingOn ? [["body","Body","⚖️"]] : []),
+    ["friends","Groups","👥"],
+    ...(liftingOn ? [["records","Records","🏆"],["ex","Library","📚"],["body","Body","⚖️"]] : []),
+    ["journal","Journal","📓"],
+    ...(nutritionOn ? [["macros","Macros","🥗"]] : []),
   ];
 
   return (
@@ -4085,23 +4085,22 @@ function StepsCard({ user }) {
             and re-syncing never double-counts, because each day just overwrites itself.</span>
         </div>
 
-        {/* the one setting that unblocks Health sending — do this FIRST */}
-        <div style={{ background:"rgba(64,156,255,.10)", border:`1px solid ${STEP_BLUE}`, borderRadius:12, padding:"13px 14px", marginBottom:16 }}>
-          <div style={{ fontSize:13.5, fontWeight:800, color:T.ink, marginBottom:6 }}>⚙️ First — flip one iPhone setting (required)</div>
+        {/* the one setting that unblocks Health sending — this is Step 1 (people skip it) */}
+        <StepBlock n="1" title="Open Settings → Shortcuts → Advanced">
           <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.6, marginBottom:8 }}>
             Apple blocks shortcuts from sending Health data until you allow it. Turn this on once, or the sync fails with a “can't share Health items” error:
           </div>
           <div style={{ display:"flex", flexDirection:"column", gap:4, background:T.input, borderRadius:10, padding:"11px 13px" }}>
-            {[["1","Open the iPhone", "Settings app"],["2","Tap", "Shortcuts"],["3","Tap", "Advanced"],["4","Turn ON", "Allow Sharing Large Amounts of Data"]].map(([n,pre,bold])=>(
+            {[["a","Open the iPhone", "Settings app"],["b","Tap", "Shortcuts"],["c","Tap", "Advanced"],["d","Turn ON", "Allow Sharing Large Amounts of Data"]].map(([n,pre,bold])=>(
               <div key={n} style={{ display:"flex", gap:8, alignItems:"baseline", fontSize:13, lineHeight:1.5 }}>
                 <span style={{ color:STEP_BLUE, fontWeight:800, minWidth:14 }}>{n}.</span>
                 <span style={{ color:T.sub }}>{pre} <b style={{ color:T.ink }}>{bold}</b></span>
               </div>
             ))}
           </div>
-        </div>
+        </StepBlock>
 
-        <StepBlock n="1" title="Repeat  (the 14-day loop)">
+        <StepBlock n="2" title="Repeat  (the 14-day loop)">
           <SearchBar text="Repeat" />
           <MockCard glyph="🔁" glyphBg="#8E8E93" title={<>Repeat <Tap>14</Tap> times</>} />
           <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55, marginBottom:10 }}>
@@ -4118,12 +4117,12 @@ function StepsCard({ user }) {
           </div>
           <div style={{ display:"flex", gap:9, alignItems:"flex-start", background:"rgba(255,80,0,.10)", border:`1px solid ${T.danger}`, borderRadius:10, padding:"11px 13px", fontSize:12, color:T.sub, lineHeight:1.55 }}>
             <span style={{ flexShrink:0, fontSize:15 }}>⚠️</span>
-            <span><b style={{ color:T.ink }}>Every action must end up ABOVE the “End Repeat” line.</b> When you add steps 2–7 they'll appear <b>below</b> “End Repeat” by default —
+            <span><b style={{ color:T.ink }}>Every action must end up ABOVE the “End Repeat” line.</b> When you add steps 3–8 they'll appear <b>below</b> “End Repeat” by default —
               press-and-hold the <b>≡</b> grip on the right of each one and <b>drag it up above “End Repeat”</b> so it's inside the loop. Nothing should sit below End Repeat.</span>
           </div>
         </StepBlock>
 
-        <StepBlock n="2" title="Adjust Date  (inside the loop)">
+        <StepBlock n="3" title="Adjust Date  (inside the loop)">
           <SearchBar text="Adjust Date" />
           <MockCard glyph="🗓" glyphBg="#E64637" title={<><Tap>Subtract</Tap> <Var icon="🔁" iconBg="#8E8E93">Repeat Index</Var> <Tap>days</Tap> from <Var icon="📅" iconBg="#3B7BEF">Current Date</Var></>} />
           <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55, marginBottom:8 }}>Do these 4 taps, in order:</div>
@@ -4136,11 +4135,11 @@ function StepsCard({ user }) {
           <div style={{ fontSize:12, color:T.sub, lineHeight:1.5, marginBottom:9 }}>Done right, it reads <b>Subtract Repeat Index Days from Current Date</b>, and its result is called <b>Adjusted Date</b>.</div>
           <div style={{ display:"flex", gap:9, alignItems:"flex-start", background:"rgba(255,80,0,.10)", border:`1px solid ${T.danger}`, borderRadius:10, padding:"10px 12px", fontSize:11.5, color:T.sub, lineHeight:1.55 }}>
             <span style={{ flexShrink:0, fontSize:14 }}>⚠️</span>
-            <span><b style={{ color:T.ink }}>No “Repeat Index” in the blue bar?</b> Then this Adjust Date action isn't inside the loop yet — go to step 1 and drag it up between “Repeat 14 Times” and “End Repeat,” then try again.</span>
+            <span><b style={{ color:T.ink }}>No “Repeat Index” in the blue bar?</b> Then this Adjust Date action isn't inside the loop yet — go to step 2 and drag it up between “Repeat 14 Times” and “End Repeat,” then try again.</span>
           </div>
         </StepBlock>
 
-        <StepBlock n="3" title="Find Health Samples  (inside the loop)">
+        <StepBlock n="4" title="Find Health Samples  (inside the loop)">
           <SearchBar text="Find Health Samples" />
           {/* mock: the action with its two filter rows (Start Date is on yesterday) */}
           <div style={{ background:T.cardAlt, border:`1px solid ${STEP_BLUE}`, borderRadius:12, padding:"12px", margin:"0 0 10px" }}>
@@ -4180,17 +4179,17 @@ function StepsCard({ user }) {
           </div>
         </StepBlock>
 
-        <StepBlock n="4" title="Calculate Statistics  (inside the loop)">
+        <StepBlock n="5" title="Calculate Statistics  (inside the loop)">
           <SearchBar text="Calculate Statistics" />
           <MockCard glyph="📊" glyphBg="#8E8E93" title={<>Calculate the <Tap>Sum</Tap> of <Var icon="❤️" iconBg="#fff">Health Samples</Var></>} />
           <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55, marginBottom:9 }}>It starts as “<b>Average</b> of <b>Input</b>.” Tap <b>Average</b> → pick <b>Sum</b>. Tap <b>Input</b> → pick <b>Health Samples</b>. That adds that day's steps into one number.</div>
           <div style={{ display:"flex", gap:9, alignItems:"flex-start", background:"rgba(76,155,255,.10)", border:`1px solid ${STEP_BLUE}`, borderRadius:10, padding:"10px 12px", fontSize:11.5, color:T.sub, lineHeight:1.55, marginBottom:9 }}>
             <span style={{ flexShrink:0 }}>ℹ️</span>
-            <span>Don't see <b style={{ color:T.ink }}>Health Samples</b> when you tap Input? Then step 3 isn't <b style={{ color:T.ink }}>above</b> this one — drag it up so it's <b>Find first, then Calculate</b>.</span>
+            <span>Don't see <b style={{ color:T.ink }}>Health Samples</b> when you tap Input? Then step 4 isn't <b style={{ color:T.ink }}>above</b> this one — drag it up so it's <b>Find first, then Calculate</b>.</span>
           </div>
         </StepBlock>
 
-        <StepBlock n="5" title="Text  (the Health-privacy fix)">
+        <StepBlock n="6" title="Text  (the Health-privacy fix)">
           <SearchBar text="Text" />
           <MockCard glyph="📝" glyphBg="#EAB308" title={<>Text: <Var icon="📊" iconBg="#8E8E93">Sum</Var></>} />
           <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55, marginBottom:9 }}>
@@ -4203,7 +4202,7 @@ function StepsCard({ user }) {
           </div>
         </StepBlock>
 
-        <StepBlock n="6" title="Format Date  (inside the loop)">
+        <StepBlock n="7" title="Format Date  (inside the loop)">
           <SearchBar text="Format Date" />
           <MockCard glyph="🗓" glyphBg="#E64637" title={<>Format <Var icon="🗓" iconBg="#E64637">Adjusted Date</Var></>}
             rows={[
@@ -4223,7 +4222,7 @@ function StepsCard({ user }) {
           <Copy label="Paste into the Format String box" value="yyyy-MM-dd" id="fmt" />
         </StepBlock>
 
-        <StepBlock n="7" title="Get Contents of URL  (inside the loop)">
+        <StepBlock n="8" title="Get Contents of URL  (inside the loop)">
           <SearchBar text="Get Contents of URL" />
           <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55, marginBottom:10 }}>
             Everything here is <b style={{ color:T.ink }}>tap-to-copy right in place</b> — no scrolling around. A blue box = copy it. A grey note = tap that box on your phone and pick a variable.
@@ -4275,8 +4274,8 @@ function StepsCard({ user }) {
                 <span style={{ padding:"5px 12px", borderRadius:6, fontSize:12.5, fontWeight:700, color:T.sub }}>File</span>
               </div>
               <JField type="Text" name="p_token" nameId="k-tok" valueCopy={token} valueId="tok" secret valueNote="🔒 Don’t share this with anyone" />
-              <JField type="Text" name="p_day" nameId="k-day" valuePick={<>Tap this Value box. In the bar <b>above the keyboard</b>, tap <b>Formatted Date</b> (from step 6). When it's set it looks like this: <span style={{ display:"inline-block", verticalAlign:"middle" }}><Var icon="📅" iconBg="#3B7BEF">Formatted Date</Var></span></>} />
-              <JField type="Number" name="p_count" nameId="k-cnt" valuePick={<>Tap this Value box → pick the <b>Text</b> variable (from step 5). When it's set it looks like this: <span style={{ display:"inline-block", verticalAlign:"middle" }}><Var icon="📝" iconBg="#EAB308">Text</Var></span> <b style={{ color:T.danger }}>Not Sum directly</b> — that triggers the "share Health items" block.</>} />
+              <JField type="Text" name="p_day" nameId="k-day" valuePick={<>Tap this Value box. In the bar <b>above the keyboard</b>, tap <b>Formatted Date</b> (from step 7). When it's set it looks like this: <span style={{ display:"inline-block", verticalAlign:"middle" }}><Var icon="📅" iconBg="#3B7BEF">Formatted Date</Var></span></>} />
+              <JField type="Number" name="p_count" nameId="k-cnt" valuePick={<>Tap this Value box → pick the <b>Text</b> variable (from step 6). When it's set it looks like this: <span style={{ display:"inline-block", verticalAlign:"middle" }}><Var icon="📝" iconBg="#EAB308">Text</Var></span> <b style={{ color:T.danger }}>Not Sum directly</b> — that triggers the "share Health items" block.</>} />
               <div style={{ fontSize:10.5, color:T.sub, marginTop:2, lineHeight:1.5 }}>
                 Only <b style={{ color:T.ink }}>p_token</b>’s value is copied. For <b>p_day</b> and <b>p_count</b> the value is a blue variable you <b>pick</b>, not type — they should end up looking exactly like the chips above.
               </div>
@@ -4284,7 +4283,7 @@ function StepsCard({ user }) {
           </div>
         </StepBlock>
 
-        <StepBlock n="8" title="Name it & save">
+        <StepBlock n="9" title="Name it & save">
           <div style={{ background:"rgba(0,200,5,.08)", border:`1px solid ${T.green}`, borderRadius:12, padding:"13px 14px" }}>
             <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55, marginBottom:9 }}>
               At the top of the shortcut, tap its <b style={{ color:T.ink }}>name</b> (or the <b>⌄</b> next to it → <b>Rename</b>), erase what's there,
@@ -4701,7 +4700,7 @@ function CoachCard({ data, exMap, user }) {
   return (
     <div className="card" style={{ border: `1px solid ${T.green}`, background: "linear-gradient(180deg,rgba(0,200,5,.05),transparent 60%)" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
-        <div className="h" style={{ fontSize: 18, color: T.ink }}>💪 Coach</div>
+        <div className="h" style={{ fontSize: 18, color: T.ink }}>💪 Lab's AI Coach</div>
         <span style={{ fontSize: 10, fontWeight: 800, color: T.green, background: "rgba(0,200,5,.12)", padding: "2px 8px", borderRadius: 99, letterSpacing: .4 }}>SMART</span>
       </div>
       <div style={{ fontSize: 12, color: T.sub, marginBottom: all.length ? 12 : 0 }}>Personalized from your logs · updates every time you train.</div>
