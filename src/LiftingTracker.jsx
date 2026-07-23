@@ -1857,7 +1857,7 @@ function YearRecap({ data }) {
 }
 
 /* ================= DASHBOARD ================= */
-const DASH_WIDGETS = ["charts","target","streak","calendar","muscle","recap"];
+const DASH_WIDGETS = ["calendar","streak","charts","target","muscle","recap"];
 /* Hero stat tile for the dashboard — big gradient number, icon, label. `hero`
    gives the primary tile an accent-tinted glow so the eye lands on it first. */
 function StatTile({ icon, value, label, hero }) {
@@ -1889,7 +1889,7 @@ function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled
   const [bwMode, setBwMode] = useState({});
   /* draggable dashboard widget order (remembered on this device) */
   const [arrange, setArrange] = useState(false);
-  const [wOrder, setWOrder] = useReorder("lt-dash-order", DASH_WIDGETS);
+  const [wOrder, setWOrder] = useReorder("lt-dash-order-v2", DASH_WIDGETS);
   /* Pinned charts live in account data (data.pins) so they sync across devices and
      friends' profiles show THEIR pins. Local state first, then persisted when it's your own. */
   const [pins, setPins] = useState(() => Array.isArray(data.pins) ? data.pins : []);
@@ -4897,15 +4897,17 @@ const GSHORT = { push: "Push", pull: "Pull", legs: "Legs" };
 /* Training splits the coach can tailor its "what to train today" advice to. The user
    picks one in the Coach card; until they do, the coach won't assume a rotation. */
 const SPLITS = {
-  ppl:        { label: "Push / Pull / Legs" },
-  arnold:     { label: "Arnold (Chest+Back · Shoulders+Arms · Legs)" },
-  upperlower: { label: "Upper / Lower" },
-  phul:       { label: "PHUL / Power-Hypertrophy (Upper/Lower)" },
-  fullbody:   { label: "Full body" },
-  bro:        { label: "Body-part (bro) split" },
-  custom:     { label: "Custom — build your own days" },
-  other:      { label: "Other / no fixed split" },
+  ppl:        { icon: "🔁", label: "Push / Pull / Legs", short: "PPL" },
+  arnold:     { icon: "💪", label: "Arnold Split", short: "Arnold" },
+  upperlower: { icon: "↕️", label: "Upper / Lower", short: "Upper/Lower" },
+  phul:       { icon: "⚡", label: "PHUL / Power-Hypertrophy", short: "PHUL" },
+  fullbody:   { icon: "🌐", label: "Full Body", short: "Full body" },
+  bro:        { icon: "🎯", label: "Bro Split (body-part)", short: "Bro split" },
+  custom:     { icon: "🛠", label: "Custom", short: "Custom" },
+  other:      { icon: "🤷", label: "No fixed split", short: "No split" },
 };
+/* auto-name a custom day from the muscles it targets — no typing needed */
+const dayLabel = (muscles) => (muscles && muscles.length) ? muscles.join(" & ") : "New day";
 const maxDate = (...ds) => ds.filter(Boolean).sort().reverse()[0] || null;
 /* Arnold split groups antagonists: Chest & Back, then Shoulders & Arms, then Legs. */
 const ARNOLD_DAY = (m) => {
@@ -4996,18 +4998,18 @@ function coachTips(data, exMap, units) {
     // user-defined days (data.profile.customSplit). A day is "trained" whenever any of
     // its muscles were logged — the coach suggests the day you've rested longest, and
     // prioritizes any day you haven't logged yet.
-    const days = (Array.isArray(data.profile?.customSplit) ? data.profile.customSplit : []).filter(d => d.muscles?.length && d.name?.trim());
+    const days = (Array.isArray(data.profile?.customSplit) ? data.profile.customSplit : []).filter(d => d.muscles?.length);
     const lastFor = (musc) => { let last = null; for (const e of log) { const m = exMap[e.exercise]?.muscle; if (m && musc.includes(m) && (!last || e.date > last)) last = e.date; } return last; };
-    const withDates = days.map(d => ({ d, last: lastFor(d.muscles) }));
+    const withDates = days.map(d => ({ d, name: dayLabel(d.muscles), last: lastFor(d.muscles) }));
     const never = withDates.find(x => !x.last);
     if (never) {
       tips.push({ key: `train-cust-${never.d.id}-new`, icon: "📅", cat: "Train today",
-        text: `You haven't logged your "${never.d.name.trim()}" day yet — a good one to hit today.` });
+        text: `You haven't logged your "${never.name}" day yet — a good one to hit today.` });
     } else if (withDates.length) {
       const oldest = withDates.reduce((a, b) => (b.last < a.last ? b : a));
       if (dayGap(today, oldest.last) >= 2)
         tips.push({ key: `train-cust-${oldest.d.id}-${oldest.last}`, icon: "📅", cat: "Train today",
-          text: `It's been ${dayGap(today, oldest.last)} days since your "${oldest.d.name.trim()}" day — a solid pick for today.` });
+          text: `It's been ${dayGap(today, oldest.last)} days since your "${oldest.name}" day — a solid pick for today.` });
     }
   }
   // split === "other" or unset: no rotation nudge (the card asks you to pick a split)
@@ -5098,10 +5100,11 @@ function CoachCard({ data, exMap, user, setData }) {
   // custom split builder — a list of named days, each targeting some muscles
   const customDays = Array.isArray(data.profile?.customSplit) ? data.profile.customSplit : [];
   const setCustom = (fn) => setData(d => { const cur = Array.isArray(d.profile?.customSplit) ? d.profile.customSplit : []; return { ...d, profile: { ...(d.profile || {}), customSplit: fn(cur) } }; });
-  const addDay = () => setCustom(days => [...days, { id: Math.random().toString(36).slice(2), name: "", muscles: [] }]);
-  const updateDay = (id, patch) => setCustom(days => days.map(x => x.id === id ? { ...x, ...patch } : x));
+  const addDay = () => setCustom(days => [...days, { id: Math.random().toString(36).slice(2), muscles: [] }]);
   const toggleMuscle = (id, m) => setCustom(days => days.map(x => x.id === id ? { ...x, muscles: x.muscles.includes(m) ? x.muscles.filter(z => z !== m) : [...x.muscles, m] } : x));
   const removeDay = (id) => setCustom(days => days.filter(x => x.id !== id));
+  // the split setup collapses once you've chosen one; expands again via the ✎ chip
+  const [editing, setEditing] = useState(!split);
 
   useEffect(() => {
     let alive = true;
@@ -5131,78 +5134,111 @@ function CoachCard({ data, exMap, user, setData }) {
   }, [data.log, user.id, units]);
 
   const all = (groupTip ? [...tips, groupTip] : tips).filter(t => !dismissed.includes(t.key));
+  const trainTip = all.find(t => t.cat === "Train today");
+  const otherTips = all.filter(t => t.cat !== "Train today");
   const CAT_COLOR = { Progression: T.green, "Train today": STEP_BLUE, Projection: "#9D5CFF", Plateau: "#E9C46A", Volume: STEP_BLUE, Balance: STEP_BLUE, Recovery: "#00D1B2", "Weak point": "#FF7A45" };
 
   return (
-    <div className="card" style={{ border: `1px solid ${T.green}`, background: "linear-gradient(180deg,rgba(var(--accent-rgb),.06),transparent 60%)" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
+    <div className="card" style={{ border: "1px solid rgba(var(--accent-rgb),.4)", background: "radial-gradient(120% 90% at 0% 0%, rgba(var(--accent-rgb),.12), transparent 55%), linear-gradient(180deg, color-mix(in srgb, var(--card) 90%, #fff 5%), var(--card) 70%)" }}>
+      {/* header — with a compact split chip on the right when collapsed */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 13 }}>
         <div className="h" style={{ fontSize: 18, color: T.ink }}>💪 Lab's AI Coach</div>
-        <span style={{ fontSize: 10, fontWeight: 800, color: T.green, background: "rgba(var(--accent-rgb),.12)", padding: "2px 8px", borderRadius: 99, letterSpacing: .4 }}>SMART</span>
+        <span style={{ fontSize: 9.5, fontWeight: 800, color: T.green, background: "rgba(var(--accent-rgb),.14)", padding: "3px 9px", borderRadius: 99, letterSpacing: .5 }}>SMART</span>
+        {split && !editing && (
+          <button onClick={() => setEditing(true)} title="Change split" style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 5, background: T.input, border: `1px solid ${T.line}`, color: T.ink, fontSize: 11.5, fontWeight: 700, padding: "5px 11px", borderRadius: 99 }}>
+            {SPLITS[split].icon} {SPLITS[split].short}{split === "custom" && customDays.length ? ` · ${customDays.length}d` : ""} <span style={{ color: T.sub }}>✎</span>
+          </button>
+        )}
       </div>
-      <div style={{ fontSize: 12, color: T.sub, marginBottom: 11 }}>Personalized from your logs · updates every time you train.</div>
 
-      {/* split selector — the coach tailors "what to train today" to this */}
-      <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap", marginBottom: all.length ? 12 : 0,
-        padding: "10px 12px", background: split ? T.input : "rgba(var(--accent-rgb),.08)",
-        border: `1px solid ${split ? T.line : "rgba(var(--accent-rgb),.35)"}`, borderRadius: 13 }}>
-        <span style={{ fontSize: 12.5, color: split ? T.sub : T.green, fontWeight: 800, whiteSpace: "nowrap" }}>🗂 {split ? "Your split" : "Pick your split →"}</span>
-        <select value={split} onChange={e => setSplit(e.target.value)} style={{ flex: 1, minWidth: 150, width: "auto", minHeight: 40, fontWeight: 700 }}>
-          <option value="">— choose one —</option>
-          {Object.entries(SPLITS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-        </select>
+      {/* TODAY'S FOCUS — the headline: what to hit right now */}
+      <div style={{ borderRadius: 15, padding: "14px 15px", marginBottom: 13,
+        background: trainTip ? "linear-gradient(135deg, rgba(var(--accent-rgb),.20), rgba(var(--accent-rgb),.05))" : "rgba(255,255,255,.03)",
+        border: `1px solid ${trainTip ? "rgba(var(--accent-rgb),.4)" : T.line}` }}>
+        <div className="eyebrow" style={{ fontSize: 9.5, color: trainTip ? T.green : T.sub, marginBottom: 7, display: "flex", alignItems: "center", gap: 6 }}>
+          <span className="status-dot" style={{ width: 5, height: 5 }} />Today's focus
+        </div>
+        {!split ? (
+          <div style={{ fontSize: 14, color: T.ink, fontWeight: 600, lineHeight: 1.5 }}>Pick your split below 👇 and I'll tell you exactly what to hit each day.</div>
+        ) : trainTip ? (
+          <div style={{ fontSize: 15.5, color: T.ink, fontWeight: 700, lineHeight: 1.45 }}>{trainTip.text}</div>
+        ) : (
+          <div style={{ fontSize: 14, color: T.ink, fontWeight: 600, lineHeight: 1.5 }}>✅ Nothing overdue — you're on rhythm. Hit the next day in your rotation, or take a well-earned rest day.</div>
+        )}
       </div>
-      {!split && (
-        <div style={{ fontSize: 12.5, color: T.sub, lineHeight: 1.5, marginBottom: all.length ? 12 : 0 }}>
-          Tell me your split and I'll tell you what to train each day. Everything below (progressions, plateaus, PRs, balance) works no matter what.
+
+      {/* SPLIT SETUP — collapsible; clickable options, no typing */}
+      {editing && (
+        <div style={{ marginBottom: 13 }}>
+          <div className="eyebrow" style={{ fontSize: 9.5, color: T.sub, marginBottom: 9 }}>Choose your split</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(102px, 1fr))", gap: 7, marginBottom: split === "custom" ? 12 : (split ? 12 : 0) }}>
+            {Object.entries(SPLITS).map(([k, v]) => {
+              const on = split === k;
+              return (
+                <button key={k} onClick={() => { setSplit(k); if (k !== "custom") setEditing(false); }} style={{
+                  display: "flex", flexDirection: "column", alignItems: "center", gap: 5, padding: "12px 6px", borderRadius: 13, textAlign: "center",
+                  background: on ? "linear-gradient(180deg, rgba(var(--accent-rgb),.22), rgba(var(--accent-rgb),.10))" : T.input,
+                  border: `1px solid ${on ? "rgba(var(--accent-rgb),.45)" : T.line}`,
+                  color: on ? T.green : T.ink, fontWeight: 700, fontSize: 11.5, lineHeight: 1.2,
+                  boxShadow: on ? "0 0 0 1px rgba(var(--accent-rgb),.2) inset" : "none",
+                }}><span style={{ fontSize: 21 }}>{v.icon}</span>{v.short}</button>
+              );
+            })}
+          </div>
+
+          {/* custom builder — tap muscles only, days auto-name themselves */}
+          {split === "custom" && (
+            <div>
+              <div style={{ fontSize: 12, color: T.sub, lineHeight: 1.5, marginBottom: 10 }}>Add a day for each workout, then just tap the muscles it hits — including <b style={{ color: T.ink }}>Abs</b>. Each day names itself.</div>
+              {customDays.map((day, idx) => (
+                <div key={day.id} style={{ background: T.input, border: `1px solid ${day.muscles.length ? "rgba(var(--accent-rgb),.3)" : T.line}`, borderRadius: 13, padding: 12, marginBottom: 9 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                    <span className="eyebrow" style={{ fontSize: 9, color: T.sub, flexShrink: 0 }}>Day {idx + 1}</span>
+                    <span style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 800, color: day.muscles.length ? T.green : T.sub, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{dayLabel(day.muscles)}</span>
+                    <button onClick={() => removeDay(day.id)} title="Remove day" style={{ flexShrink: 0, background: "none", border: `1px solid ${T.line}`, color: T.danger, width: 34, height: 34, borderRadius: 9, fontSize: 14 }}>🗑</button>
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {MUSCLES.map(m => {
+                      const on = day.muscles.includes(m);
+                      return (
+                        <button key={m} onClick={() => toggleMuscle(day.id, m)} style={{
+                          padding: "6px 13px", borderRadius: 99, fontSize: 12.5, fontWeight: 700,
+                          background: on ? "linear-gradient(180deg, rgba(var(--accent-rgb),.24), rgba(var(--accent-rgb),.12))" : T.card,
+                          color: on ? T.green : T.sub, border: `1px solid ${on ? "rgba(var(--accent-rgb),.45)" : T.line}`,
+                        }}>{on ? "✓ " : ""}{m}</button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+              <button onClick={addDay} style={{ width: "100%", background: T.input, border: `1px dashed ${T.line}`, color: T.green, fontWeight: 800, padding: "12px", borderRadius: 12, fontSize: 13.5, marginBottom: 10 }}>+ Add a training day</button>
+            </div>
+          )}
+
+          {split && (
+            <button onClick={() => setEditing(false)} className="btn-primary" style={{ width: "100%", padding: "12px", fontSize: 14 }}>✓ Done — show my tips</button>
+          )}
         </div>
       )}
 
-      {/* custom split builder */}
-      {split === "custom" && (
-        <div style={{ marginBottom: all.length ? 12 : 0 }}>
-          <div style={{ fontSize: 12.5, color: T.sub, lineHeight: 1.5, marginBottom: 11 }}>
-            Add a day for each workout you run, name it, then tap the muscles it hits. I'll track when you last did each and tell you what's due — including <b style={{ color: T.ink }}>Abs</b>.
-          </div>
-          {customDays.map((day, idx) => (
-            <div key={day.id} style={{ background: T.input, border: `1px solid ${T.line}`, borderRadius: 13, padding: 12, marginBottom: 9 }}>
-              <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10 }}>
-                <span className="eyebrow" style={{ fontSize: 9, color: T.sub, flexShrink: 0 }}>Day {idx + 1}</span>
-                <input value={day.name} onChange={e => updateDay(day.id, { name: e.target.value })} placeholder="e.g. Chest & Triceps"
-                  style={{ flex: 1, minWidth: 0, minHeight: 40, fontWeight: 700 }} />
-                <button onClick={() => removeDay(day.id)} title="Remove this day" style={{ flexShrink: 0, background: "none", border: `1px solid ${T.line}`, color: T.danger, width: 40, height: 40, borderRadius: 10, fontSize: 15 }}>🗑</button>
+      {/* INSIGHTS — everything except the "train today" headline */}
+      {otherTips.length === 0 ? (
+        <div style={{ fontSize: 13.5, color: T.sub, paddingTop: 2, lineHeight: 1.5 }}>{split ? "All caught up 🎉 Keep logging and I'll surface fresh progressions, plateaus and imbalances." : "Log a few sessions and tips on progressions, plateaus and balance appear here."}</div>
+      ) : (
+        <div>
+          <div className="eyebrow" style={{ fontSize: 9.5, color: T.sub, marginBottom: 2 }}>Insights</div>
+          {otherTips.slice(0, 5).map((t) => (
+            <div key={t.key} style={{ display: "flex", gap: 11, alignItems: "flex-start", padding: "10px 0", borderTop: `1px solid ${T.creamLine}` }}>
+              <span style={{ fontSize: 19, lineHeight: 1.2, flexShrink: 0 }}>{t.icon}</span>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <span style={{ fontSize: 9.5, fontWeight: 800, color: CAT_COLOR[t.cat] || T.sub, textTransform: "uppercase", letterSpacing: .5 }}>{t.cat}</span>
+                <div style={{ fontSize: 13.5, color: T.ink, lineHeight: 1.5 }}>{t.text}</div>
               </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {MUSCLES.map(m => {
-                  const on = day.muscles.includes(m);
-                  return (
-                    <button key={m} onClick={() => toggleMuscle(day.id, m)} style={{
-                      padding: "6px 13px", borderRadius: 99, fontSize: 12.5, fontWeight: 700,
-                      background: on ? "linear-gradient(180deg, rgba(var(--accent-rgb),.22), rgba(var(--accent-rgb),.12))" : T.card,
-                      color: on ? T.green : T.sub, border: `1px solid ${on ? "rgba(var(--accent-rgb),.4)" : T.line}`,
-                    }}>{on ? "✓ " : ""}{m}</button>
-                  );
-                })}
-              </div>
+              <button onClick={() => dismiss(t.key)} title="Don't show this again" style={{ flexShrink: 0, background: "none", border: "none", color: T.sub, fontSize: 15, lineHeight: 1, padding: "2px 4px", cursor: "pointer" }}>✕</button>
             </div>
           ))}
-          <button onClick={addDay} style={{ width: "100%", background: T.input, border: `1px dashed ${T.line}`, color: T.green, fontWeight: 800, padding: "12px", borderRadius: 12, fontSize: 13.5 }}>
-            + Add a training day
-          </button>
         </div>
       )}
-
-      {all.length === 0 ? (
-        <div style={{ fontSize: 13.5, color: T.sub, paddingTop: 6 }}>All caught up 🎉 Log a few more sessions and I'll surface fresh progressions, plateaus and imbalances.</div>
-      ) : all.slice(0, 5).map((t, i) => (
-        <div key={t.key} style={{ display: "flex", gap: 11, alignItems: "flex-start", padding: "10px 0", borderTop: i === 0 ? "none" : `1px solid ${T.creamLine}` }}>
-          <span style={{ fontSize: 20, lineHeight: 1.2, flexShrink: 0 }}>{t.icon}</span>
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <span style={{ fontSize: 9.5, fontWeight: 800, color: CAT_COLOR[t.cat] || T.sub, textTransform: "uppercase", letterSpacing: .5 }}>{t.cat}</span>
-            <div style={{ fontSize: 13.5, color: T.ink, lineHeight: 1.5 }}>{t.text}</div>
-          </div>
-          <button onClick={() => dismiss(t.key)} title="Don't show this again" style={{ flexShrink: 0, background: "none", border: "none", color: T.sub, fontSize: 15, lineHeight: 1, padding: "2px 4px", cursor: "pointer" }}>✕</button>
-        </div>
-      ))}
     </div>
   );
 }
