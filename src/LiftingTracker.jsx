@@ -302,6 +302,7 @@ export default function LiftingTracker({ user }) {
   const [routinesOn, setRoutinesOn] = useState(() => localStorage.getItem("lt-routines-on") === "1"); // optional templates feature
   const [stepsOn, setStepsOn] = useState(() => localStorage.getItem("lt-steps-on") !== "0"); // Apple Health steps (Pro; default on)
   const [coachOn, setCoachOn] = useState(() => localStorage.getItem("lt-coach-on") !== "0"); // Lab's AI Coach (Pro; default on)
+  const [macrosOn, setMacrosOn] = useState(() => localStorage.getItem("lt-macros-on") !== "0"); // Nutrition/Macros (Pro; default on)
   // Lifting is always on for everyone. The full Macros/nutrition feature is built and kept
   // in the codebase (Nutrition.jsx + the tab wiring below) but PARKED for most accounts.
   // Currently unlocked ONLY for these usernames (a private demo for Anis). Add a name here
@@ -311,8 +312,9 @@ export default function LiftingTracker({ user }) {
   const [proIds, setProIds] = useState([]);
   useEffect(() => { listProUserIds().then(setProIds).catch(()=>{}); }, []);
   const isPro = proIds.includes(user.id);
-  // Nutrition/Macros is a Pro feature now (still on for the legacy demo accounts).
-  const nutritionOn = isPro || MACRO_ACCOUNTS.includes((user.user_metadata?.username || "").toLowerCase());
+  // Nutrition/Macros is a Pro feature: auto-on when you have Pro, toggleable in Settings.
+  // Legacy demo accounts keep it regardless.
+  const nutritionOn = (isPro && macrosOn) || MACRO_ACCOUNTS.includes((user.user_metadata?.username || "").toLowerCase());
   const [streaksOn, setStreaksOn] = useState(() => localStorage.getItem("lt-streaks-on") !== "0"); // default on
   const [waterOn, setWaterOn] = useState(() => localStorage.getItem("lt-water-on") !== "0"); // default on
   useEffect(() => { localStorage.setItem("lt-streaks-on", streaksOn ? "1" : "0"); }, [streaksOn]);
@@ -323,6 +325,7 @@ export default function LiftingTracker({ user }) {
   useEffect(() => { localStorage.setItem("lt-routines-on", routinesOn ? "1" : "0"); }, [routinesOn]);
   useEffect(() => { localStorage.setItem("lt-steps-on", stepsOn ? "1" : "0"); }, [stepsOn]);
   useEffect(() => { localStorage.setItem("lt-coach-on", coachOn ? "1" : "0"); }, [coachOn]);
+  useEffect(() => { localStorage.setItem("lt-macros-on", macrosOn ? "1" : "0"); }, [macrosOn]);
   // Steps & the AI Coach are Pro features (default on for Pro). Non-Pro never see them.
   const stepsEnabled = isPro && stepsOn;
   const coachEnabled = isPro && coachOn;
@@ -335,6 +338,7 @@ export default function LiftingTracker({ user }) {
   };
   const setStepsOnSynced = (v) => setProfileFlag("stepsOn", setStepsOn)(v, stepsOn);
   const setCoachOnSynced = (v) => setProfileFlag("coachOn", setCoachOn)(v, coachOn);
+  const setMacrosOnSynced = (v) => setProfileFlag("macrosOn", setMacrosOn)(v, macrosOn);
   useEffect(() => {
     const v = data?.profile?.stepsOn;
     if (typeof v === "boolean" && v !== stepsOn) setStepsOn(v);
@@ -343,6 +347,10 @@ export default function LiftingTracker({ user }) {
     const v = data?.profile?.coachOn;
     if (typeof v === "boolean" && v !== coachOn) setCoachOn(v);
   }, [data?.profile?.coachOn]);
+  useEffect(() => {
+    const v = data?.profile?.macrosOn;
+    if (typeof v === "boolean" && v !== macrosOn) setMacrosOn(v);
+  }, [data?.profile?.macrosOn]);
   // ---- theme (accent color + dark palette), synced across devices ----
   const [theme, setThemeState] = useState(() => {
     try { return JSON.parse(localStorage.getItem("lt-theme")) || DEFAULT_THEME; } catch { return DEFAULT_THEME; }
@@ -673,6 +681,7 @@ export default function LiftingTracker({ user }) {
           routinesOn={routinesOn} setRoutinesOn={setRoutinesOn}
           stepsOn={stepsOn} setStepsOn={setStepsOnSynced} isPro={isPro}
           coachOn={coachOn} setCoachOn={setCoachOnSynced}
+          macrosOn={macrosOn} setMacrosOn={setMacrosOnSynced}
           theme={theme} setTheme={setTheme}
           streaksOn={streaksOn} setStreaksOn={setStreaksOn}
           waterOn={waterOn} setWaterOn={setWaterOn}
@@ -3749,7 +3758,7 @@ function SectionHead({ icon, label }) {
   );
 }
 
-function SettingsModal({ user, username, data, setData, startTab, setStartTab, tabs, units, setUnits, hunit, setHunit, routinesOn, setRoutinesOn, stepsOn, setStepsOn, coachOn, setCoachOn, theme, setTheme, streaksOn, setStreaksOn, waterOn, setWaterOn, nutritionOn, isPro, onClose }) {
+function SettingsModal({ user, username, data, setData, startTab, setStartTab, tabs, units, setUnits, hunit, setHunit, routinesOn, setRoutinesOn, stepsOn, setStepsOn, coachOn, setCoachOn, macrosOn, setMacrosOn, theme, setTheme, streaksOn, setStreaksOn, waterOn, setWaterOn, nutritionOn, isPro, onClose }) {
   const memberSince = user.created_at ? new Date(user.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}) : "—";
   const totalSets = (data.log||[]).length;
   const goPro = () => document.getElementById("pro-section")?.scrollIntoView({ behavior:"smooth", block:"start" });
@@ -3900,6 +3909,13 @@ function SettingsModal({ user, username, data, setData, startTab, setStartTab, t
             <FeatureToggle label="Show the AI Coach" on={coachOn} setOn={setCoachOn}
               desc="Puts a coach card on your Home tab with progression, plateau, volume, weak-point and recovery tips built from your logs. Dismiss any tip with ✕. On by default." />
           ) : <ProLocked feature="Lab's AI Coach" note="Personalized progression, plateau, and weak-point coaching from your own logs." onGoPro={goPro} />}
+        </SettingsSection>
+
+        <SettingsSection icon="🥗" title="Nutrition & macros" desc={isPro ? "Log food, hit macro targets & track water" : "Full nutrition tracking · Pro"}>
+          {isPro ? (
+            <FeatureToggle label="Show the Macros tab" on={macrosOn} setOn={setMacrosOn}
+              desc="Adds a 🥗 Macros tab: log food, set calorie/protein/carb/fat targets, see daily and weekly trends, and (optionally) track water. On by default. Turning it off just hides it — anything you logged stays." />
+          ) : <ProLocked feature="Nutrition & macros" note="Log your food, set macro targets, and track calories, protein, carbs, fat, and water — all in one place." onGoPro={goPro} />}
         </SettingsSection>
 
         <SettingsSection icon="🚶" title="Apple Health steps" desc={isPro ? "Auto-log your daily steps from your iPhone" : "Auto step tracking · Pro"}>
