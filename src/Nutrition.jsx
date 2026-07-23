@@ -962,7 +962,7 @@ function MealDrop({ meal, children, header, empty }) {
   const { setNodeRef, isOver } = useDroppable({ id: `meal:${meal}` });
   return (
     <div ref={setNodeRef} className="card nt-card" style={{ marginBottom: 8, padding: "12px 14px",
-      background: isOver ? "rgba(0,200,5,.09)" : T.card, borderColor: isOver ? T.green : undefined,
+      background: isOver ? "rgba(var(--accent-rgb),.09)" : T.card, borderColor: isOver ? T.green : undefined,
       transition: "background .15s ease, border-color .15s ease" }}>
       {header}
       {children}
@@ -1260,7 +1260,7 @@ export function MacroCalendar({ data, title = "🥗 Nutrition calendar" }) {
     if (future) return "transparent";
     if (!t) return T.input;
     const hits = (calGood(t) ? 1 : 0) + (protGood(t) ? 1 : 0);
-    if (hits === 2) return "rgba(0,200,5,.70)";       // both on target
+    if (hits === 2) return "rgba(var(--accent-rgb),.70)";       // both on target
     if (hits === 1) return "rgba(227,190,85,.45)";    // one of the two
     return "rgba(255,80,0,.35)";                      // logged, both off
   };

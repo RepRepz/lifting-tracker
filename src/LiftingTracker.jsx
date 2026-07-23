@@ -6,7 +6,7 @@ import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } 
 import { CSS } from "@dnd-kit/utilities";
 import { MacroTab, GroupMacrosCard, MacroCalendar } from "./Nutrition.jsx";
 
-import { T, tipStyle } from "./theme.js";
+import { T, tipStyle, applyTheme, DEFAULT_THEME, ACCENTS, PALETTES } from "./theme.js";
 import LoadingScreen from "./LoadingScreen.jsx";
 export { T, tipStyle }; // re-export so older imports keep working
 
@@ -300,7 +300,8 @@ export default function LiftingTracker({ user }) {
   const [units, setUnits] = useState(() => localStorage.getItem("lt-units") || "lb");
   const [hunit, setHunit] = useState(() => localStorage.getItem("lt-hunit") || "ftin"); // height: "ftin" | "cm"
   const [routinesOn, setRoutinesOn] = useState(() => localStorage.getItem("lt-routines-on") === "1"); // optional templates feature
-  const [stepsOn, setStepsOn] = useState(() => localStorage.getItem("lt-steps-on") === "1"); // Apple Health steps tab
+  const [stepsOn, setStepsOn] = useState(() => localStorage.getItem("lt-steps-on") !== "0"); // Apple Health steps (Pro; default on)
+  const [coachOn, setCoachOn] = useState(() => localStorage.getItem("lt-coach-on") !== "0"); // Lab's AI Coach (Pro; default on)
   // Lifting is always on for everyone. The full Macros/nutrition feature is built and kept
   // in the codebase (Nutrition.jsx + the tab wiring below) but PARKED for most accounts.
   // Currently unlocked ONLY for these usernames (a private demo for Anis). Add a name here
@@ -321,21 +322,45 @@ export default function LiftingTracker({ user }) {
   useEffect(() => { localStorage.setItem("lt-hunit", hunit); }, [hunit]);
   useEffect(() => { localStorage.setItem("lt-routines-on", routinesOn ? "1" : "0"); }, [routinesOn]);
   useEffect(() => { localStorage.setItem("lt-steps-on", stepsOn ? "1" : "0"); }, [stepsOn]);
-  // The Steps toggle is PROFILE-WIDE: turning it on (or off) on one device syncs to the
-  // rest via the cloud state, so enabling on your phone lights it up on your PC too.
-  const setStepsOnSynced = (v) => {
-    const on = typeof v === "function" ? v(stepsOn) : v;
-    setStepsOn(on);
-    setData(d => ({ ...d, profile: { ...(d.profile || {}), stepsOn: on } }));
+  useEffect(() => { localStorage.setItem("lt-coach-on", coachOn ? "1" : "0"); }, [coachOn]);
+  // Steps & the AI Coach are Pro features (default on for Pro). Non-Pro never see them.
+  const stepsEnabled = isPro && stepsOn;
+  const coachEnabled = isPro && coachOn;
+  // These toggles are PROFILE-WIDE: flipping one on a device syncs to the rest via the
+  // cloud state (data.profile), so enabling on your phone lights it up on your PC too.
+  const setProfileFlag = (key, setLocal) => (v, cur) => {
+    const on = typeof v === "function" ? v(cur) : v;
+    setLocal(on);
+    setData(d => ({ ...d, profile: { ...(d.profile || {}), [key]: on } }));
   };
+  const setStepsOnSynced = (v) => setProfileFlag("stepsOn", setStepsOn)(v, stepsOn);
+  const setCoachOnSynced = (v) => setProfileFlag("coachOn", setCoachOn)(v, coachOn);
   useEffect(() => {
     const v = data?.profile?.stepsOn;
-    if (typeof v === "boolean" && v !== stepsOn) setStepsOn(v); // adopt the cloud value on load / cross-device change
+    if (typeof v === "boolean" && v !== stepsOn) setStepsOn(v);
   }, [data?.profile?.stepsOn]);
   useEffect(() => {
+    const v = data?.profile?.coachOn;
+    if (typeof v === "boolean" && v !== coachOn) setCoachOn(v);
+  }, [data?.profile?.coachOn]);
+  // ---- theme (accent color + dark palette), synced across devices ----
+  const [theme, setThemeState] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("lt-theme")) || DEFAULT_THEME; } catch { return DEFAULT_THEME; }
+  });
+  const setTheme = (t) => {
+    setThemeState(t);
+    try { localStorage.setItem("lt-theme", JSON.stringify(t)); } catch { /* private mode */ }
+    setData(d => ({ ...d, profile: { ...(d.profile || {}), theme: t } }));
+  };
+  useEffect(() => { applyTheme(theme); }, [theme]);
+  useEffect(() => {
+    const v = data?.profile?.theme;
+    if (v && (v.accent !== theme.accent || v.palette !== theme.palette)) { setThemeState(v); try { localStorage.setItem("lt-theme", JSON.stringify(v)); } catch {} }
+  }, [data?.profile?.theme]);
+  useEffect(() => {
     if (tab === "macros" && !nutritionOn) setTab("dash"); // non-dev accounts never land on Macros
-    if (tab === "steps" && !stepsOn) setTab("dash");      // hide the Steps tab when the feature is off
-  }, [nutritionOn, stepsOn, tab]);
+    if (tab === "steps" && !stepsEnabled) setTab("dash"); // hide the Steps tab when off / not Pro
+  }, [nutritionOn, stepsEnabled, tab]);
   const [loaded, setLoaded] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
   const [syncState, setSyncState] = useState("synced"); // "synced" | "offline"
@@ -447,7 +472,7 @@ export default function LiftingTracker({ user }) {
   //   row 2 (look it up / less often): Records · Library · Body · Journal · Macros
   const tabs = [
     ...(liftingOn ? [["dash","Dash","📊"],["log","Log","📝"],["cardio","Cardio","🏃"]] : []),
-    ...(liftingOn && stepsOn ? [["steps","Steps","👟"]] : []),
+    ...(liftingOn && stepsEnabled ? [["steps","Steps","👟"]] : []),
     ["friends","Groups","👥"],
     ...(liftingOn ? [["records","Records","🏆"],["ex","Library","📚"],["body","Body","⚖️"]] : []),
     ["journal","Journal","📓"],
@@ -470,7 +495,7 @@ export default function LiftingTracker({ user }) {
         input[type=date]::-webkit-date-and-time-value { text-align:left; }
         input::placeholder,textarea::placeholder { color:${T.sub}; opacity:.75; }
         /* soft green focus glow instead of a hard outline jump */
-        input:focus,select:focus,textarea:focus { outline:none; border-color:${T.green}; box-shadow:0 0 0 3px rgba(0,200,5,.18); }
+        input:focus,select:focus,textarea:focus { outline:none; border-color:${T.green}; box-shadow:0 0 0 3px rgba(var(--accent-rgb),.18); }
         button { cursor:pointer; border:none; border-radius:24px; transition:transform .14s cubic-bezier(.34,1.56,.64,1), background-color .18s ease, color .18s ease, border-color .18s ease, opacity .18s ease, box-shadow .18s ease, filter .18s ease; }
         button:active { transform:scale(.95); }
         @media(hover:hover){ button:hover:not(:disabled){ filter:brightness(1.08); } }
@@ -520,7 +545,7 @@ export default function LiftingTracker({ user }) {
         /* ---- shimmering skeleton for loading states ---- */
         .skeleton { position:relative; overflow:hidden; background:${T.input}; }
         .skeleton::after { content:""; position:absolute; inset:0; transform:translateX(-100%);
-          background:linear-gradient(90deg, transparent, rgba(255,255,255,.06) 45%, rgba(0,200,5,.10) 50%, rgba(255,255,255,.06) 55%, transparent);
+          background:linear-gradient(90deg, transparent, rgba(255,255,255,.06) 45%, rgba(var(--accent-rgb),.10) 50%, rgba(255,255,255,.06) 55%, transparent);
           animation:shimmer 1.35s ease-in-out infinite; }
         @keyframes shimmer { 100% { transform:translateX(100%); } }
 
@@ -577,7 +602,7 @@ export default function LiftingTracker({ user }) {
           transition:background .22s ease, color .22s ease, transform .16s cubic-bezier(.34,1.56,.64,1);
         }
         .navbtn .navlbl { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-        .navbtn.on { background:rgba(0,200,5,.12); color:${T.green}; font-weight:700; }
+        .navbtn.on { background:rgba(var(--accent-rgb),.12); color:${T.green}; font-weight:700; }
         @media(hover:hover){ .navbtn:hover:not(.on){ background:rgba(255,255,255,.05); color:${T.ink}; } }
         .navbtn:active { transform:scale(.9); }
         .app-main { max-width:860px; margin:0 auto; padding:16px 14px; }
@@ -600,7 +625,7 @@ export default function LiftingTracker({ user }) {
           }
           .navtop-btn .navicon { font-size:21px; }
           .navtop-btn:active { transform:scale(.94); }
-          .navtop-btn.on { background:rgba(0,200,5,.13); color:${T.green}; font-weight:700; }
+          .navtop-btn.on { background:rgba(var(--accent-rgb),.13); color:${T.green}; font-weight:700; }
           .navtop-btn:hover:not(.on){ background:rgba(255,255,255,.06); color:${T.ink}; }
           .profile-back-fab { bottom:28px; }
           .app-main { max-width:880px; padding:24px 20px; }
@@ -611,9 +636,9 @@ export default function LiftingTracker({ user }) {
         /* Robinhood-style slider (Settings → My day starts at) */
         input[type=range].lab-range { -webkit-appearance:none; appearance:none; width:100%; height:26px; border-radius:99px; border:none; padding:10px 0; min-height:26px; background-clip:content-box; outline:none; cursor:pointer; }
         input[type=range].lab-range:focus { box-shadow:none; }
-        .lab-range::-webkit-slider-thumb { -webkit-appearance:none; appearance:none; width:26px; height:26px; border-radius:50%; background:#000; border:3px solid ${T.green}; box-shadow:0 2px 10px rgba(0,200,5,.45); transition:transform .15s ease; }
+        .lab-range::-webkit-slider-thumb { -webkit-appearance:none; appearance:none; width:26px; height:26px; border-radius:50%; background:#000; border:3px solid ${T.green}; box-shadow:0 2px 10px rgba(var(--accent-rgb),.45); transition:transform .15s ease; }
         .lab-range:active::-webkit-slider-thumb { transform:scale(1.18); }
-        .lab-range::-moz-range-thumb { width:26px; height:26px; border-radius:50%; background:#000; border:3px solid ${T.green}; box-shadow:0 2px 10px rgba(0,200,5,.45); }
+        .lab-range::-moz-range-thumb { width:26px; height:26px; border-radius:50%; background:#000; border:3px solid ${T.green}; box-shadow:0 2px 10px rgba(var(--accent-rgb),.45); }
         /* drag-to-reorder */
         .drag-handle { cursor:grab; touch-action:none; }
         .dragging { opacity:.55; }
@@ -646,6 +671,8 @@ export default function LiftingTracker({ user }) {
           units={units} setUnits={setUnits} hunit={hunit} setHunit={setHunit}
           routinesOn={routinesOn} setRoutinesOn={setRoutinesOn}
           stepsOn={stepsOn} setStepsOn={setStepsOnSynced} isPro={isPro}
+          coachOn={coachOn} setCoachOn={setCoachOnSynced}
+          theme={theme} setTheme={setTheme}
           streaksOn={streaksOn} setStreaksOn={setStreaksOn}
           waterOn={waterOn} setWaterOn={setWaterOn}
           nutritionOn={nutritionOn}
@@ -677,15 +704,15 @@ export default function LiftingTracker({ user }) {
 
       <main className={"app-main" + (tab==="macros" ? " app-main-wide" : "")}>
         <div className="tabview" key={tab}>
-          {tab==="dash" && liftingOn && <><CoachCard data={data} exMap={exMap} user={user} /><Dashboard data={data} exMap={exMap} setData={setData} /></>}
+          {tab==="dash" && liftingOn && <Dashboard data={data} exMap={exMap} setData={setData} user={user} isPro={isPro} coachEnabled={coachEnabled} stepsEnabled={stepsEnabled} nutritionOn={nutritionOn} openSettings={()=>setShowSettings(true)} setTab={setTab} />}
           {tab==="log" && liftingOn && <LogTab data={data} exMap={exMap} setData={setData} routinesOn={routinesOn} />}
           {tab==="records" && liftingOn && <RecordsTab data={data} exMap={exMap} />}
           {tab==="journal" && <JournalTab data={data} setData={setData} />}
           {tab==="friends" && <FriendsTab user={user} nutritionOn={nutritionOn} streaksOn={streaksOn} />}
           {tab==="macros" && nutritionOn && <MacroTab data={data} setData={setData} streaksOn={streaksOn} waterOn={waterOn} />}
           {tab==="body" && liftingOn && <BodyTab data={data} setData={setData} hunit={hunit} />}
-          {tab==="cardio" && liftingOn && <CardioTab data={data} setData={setData} latestBW={latestBW} user={user} stepsOn={stepsOn} />}
-          {tab==="steps" && liftingOn && stepsOn && <StepsTab user={user} data={data} setData={setData} />}
+          {tab==="cardio" && liftingOn && <CardioTab data={data} setData={setData} latestBW={latestBW} user={user} stepsOn={stepsEnabled} />}
+          {tab==="steps" && liftingOn && stepsEnabled && <StepsTab user={user} data={data} setData={setData} />}
           {tab==="ex" && liftingOn && <ExercisesTab data={data} setData={setData} />}
         </div>
       </main>
@@ -1264,7 +1291,7 @@ function LogTab({ data, exMap, setData, routinesOn }) {
       <div style={{overflowX:"auto"}}>
         <table><thead><tr><th>Date</th><th>Exercise</th><th style={{textAlign:"center"}}>Set</th><th style={{textAlign:"center"}}>Weight ({uLabel(units)})</th><th style={{textAlign:"center"}}>Reps</th><th>Effort</th><th></th></tr></thead>
           <tbody>{recent.map(e => { const isToday = e.date === todayStr(); return (<Fragment key={e.id}>
-            <tr style={isToday ? {background:"rgba(0,200,5,.05)"} : undefined}>
+            <tr style={isToday ? {background:"rgba(var(--accent-rgb),.05)"} : undefined}>
               <td>{isToday ? <span style={{color:"#00A804", fontWeight:800}}>Today</span> : fmtDate(e.date)}</td><td>{e.exercise}</td><td style={{textAlign:"center"}}>{e.set}</td>
               <td style={{textAlign:"center"}}>{e.weight==null ? "BW" : dispW(e.weight, units)}{e.drops?.length ? <span style={{color:T.sub}}>{" ↘ "}{e.drops.map(dr=>dispW(dr.weight, units)).join(" ↘ ")}</span> : null}</td>
               <td style={{textAlign:"center"}}>{e.reps}{e.drops?.length ? <span style={{color:T.sub}}>{" / "}{e.drops.map(dr=>dr.reps).join(" / ")}</span> : null}</td>
@@ -1425,7 +1452,7 @@ function DateField({ label, value, onChange, max, min }) {
         display:"flex", alignItems:"center", gap:8, width:"100%", minHeight:44,
         background:T.input, color:value?T.ink:T.sub, border:`1px solid ${open?T.green:T.line}`,
         borderRadius:10, padding:"9px 11px", fontSize:15, fontWeight:600,
-        boxShadow: open?"0 0 0 3px rgba(0,200,5,.18)":"none", transition:"border-color .18s ease, box-shadow .22s ease",
+        boxShadow: open?"0 0 0 3px rgba(var(--accent-rgb),.18)":"none", transition:"border-color .18s ease, box-shadow .22s ease",
       }}>
         <span style={{fontSize:15, lineHeight:1}}>📅</span>
         <span style={{flex:1, textAlign:"left", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{value ? fmtLong(value) : "Select date"}</span>
@@ -1482,7 +1509,7 @@ const noteInput = { display:"block", width:"100%", marginTop:5, resize:"vertical
   background:T.input, color:T.ink, border:`1px solid ${T.line}`, borderRadius:10, padding:"9px 11px",
   fontSize:14, fontFamily:"inherit", lineHeight:1.4, boxSizing:"border-box" };
 const noteBox = { display:"flex", gap:9, alignItems:"flex-start",
-  background:"rgba(0,200,5,.06)", border:`1px solid ${T.creamLine}`,
+  background:"rgba(var(--accent-rgb),.06)", border:`1px solid ${T.creamLine}`,
   borderLeft:`3px solid ${T.green}`, borderRadius:10, padding:"10px 12px" };
 
 /* Two-tap delete: first tap arms it ("Sure?"), second tap confirms; disarms itself. */
@@ -1613,9 +1640,9 @@ function WorkoutHeatmap({ log, cardio, exMap = {} }) {
   const shade = (n, future) => {
     if (future) return "transparent";
     if (n === 0) return T.input;
-    if (n <= 2) return "rgba(0,200,5,.30)";
-    if (n <= 4) return "rgba(0,200,5,.55)";
-    if (n <= 6) return "rgba(0,200,5,.80)";
+    if (n <= 2) return "rgba(var(--accent-rgb),.30)";
+    if (n <= 4) return "rgba(var(--accent-rgb),.55)";
+    if (n <= 6) return "rgba(var(--accent-rgb),.80)";
     return T.green;
   };
 
@@ -1774,7 +1801,7 @@ function YearRecap({ data }) {
 
 /* ================= DASHBOARD ================= */
 const DASH_WIDGETS = ["charts","target","streak","calendar","muscle","recap"];
-function Dashboard({ data, exMap, setData, own = true }) {
+function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled, stepsEnabled, nutritionOn, openSettings, setTab }) {
   const units = useUnit();
   // range sticks forever (remembered on this device)
   const [range, setRange] = useState(() => {
@@ -1972,7 +1999,7 @@ function Dashboard({ data, exMap, setData, own = true }) {
           {own && (
           <button onClick={()=>togglePin(i)} title={pinned ? "Unpin — go back to most recent" : "Pin this chart"} style={{
             flexShrink:0, minHeight:38, padding:"5px 12px", fontSize:12.5, fontWeight:700, borderRadius:99,
-            background: pinned ? "rgba(0,200,5,.14)" : "none",
+            background: pinned ? "rgba(var(--accent-rgb),.14)" : "none",
             border: `1px solid ${pinned ? T.green : T.line}`,
             color: pinned ? T.green : T.sub,
           }}>
@@ -2048,6 +2075,8 @@ function Dashboard({ data, exMap, setData, own = true }) {
   widgets.recap = <YearRecap data={data} />;
 
   return (<>
+    {own && coachEnabled && user && <CoachCard data={data} exMap={exMap} user={user} setData={setData} />}
+    {own && isPro === false && <ProUpsellCard openSettings={openSettings} setTab={setTab} nutritionOn={nutritionOn} />}
     {own && (
       <div style={{display:"flex", justifyContent:"flex-end", marginBottom:10}}>
         <button onClick={()=>setArrange(a=>!a)} style={{
@@ -2059,6 +2088,35 @@ function Dashboard({ data, exMap, setData, own = true }) {
     <DragList ids={own ? wOrder : DASH_WIDGETS} setIds={setWOrder} enabled={arrange && own}
       renderItem={(id) => widgets[id]} />
   </>);
+}
+
+/* Home upsell shown to non-Pro users: clean cards advertising what Pro unlocks. */
+function ProUpsellCard({ openSettings }) {
+  const feats = [
+    ["💪", "Lab's AI Coach", "Personalized progression, plateau & weak-point advice from your logs."],
+    ["👟", "Apple Health steps", "Auto-track steps, step duels, and a group steps board."],
+    ["🎨", "Themes", "Recolor the app — accent colors + dark palettes."],
+    ["🥗", "Nutrition & macros", "Full food logging with macro targets and trends."],
+  ];
+  return (
+    <div className="card" style={{ border: `1px solid ${T.green}`, background: "linear-gradient(180deg,rgba(var(--accent-rgb),.08),transparent 62%)", marginBottom: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
+        <div className="h" style={{ fontSize: 19, color: T.ink }}>✨ The Lab Pro</div>
+        <span style={{ fontSize: 10, fontWeight: 800, color: "#000", background: T.green, padding: "2px 8px", borderRadius: 99, letterSpacing: .4 }}>UPGRADE</span>
+      </div>
+      <div style={{ fontSize: 12.5, color: T.sub, marginBottom: 12 }}>Unlock the coach, steps, themes and nutrition — everything that makes The Lab yours.</div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9, marginBottom: 13 }}>
+        {feats.map(([icon, title, desc]) => (
+          <div key={title} style={{ background: T.input, border: `1px solid ${T.line}`, borderRadius: 12, padding: "11px 12px" }}>
+            <div style={{ fontSize: 20, marginBottom: 4 }}>{icon}</div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: T.ink, marginBottom: 2 }}>{title}</div>
+            <div style={{ fontSize: 11, color: T.sub, lineHeight: 1.4 }}>{desc}</div>
+          </div>
+        ))}
+      </div>
+      <button onClick={openSettings} style={{ width: "100%", background: T.green, color: "#000", fontWeight: 800, fontSize: 15, padding: "12px", borderRadius: 11, cursor: "pointer" }}>See Pro plans →</button>
+    </div>
+  );
 }
 const kpiN = { fontWeight:800, fontSize:28, color:T.ink };
 const kpiL = { fontSize:11.5, color:T.sub };
@@ -2262,7 +2320,7 @@ function GoalCard({ data, setData, current, rows, readOnly = false, who = "They"
 
       {/* progress bar with position marker */}
       <div style={{position:"relative", height:12, background:T.input, borderRadius:99, marginBottom:8}}>
-        <div style={{position:"absolute", inset:0, width:`${showPct}%`, background:`linear-gradient(90deg, rgba(0,200,5,.55), ${T.green})`, borderRadius:99, transition:"width .6s ease"}} />
+        <div style={{position:"absolute", inset:0, width:`${showPct}%`, background:`linear-gradient(90deg, rgba(var(--accent-rgb),.55), ${T.green})`, borderRadius:99, transition:"width .6s ease"}} />
         <div style={{position:"absolute", top:"50%", left:`${showPct}%`, transform:"translate(-50%,-50%)",
           width:18, height:18, borderRadius:99, background:"#FFF", border:`3px solid ${T.green}`,
           boxShadow:"0 1px 6px rgba(0,0,0,.5)", transition:"left .6s ease"}} />
@@ -2729,7 +2787,7 @@ function StepRingChart({ map, goal, meta }) {
           <div key={i} style={{flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:5, minWidth:0, pointerEvents:"none"}}>
             <div className="vbar" style={{width:"100%", maxWidth: range==="W"?30:14, borderRadius:"4px 4px 2px 2px",
               height: b.has&&b.value>0 ? Math.max(4, (b.value/chart.max)*100) : 3,
-              background: sel===i ? "#fff" : (meta && b.day && meta[b.day]==="manual") ? T.down : b.mark ? T.green : b.has ? "rgba(0,200,5,.6)" : T.line,
+              background: sel===i ? "#fff" : (meta && b.day && meta[b.day]==="manual") ? T.down : b.mark ? T.green : b.has ? "rgba(var(--accent-rgb),.6)" : T.line,
               animationDelay:`${i*0.02}s`, transition:"background .12s ease"}} />
             <span style={{fontSize:9, color: (sel===i||b.mark)?T.green:T.sub, fontWeight: (sel===i||b.mark)?800:400, whiteSpace:"nowrap"}}>{(i%chart.every===0 || i===chart.bars.length-1) ? b.label : ""}</span>
           </div>
@@ -2862,7 +2920,7 @@ function DuelsCard({ user, all, nameOf, myId, myName }) {
               <div key={nm+String(me)} style={{display:"flex", alignItems:"center", gap:8, marginBottom:5}}>
                 <span style={{width:66, fontSize:12.5, fontWeight: me?800:600, color: me?T.green:T.ink, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{nm}</span>
                 <span style={{flex:1, height:8, background:T.input, borderRadius:99, overflow:"hidden"}}>
-                  <span style={{display:"block", width:`${val/mx*100}%`, height:"100%", background: me?T.green:"rgba(0,200,5,.5)", borderRadius:99, transition:"width .5s ease"}} />
+                  <span style={{display:"block", width:`${val/mx*100}%`, height:"100%", background: me?T.green:"rgba(var(--accent-rgb),.5)", borderRadius:99, transition:"width .5s ease"}} />
                 </span>
                 <b style={{fontSize:12.5, color:T.ink, minWidth:54, textAlign:"right", fontVariantNumeric:"tabular-nums"}}>{val.toLocaleString()}</b>
               </div>
@@ -2963,7 +3021,7 @@ function StepsTab({ user, data, setData }) {
           const rel = ms<60000 ? "just now" : ms<3600000 ? `${Math.floor(ms/60000)} min ago` : ms<86400000 ? `${Math.floor(ms/3600000)}h ago` : `${Math.floor(ms/86400000)}d ago`;
           return (
             <div style={{textAlign:"center", marginTop: IS_MOBILE?9:0, fontSize:12.5, fontWeight:800, color: recent?T.green:T.sub,
-              background: recent?"rgba(0,200,5,.10)":"transparent", borderRadius:99, padding:recent?"6px 0":"2px 0", transition:"all .2s ease"}}>
+              background: recent?"rgba(var(--accent-rgb),.10)":"transparent", borderRadius:99, padding:recent?"6px 0":"2px 0", transition:"all .2s ease"}}>
               {recent ? "✓ Synced " : "🕐 Last synced "}{rel}
             </div>
           );
@@ -3179,7 +3237,7 @@ function CardioTab({ data, setData, latestBW, user, stepsOn }) {
               <div className="vbar" style={{
                 width:"100%", maxWidth:34, borderRadius:"5px 5px 2px 2px",
                 height: w.min>0 ? Math.max(6, w.min/weekMax*70) : 3,
-                background: w.min>0 ? (i===weeks.length-1 ? T.green : "rgba(0,200,5,.55)") : T.line,
+                background: w.min>0 ? (i===weeks.length-1 ? T.green : "rgba(var(--accent-rgb),.55)") : T.line,
                 animationDelay: `${i*0.04}s`,
               }} />
               <span style={{fontSize:10, color:T.sub}}>{w.label}</span>
@@ -3297,7 +3355,7 @@ function MuscleChips({ prim, sec, onChange }) {
         return (
           <button key={m} type="button" onClick={()=>cycle(m)} style={{
             padding:"6px 12px", borderRadius:99, fontSize:13, fontWeight:600, minHeight:36,
-            background: state === "prim" ? "rgba(0,200,5,.14)" : state === "sec" ? "rgba(227,190,85,.12)" : "none",
+            background: state === "prim" ? "rgba(var(--accent-rgb),.14)" : state === "sec" ? "rgba(227,190,85,.12)" : "none",
             border: `1px solid ${state === "off" ? T.line : col}`, color: col,
           }}>
             {state === "prim" ? "✓ " : state === "sec" ? "½ " : ""}{m}
@@ -3540,6 +3598,65 @@ function FeatureToggle({ label, desc, on, setOn }) {
   );
 }
 
+/* Small PRO badge shown next to Pro members in groups. */
+function ProBadge({ small }) {
+  return <span style={{ fontSize: small ? 8.5 : 9.5, fontWeight: 800, color: "#000", background: T.green, padding: small ? "1px 5px" : "1px 6px", borderRadius: 99, letterSpacing: .3, marginLeft: 5, verticalAlign: "middle" }}>PRO</span>;
+}
+
+/* A locked Pro feature placeholder shown to non-Pro members in Settings. */
+function ProLocked({ feature, note }) {
+  return (
+    <div style={{ ...sCard, borderColor: T.line, display: "flex", gap: 11, alignItems: "flex-start" }}>
+      <span style={{ fontSize: 20, flexShrink: 0 }}>🔒</span>
+      <div>
+        <div style={{ fontSize: 14, fontWeight: 800, color: T.ink }}>{feature} <span style={{ fontSize: 10, fontWeight: 800, color: "#000", background: T.green, padding: "1px 7px", borderRadius: 99, marginLeft: 4, letterSpacing: .3 }}>PRO</span></div>
+        <div style={{ fontSize: 12, color: T.sub, marginTop: 3, lineHeight: 1.5 }}>{note} Unlock it with The Lab Pro (top of Settings).</div>
+      </div>
+    </div>
+  );
+}
+
+/* Theme picker: accent color swatches + dark palette chips. Free tiers usable by all;
+   the rest need Pro (tapping a locked one nudges toward upgrading). */
+function ThemePicker({ theme, setTheme, isPro }) {
+  const pick = (patch, locked) => { if (locked && !isPro) return; setTheme({ ...theme, ...patch }); };
+  return (
+    <div style={{ ...sCard }}>
+      <div style={{ fontSize: 14, fontWeight: 700, color: T.ink, marginBottom: 2 }}>Accent color</div>
+      <div style={{ fontSize: 12, color: T.sub, marginBottom: 10 }}>{isPro ? "Recolors buttons, rings and highlights across the app." : "2 colors are free — the rest unlock with Pro."}</div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 16 }}>
+        {Object.entries(ACCENTS).map(([id, a]) => {
+          const locked = !a.free && !isPro, active = theme.accent === id;
+          return (
+            <button key={id} onClick={() => pick({ accent: id }, !a.free)} title={a.name + (locked ? " (Pro)" : "")} style={{
+              width: 38, height: 38, borderRadius: 99, flexShrink: 0, position: "relative", cursor: locked ? "not-allowed" : "pointer",
+              background: `rgb(${a.rgb})`, border: active ? "3px solid #fff" : "3px solid transparent",
+              boxShadow: active ? `0 0 0 2px rgb(${a.rgb})` : "none", opacity: locked ? .5 : 1,
+            }}>{locked && <span style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 }}>🔒</span>}</button>
+          );
+        })}
+      </div>
+      <div style={{ fontSize: 14, fontWeight: 700, color: T.ink, marginBottom: 8 }}>Palette</div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+        {Object.entries(PALETTES).map(([id, p]) => {
+          const locked = !p.free && !isPro, active = theme.palette === id;
+          return (
+            <button key={id} onClick={() => pick({ palette: id }, !p.free)} style={{
+              display: "flex", alignItems: "center", gap: 8, cursor: locked ? "not-allowed" : "pointer",
+              background: active ? "rgba(var(--accent-rgb),.14)" : T.input, border: `1px solid ${active ? T.green : T.line}`,
+              borderRadius: 10, padding: "8px 12px", opacity: locked ? .55 : 1,
+            }}>
+              <span style={{ width: 16, height: 16, borderRadius: 5, background: p.bg, border: `1px solid ${p.line}`, flexShrink: 0 }} />
+              <span style={{ fontSize: 13, fontWeight: 700, color: active ? T.green : T.ink }}>{p.name}</span>
+              {locked && <span style={{ fontSize: 11 }}>🔒</span>}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /* ===== JOURNAL: dead-simple daily notes, one per day ===== */
 function JournalTab({ data, setData }) {
   const [sel, setSel] = useState(todayStr());
@@ -3599,7 +3716,7 @@ function SectionHead({ icon, label }) {
   );
 }
 
-function SettingsModal({ user, username, data, setData, startTab, setStartTab, tabs, units, setUnits, hunit, setHunit, routinesOn, setRoutinesOn, stepsOn, setStepsOn, streaksOn, setStreaksOn, waterOn, setWaterOn, nutritionOn, isPro, onClose }) {
+function SettingsModal({ user, username, data, setData, startTab, setStartTab, tabs, units, setUnits, hunit, setHunit, routinesOn, setRoutinesOn, stepsOn, setStepsOn, coachOn, setCoachOn, theme, setTheme, streaksOn, setStreaksOn, waterOn, setWaterOn, nutritionOn, isPro, onClose }) {
   const memberSince = user.created_at ? new Date(user.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}) : "—";
   const totalSets = (data.log||[]).length;
 
@@ -3730,10 +3847,23 @@ function SettingsModal({ user, username, data, setData, startTab, setStartTab, t
           </>)}
         </SettingsSection>
 
-        <SettingsSection icon="🚶" title="Apple Health steps" desc="Auto-log your daily steps from your iPhone">
-          <FeatureToggle label="Show the Steps tab" on={stepsOn} setOn={setStepsOn}
-            desc="Adds a 👟 Steps tab (goal ring, W/M/6M/Y/5Y charts, group leaderboard) and a steps recap on the Cardio tab. Flip this on once you've set up syncing below." />
-          <StepsCard user={user} />
+        <SettingsSection icon="🎨" title="Themes" desc={isPro ? "Recolor the app your way" : "Accent colors + palettes · Pro"} defaultOpen={false}>
+          <ThemePicker theme={theme} setTheme={setTheme} isPro={isPro} />
+        </SettingsSection>
+
+        <SettingsSection icon="💪" title="Lab's AI Coach" desc={isPro ? "Personalized tips on your dashboard" : "Smart training tips · Pro"}>
+          {isPro ? (
+            <FeatureToggle label="Show the AI Coach" on={coachOn} setOn={setCoachOn}
+              desc="Puts a coach card on your Home tab with progression, plateau, volume, weak-point and recovery tips built from your logs. Dismiss any tip with ✕. On by default." />
+          ) : <ProLocked feature="Lab's AI Coach" note="Personalized progression, plateau, and weak-point coaching from your own logs." />}
+        </SettingsSection>
+
+        <SettingsSection icon="🚶" title="Apple Health steps" desc={isPro ? "Auto-log your daily steps from your iPhone" : "Auto step tracking · Pro"}>
+          {isPro ? (<>
+            <FeatureToggle label="Show the Steps tab" on={stepsOn} setOn={setStepsOn}
+              desc="Adds a 👟 Steps tab (goal ring, 1D/W/M/6M/Y/5Y charts, group leaderboard, step duels) and a steps recap on the Cardio tab. On by default. Set up syncing below." />
+            <StepsCard user={user} />
+          </>) : <ProLocked feature="Apple Health steps" note="Auto-track your steps, battle friends in step duels, and climb the group steps board." />}
         </SettingsSection>
 
         <SettingsSection icon="🛟" title="Data safety" desc="Automatic backups — in the cloud and on this device">
@@ -3879,7 +4009,7 @@ function DayStartCard({ data, setData }) {
         {[[0,"🌅 Midnight — early bird"],[4,"🦉 4 AM — night owl"]].map(([n,l])=>(
           <button key={n} onClick={()=>set(n)} style={{
             padding:"7px 13px", borderRadius:99, fontSize:12.5, fontWeight:700,
-            background: v===n ? "rgba(0,200,5,.14)" : T.input, color: v===n ? T.green : T.sub,
+            background: v===n ? "rgba(var(--accent-rgb),.14)" : T.input, color: v===n ? T.green : T.sub,
             border:`1px solid ${v===n ? T.green : T.line}`,
           }}>{l}</button>
         ))}
@@ -4060,7 +4190,7 @@ function StepsCard({ user }) {
       </div>
 
       {latest !== undefined && latest !== null && (
-        <div style={{ display:"flex", alignItems:"baseline", gap:8, background:"rgba(0,200,5,.10)", border:`1px solid ${T.green}`,
+        <div style={{ display:"flex", alignItems:"baseline", gap:8, background:"rgba(var(--accent-rgb),.10)", border:`1px solid ${T.green}`,
           borderRadius:10, padding:"9px 12px", marginBottom:10 }}>
           <span style={{ fontSize:22, fontWeight:800, color:T.green, fontVariantNumeric:"tabular-nums" }}>{latest.count.toLocaleString()}</span>
           <span style={{ fontSize:12.5, color:T.sub }}>steps · {dayLabel(latest.day)} ✓</span>
@@ -4083,7 +4213,7 @@ function StepsCard({ user }) {
             This shortcut <b style={{ color:T.ink }}>loops over the last 14 days</b> and sends each one, so a single <b>🔄 Sync now</b> fills any gaps.
           </div>
         </div>
-        <div style={{ display:"flex", gap:9, alignItems:"flex-start", background:"rgba(0,200,5,.08)", border:`1px solid ${T.green}`, borderRadius:10, padding:"10px 12px", fontSize:11.5, color:T.sub, lineHeight:1.55, marginBottom:16 }}>
+        <div style={{ display:"flex", gap:9, alignItems:"flex-start", background:"rgba(var(--accent-rgb),.08)", border:`1px solid ${T.green}`, borderRadius:10, padding:"10px 12px", fontSize:11.5, color:T.sub, lineHeight:1.55, marginBottom:16 }}>
           <span style={{ flexShrink:0 }}>🎯</span>
           <span>It logs <b style={{ color:T.ink }}>finished days</b> (yesterday going back 14), so your numbers always <b style={{ color:T.ink }}>match Health exactly</b> —
             and re-syncing never double-counts, because each day just overwrites itself.</span>
@@ -4182,7 +4312,7 @@ function StepsCard({ user }) {
             <span style={{ flexShrink:0, fontSize:14 }}>⚠️</span>
             <span>Tapping the <b>Date</b> opens a calendar — you don't want that. <b style={{ color:T.ink }}>Long-press (tap &amp; hold)</b> it → <b>Select Variable</b> → <b style={{ color:STEP_BLUE }}>Adjusted Date</b>.</span>
           </div>
-          <div style={{ display:"flex", gap:9, alignItems:"flex-start", background:"rgba(0,200,5,.08)", borderRadius:10, padding:"10px 12px", fontSize:11.5, color:T.sub, lineHeight:1.55 }}>
+          <div style={{ display:"flex", gap:9, alignItems:"flex-start", background:"rgba(var(--accent-rgb),.08)", borderRadius:10, padding:"10px 12px", fontSize:11.5, color:T.sub, lineHeight:1.55 }}>
             <span style={{ flexShrink:0 }}>🔒</span>
             <span>The Lab <b style={{ color:T.ink }}>only writes to the one date you send</b>, so nobody can flood your history with old logs.</span>
           </div>
@@ -4305,7 +4435,7 @@ function StepsCard({ user }) {
         </StepBlock>
 
         <StepBlock n="9" title="Name it & save">
-          <div style={{ background:"rgba(0,200,5,.08)", border:`1px solid ${T.green}`, borderRadius:12, padding:"13px 14px" }}>
+          <div style={{ background:"rgba(var(--accent-rgb),.08)", border:`1px solid ${T.green}`, borderRadius:12, padding:"13px 14px" }}>
             <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55, marginBottom:9 }}>
               At the top of the shortcut, tap its <b style={{ color:T.ink }}>name</b> (or the <b>⌄</b> next to it → <b>Rename</b>), erase what's there,
               and paste this <b style={{ color:T.ink }}>exact</b> name — it must match, or the Sync button and automations can't find it:
@@ -4338,7 +4468,7 @@ function StepsCard({ user }) {
         </div>
 
         {/* how you keep it updated — Sync now is the only reliable path */}
-        <div style={{ background:"rgba(0,200,5,.08)", borderRadius:12, padding:"14px 15px", margin:"0 0 14px" }}>
+        <div style={{ background:"rgba(var(--accent-rgb),.08)", borderRadius:12, padding:"14px 15px", margin:"0 0 14px" }}>
           <div style={{ fontSize:14.5, fontWeight:800, color:T.ink, marginBottom:6 }}>Keeping it updated 🔄</div>
           <div style={{ fontSize:12, color:T.sub, lineHeight:1.6 }}>
             Apple only lets apps read Health while your iPhone is <b style={{ color:T.ink }}>unlocked</b>, so there's no reliable way to sync in the
@@ -4351,53 +4481,56 @@ function StepsCard({ user }) {
   );
 }
 
-/* The Lab Pro upsell / status card. Payments are a later phase; for now it showcases
-   the plan and reflects whether the account already has Pro (server-granted). */
+/* The Lab Pro card — real product plan. Reflects whether the account already has Pro
+   (server-granted). Payment checkout isn't wired yet, so the CTA shows a friendly note. */
 function ProCard({ isPro }) {
+  const [plan, setPlan] = useState("yr");
+  const [note, setNote] = useState(false);
   const feats = [
-    ["🥗", "Nutrition & macros", "Full food log, macro goals, water tracking", true],
-    ["🤖", "AI coach", "Auto weight progression + plateau alerts", false],
-    ["🎨", "Themes & Pro badge", "Custom colors, app icon, and a PRO badge in groups", false],
+    ["💪", "Lab's AI Coach", "Progression, plateau, volume & weak-point tips from your logs"],
+    ["👟", "Apple Health steps", "Auto step tracking, step duels & the group steps board"],
+    ["🎨", "Themes & PRO badge", "Accent colors, dark palettes, and a PRO badge in your groups"],
+    ["🥗", "Nutrition & macros", "Full food log, macro goals, and water tracking"],
   ];
   return (
     <div style={{ ...sCard, marginBottom:0 }}>
       {isPro ? (
-        <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:10 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:12 }}>
           <span style={{ fontSize:26 }}>✨</span>
-          <div><div style={{ fontSize:15, fontWeight:800, color:T.green }}>You're a Pro member</div><div style={{ fontSize:12, color:T.sub }}>Thanks for supporting The Lab 🙏</div></div>
+          <div><div style={{ fontSize:15, fontWeight:800, color:T.green }}>You're a Pro member</div><div style={{ fontSize:12, color:T.sub }}>Everything below is unlocked — thanks for supporting The Lab 🙏</div></div>
         </div>
       ) : (
-        <div style={{ marginBottom:10 }}>
-          <div style={{ fontSize:16, fontWeight:800, color:T.ink, marginBottom:2 }}>✨ The Lab Pro</div>
-          <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.5 }}>Level up your training with premium tools.</div>
+        <div style={{ marginBottom:12 }}>
+          <div style={{ fontSize:17, fontWeight:800, color:T.ink, marginBottom:2 }}>✨ The Lab Pro</div>
+          <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.5 }}>Everything that turns The Lab from a tracker into a coach.</div>
         </div>
       )}
-      {feats.map(([ic,t,d,live])=>(
+      {feats.map(([ic,t,d])=>(
         <div key={t} style={{ display:"flex", gap:11, alignItems:"flex-start", padding:"9px 0", borderTop:`1px solid ${T.creamLine}` }}>
           <span style={{ fontSize:19, flexShrink:0 }}>{ic}</span>
           <div style={{ flex:1, minWidth:0 }}>
             <div style={{ fontSize:13.5, fontWeight:700, color:T.ink }}>{t}
-              {live ? <span style={{ fontSize:10, color:T.green, fontWeight:800, marginLeft:6, letterSpacing:.4 }}>{isPro?"UNLOCKED":"INCLUDED"}</span>
-                    : <span style={{ fontSize:10, color:T.sub, fontWeight:800, marginLeft:6, letterSpacing:.4 }}>SOON</span>}
+              <span style={{ fontSize:10, color:T.green, fontWeight:800, marginLeft:6, letterSpacing:.4 }}>{isPro?"UNLOCKED":"✓"}</span>
             </div>
             <div style={{ fontSize:12, color:T.sub, lineHeight:1.45 }}>{d}</div>
           </div>
         </div>
       ))}
       {!isPro && (<>
-        <div style={{ display:"flex", gap:8, marginTop:14, marginBottom:10 }}>
-          <div style={{ flex:1, background:T.input, border:`1px solid ${T.line}`, borderRadius:12, padding:"10px 12px", textAlign:"center" }}>
-            <div style={{ fontSize:18, fontWeight:800, color:T.ink }}>$4<span style={{fontSize:12, color:T.sub, fontWeight:600}}>/mo</span></div>
-            <div style={{ fontSize:11, color:T.sub }}>monthly</div>
-          </div>
-          <div style={{ flex:1, background:"rgba(0,200,5,.08)", border:`1px solid ${T.green}`, borderRadius:12, padding:"10px 12px", textAlign:"center" }}>
-            <div style={{ fontSize:18, fontWeight:800, color:T.green }}>$25<span style={{fontSize:12, color:T.sub, fontWeight:600}}>/yr</span></div>
-            <div style={{ fontSize:11, color:T.green, fontWeight:700 }}>save ~48%</div>
-          </div>
+        <div style={{ display:"flex", gap:8, marginTop:14, marginBottom:12 }}>
+          <button onClick={()=>setPlan("mo")} style={{ flex:1, background: plan==="mo"?"rgba(var(--accent-rgb),.10)":T.input, border:`1px solid ${plan==="mo"?T.green:T.line}`, borderRadius:12, padding:"11px 12px", textAlign:"center", cursor:"pointer" }}>
+            <div style={{ fontSize:18, fontWeight:800, color: plan==="mo"?T.green:T.ink }}>$4.99<span style={{fontSize:12, color:T.sub, fontWeight:600}}>/mo</span></div>
+            <div style={{ fontSize:11, color:T.sub }}>Monthly</div>
+          </button>
+          <button onClick={()=>setPlan("yr")} style={{ flex:1, position:"relative", background: plan==="yr"?"rgba(var(--accent-rgb),.10)":T.input, border:`1px solid ${plan==="yr"?T.green:T.line}`, borderRadius:12, padding:"11px 12px", textAlign:"center", cursor:"pointer" }}>
+            <div style={{ fontSize:18, fontWeight:800, color: plan==="yr"?T.green:T.ink }}>$39.99<span style={{fontSize:12, color:T.sub, fontWeight:600}}>/yr</span></div>
+            <div style={{ fontSize:11, color:T.green, fontWeight:700 }}>Save 33%</div>
+          </button>
         </div>
-        <button disabled style={{ width:"100%", background:T.input, color:T.sub, border:`1px solid ${T.line}`, fontWeight:700, padding:"11px", borderRadius:10, fontSize:13.5 }}>
-          💳 Payments coming soon
+        <button onClick={()=>setNote(true)} style={{ width:"100%", background:T.green, color:"#000", fontWeight:800, padding:"12px", borderRadius:11, fontSize:15, cursor:"pointer" }}>
+          Go Pro — {plan==="yr" ? "$39.99/yr" : "$4.99/mo"}
         </button>
+        {note && <div style={{ fontSize:12, color:T.sub, textAlign:"center", marginTop:9, lineHeight:1.5 }}>🚧 Checkout is being finalized — you'll be able to subscribe right here very soon. Thanks for the interest!</div>}
       </>)}
     </div>
   );
@@ -4626,10 +4759,15 @@ const MUSCLE_GROUP = (m) => {
 };
 const dayGap = (a, b) => Math.round((new Date(a + "T00:00") - new Date(b + "T00:00")) / 86400000);
 
+const GNAME = { push: "push (chest/shoulders/triceps)", pull: "pull (back/biceps)", legs: "legs" };
+const GSHORT = { push: "Push", pull: "Pull", legs: "Legs" };
+
 function coachTips(data, exMap, units) {
   const log = Array.isArray(data.log) ? data.log : [];
+  const cardio = Array.isArray(data.cardio) ? data.cardio : [];
   const tips = [];
   const today = todayStr();
+  const wk = weekStart(today);
   const inc = units === "kg" ? 2.5 : 5;              // smallest sensible jump
   const byEx = {};
   for (const e of log) { if (e.weight == null) continue; (byEx[e.exercise] ||= []).push(e); }
@@ -4648,8 +4786,40 @@ function coachTips(data, exMap, units) {
   }
   progressions.sort((a, b) => (BIG_LIFT_SET.has(b.ex) - BIG_LIFT_SET.has(a.ex)));
   for (const p of progressions.slice(0, 2))
-    tips.push({ icon: "📈", cat: "Progression",
+    tips.push({ key: `prog-${p.ex}-${p.cur}-${p.reps}`, icon: "📈", cat: "Progression",
       text: `You hit ${dispW(p.cur, units)}${uLabel(units)}×${p.curReps} on ${p.ex} twice — try ${dispW(p.next, units)}${uLabel(units)}×${p.reps} next session.` });
+
+  // ---- WHAT TO TRAIN TODAY: the push/pull/legs group you've left longest ----
+  const lastByGroup = { push: null, pull: null, legs: null };
+  for (const e of log) { const g = MUSCLE_GROUP(exMap[e.exercise]?.muscle); if (g in lastByGroup && (!lastByGroup[g] || e.date > lastByGroup[g])) lastByGroup[g] = e.date; }
+  let staleGroup = null, staleDate = null;
+  for (const g of ["push", "pull", "legs"]) { const d = lastByGroup[g]; if (!d) continue; if (!staleDate || d < staleDate) { staleDate = d; staleGroup = g; } }
+  if (staleGroup && dayGap(today, staleDate) >= 3)
+    tips.push({ key: `train-${staleGroup}-${staleDate}`, icon: "📅", cat: "Train today",
+      text: `It's been ${dayGap(today, staleDate)} days since you trained ${GNAME[staleGroup]} — a solid pick for today.` });
+
+  // ---- PR PROJECTION / ETA: a big lift trending up → project the next milestone ----
+  for (const ex of BIG_LIFTS) {
+    const entries = byEx[ex]; if (!entries || entries.length < 6) continue;
+    const weekBest = {};
+    for (const e of entries) if ((e.reps || 0) <= REP_CAP(ex)) { const w = weekStart(e.date); weekBest[w] = Math.max(weekBest[w] || 0, e1rm(e.weight, e.reps)); }
+    const weeks = Object.keys(weekBest).sort(); if (weeks.length < 3) continue;
+    const recent = weeks.slice(-6);
+    const firstD = dispW(weekBest[recent[0]], units), lastD = dispW(weekBest[recent[recent.length - 1]], units);
+    const span = recent.length - 1; if (span < 2) continue;
+    const slope = (lastD - firstD) / span;                // display units / week
+    if (slope > (units === "kg" ? 0.4 : 1)) {
+      const cur = Math.max(...recent.map(w => dispW(weekBest[w], units)));
+      const round = units === "kg" ? 5 : 10;
+      const milestone = Math.ceil((cur + 0.5) / round) * round;
+      const weeksTo = Math.ceil((milestone - cur) / slope);
+      if (weeksTo >= 1 && weeksTo <= 16) {
+        tips.push({ key: `pr-${ex}-${milestone}`, icon: "🚀", cat: "Projection",
+          text: `${LIFT_SHORT[ex] || ex} is trending up — on pace for a ${milestone}${uLabel(units)} estimated 1RM in about ${weeksTo} week${weeksTo === 1 ? "" : "s"}. Keep it up.` });
+        break;
+      }
+    }
+  }
 
   // ---- PLATEAU: no est-1RM gain over the last 4 trained weeks despite recent training ----
   for (const ex of BIG_LIFTS) {
@@ -4657,15 +4827,23 @@ function coachTips(data, exMap, units) {
     const lastDate = entries.map(e => e.date).sort().reverse()[0];
     if (dayGap(today, lastDate) > 14) continue;
     const weekBest = {};
-    for (const e of entries) if ((e.reps || 0) <= REP_CAP(ex)) {
-      const w = weekStart(e.date); weekBest[w] = Math.max(weekBest[w] || 0, e1rm(e.weight, e.reps));
-    }
+    for (const e of entries) if ((e.reps || 0) <= REP_CAP(ex)) { const w = weekStart(e.date); weekBest[w] = Math.max(weekBest[w] || 0, e1rm(e.weight, e.reps)); }
     const weeks = Object.keys(weekBest).sort(); if (weeks.length < 4) continue;
     const recent = weeks.slice(-4);
-    const peak = Math.max(...recent.map(w => weekBest[w]));
-    if (peak <= weekBest[recent[0]] * 1.005)
-      tips.push({ icon: "🧱", cat: "Plateau",
-        text: `${LIFT_SHORT[ex] || ex} hasn't moved in ~4 weeks. Take a deload (−10% for a week) or switch rep range to break the stall.` });
+    if (Math.max(...recent.map(w => weekBest[w])) <= weekBest[recent[0]] * 1.005)
+      tips.push({ key: `plateau-${ex}-${wk}`, icon: "🧱", cat: "Plateau",
+        text: `${LIFT_SHORT[ex] || ex} hasn't moved in ~4 weeks. Deload a week (−10%) or switch rep range to break the stall.` });
+  }
+
+  // ---- WEEKLY VOLUME per muscle vs a ~10 set/week target (MEV) ----
+  const wvol = { push: 0, pull: 0, legs: 0 };
+  for (const e of log) { if (weekStart(e.date) !== wk) continue; const g = MUSCLE_GROUP(exMap[e.exercise]?.muscle); if (g in wvol) wvol[g]++; }
+  if (wvol.push + wvol.pull + wvol.legs >= 6) {
+    for (const g of ["push", "pull", "legs"]) if (wvol[g] >= 1 && wvol[g] < 6) {
+      tips.push({ key: `vol-${g}-${wk}`, icon: "📊", cat: "Volume",
+        text: `${GSHORT[g]} is only ${wvol[g]} set${wvol[g] === 1 ? "" : "s"} this week — aim for ~10+ weekly sets per muscle to keep growing.` });
+      break;
+    }
   }
 
   // ---- BALANCE: push/pull ratio + leg neglect over the last 28 days ----
@@ -4673,22 +4851,34 @@ function coachTips(data, exMap, units) {
   const vol = { push: 0, pull: 0, legs: 0, core: 0, other: 0 };
   for (const e of log) { if (e.date < since) continue; const g = MUSCLE_GROUP(exMap[e.exercise]?.muscle); vol[g]++; }
   if (vol.push + vol.pull >= 8) {
-    if (vol.push >= vol.pull * 2) tips.push({ icon: "⚖️", cat: "Balance", text: `Push ${vol.push} vs pull ${vol.pull} sets this month — add rows/pulldowns to protect your shoulders.` });
-    else if (vol.pull >= vol.push * 2) tips.push({ icon: "⚖️", cat: "Balance", text: `Pull ${vol.pull} vs push ${vol.push} sets this month — add some pressing to even it out.` });
+    if (vol.push >= vol.pull * 2) tips.push({ key: `bal-pp-${wk}`, icon: "⚖️", cat: "Balance", text: `Push ${vol.push} vs pull ${vol.pull} sets this month — add rows/pulldowns to protect your shoulders.` });
+    else if (vol.pull >= vol.push * 2) tips.push({ key: `bal-pp-${wk}`, icon: "⚖️", cat: "Balance", text: `Pull ${vol.pull} vs push ${vol.push} sets this month — add some pressing to even it out.` });
   }
   const tot = vol.push + vol.pull + vol.legs + vol.core + vol.other;
   if (tot >= 10 && vol.legs <= tot * 0.15)
-    tips.push({ icon: "🦵", cat: "Balance", text: `Only ${vol.legs} leg sets in 4 weeks (${Math.round(vol.legs / tot * 100)}% of your volume). Don't skip leg day 👀` });
+    tips.push({ key: `bal-legs-${wk}`, icon: "🦵", cat: "Balance", text: `Only ${vol.legs} leg sets in 4 weeks (${Math.round(vol.legs / tot * 100)}% of your volume). Don't skip leg day 👀` });
+
+  // ---- CONSISTENCY + DELOAD TIMING: many hard weeks in a row → time to recover ----
+  const daysByWeek = {};
+  for (const d of new Set([...log.map(e => e.date), ...cardio.map(c => c.date)])) { const w = weekStart(d); (daysByWeek[w] ||= new Set()).add(d); }
+  let streakWeeks = 0;
+  for (let i = 0; i < 12; i++) { const w = dAdd(wk, -7 * i); const days = daysByWeek[w]; if (days && days.size >= 3) streakWeeks++; else break; }
+  if (streakWeeks >= 6)
+    tips.push({ key: `deload-${wk}`, icon: "🛌", cat: "Recovery",
+      text: `${streakWeeks} hard weeks straight — a deload week (lighter weights & fewer sets) now lets your body recover and come back stronger.` });
 
   return tips;
 }
 
-/* The Coach card (shown on Home). Personal tips are instant; the group weak-point
-   comparison loads in the background so the card never blocks the dashboard. */
-function CoachCard({ data, exMap, user }) {
+/* The Coach card (shown on Home for Pro). Personal tips are instant; the group weak-
+   point comparison loads in the background. Every tip can be dismissed ("don't show
+   again"), stored per-account in data.profile.coachDismissed. */
+function CoachCard({ data, exMap, user, setData }) {
   const units = useUnit();
   const tips = useMemo(() => coachTips(data, exMap, units), [data, exMap, units]);
   const [groupTip, setGroupTip] = useState(null);
+  const dismissed = data.profile?.coachDismissed || [];
+  const dismiss = (key) => setData(d => ({ ...d, profile: { ...(d.profile || {}), coachDismissed: [...(d.profile?.coachDismissed || []), key] } }));
 
   useEffect(() => {
     let alive = true;
@@ -4710,32 +4900,33 @@ function CoachCard({ data, exMap, user }) {
           if (groupMax > 0) { const ratio = mine / groupMax; if (!worst || ratio < worst.ratio) worst = { lift, ratio, groupMax }; }
         }
         if (alive && worst && worst.ratio < 0.9)
-          setGroupTip({ icon: "🎯", cat: "Weak point",
+          setGroupTip({ key: `weak-${worst.lift}`, icon: "🎯", cat: "Weak point",
             text: `Your ${LIFT_SHORT[worst.lift] || worst.lift} is ${Math.round((1 - worst.ratio) * 100)}% behind your group's best (${dispW(worst.groupMax, units)}${uLabel(units)}). Prime lift to attack.` });
       } catch { /* offline / no groups */ }
     })();
     return () => { alive = false; };
   }, [data.log, user.id, units]);
 
-  const all = groupTip ? [...tips, groupTip] : tips;
-  const CAT_COLOR = { Progression: T.green, Plateau: "#E9C46A", Balance: STEP_BLUE, "Weak point": "#FF7A45" };
+  const all = (groupTip ? [...tips, groupTip] : tips).filter(t => !dismissed.includes(t.key));
+  const CAT_COLOR = { Progression: T.green, "Train today": STEP_BLUE, Projection: "#9D5CFF", Plateau: "#E9C46A", Volume: STEP_BLUE, Balance: STEP_BLUE, Recovery: "#00D1B2", "Weak point": "#FF7A45" };
 
   return (
-    <div className="card" style={{ border: `1px solid ${T.green}`, background: "linear-gradient(180deg,rgba(0,200,5,.05),transparent 60%)" }}>
+    <div className="card" style={{ border: `1px solid ${T.green}`, background: "linear-gradient(180deg,rgba(var(--accent-rgb),.06),transparent 60%)" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
         <div className="h" style={{ fontSize: 18, color: T.ink }}>💪 Lab's AI Coach</div>
-        <span style={{ fontSize: 10, fontWeight: 800, color: T.green, background: "rgba(0,200,5,.12)", padding: "2px 8px", borderRadius: 99, letterSpacing: .4 }}>SMART</span>
+        <span style={{ fontSize: 10, fontWeight: 800, color: T.green, background: "rgba(var(--accent-rgb),.12)", padding: "2px 8px", borderRadius: 99, letterSpacing: .4 }}>SMART</span>
       </div>
-      <div style={{ fontSize: 12, color: T.sub, marginBottom: all.length ? 12 : 0 }}>Personalized from your logs · updates every time you train.</div>
+      <div style={{ fontSize: 12, color: T.sub, marginBottom: all.length ? 10 : 0 }}>Personalized from your logs · updates every time you train.</div>
       {all.length === 0 ? (
-        <div style={{ fontSize: 13.5, color: T.sub, paddingTop: 6 }}>Log a few more sessions and I'll start spotting progressions, plateaus and imbalances for you. 🔍</div>
-      ) : all.slice(0, 4).map((t, i) => (
-        <div key={i} style={{ display: "flex", gap: 11, alignItems: "flex-start", padding: "10px 0", borderTop: i === 0 ? "none" : `1px solid ${T.creamLine}` }}>
+        <div style={{ fontSize: 13.5, color: T.sub, paddingTop: 6 }}>All caught up 🎉 Log a few more sessions and I'll surface fresh progressions, plateaus and imbalances.</div>
+      ) : all.slice(0, 5).map((t, i) => (
+        <div key={t.key} style={{ display: "flex", gap: 11, alignItems: "flex-start", padding: "10px 0", borderTop: i === 0 ? "none" : `1px solid ${T.creamLine}` }}>
           <span style={{ fontSize: 20, lineHeight: 1.2, flexShrink: 0 }}>{t.icon}</span>
-          <div style={{ minWidth: 0 }}>
+          <div style={{ minWidth: 0, flex: 1 }}>
             <span style={{ fontSize: 9.5, fontWeight: 800, color: CAT_COLOR[t.cat] || T.sub, textTransform: "uppercase", letterSpacing: .5 }}>{t.cat}</span>
             <div style={{ fontSize: 13.5, color: T.ink, lineHeight: 1.5 }}>{t.text}</div>
           </div>
+          <button onClick={() => dismiss(t.key)} title="Don't show this again" style={{ flexShrink: 0, background: "none", border: "none", color: T.sub, fontSize: 15, lineHeight: 1, padding: "2px 4px", cursor: "pointer" }}>✕</button>
         </div>
       ))}
     </div>
@@ -4785,7 +4976,7 @@ function MonthlyRecapModal({ recap, groupName, emoji, onClose }) {
         {/* header with gradient strip */}
         <div style={{
           padding:"22px 20px 16px", textAlign:"center", position:"relative",
-          background:"linear-gradient(180deg, rgba(0,200,5,.10), rgba(233,196,106,.05) 60%, transparent)",
+          background:"linear-gradient(180deg, rgba(var(--accent-rgb),.10), rgba(233,196,106,.05) 60%, transparent)",
           borderBottom:`1px solid ${T.line}`,
         }}>
           <div style={{fontSize:34, lineHeight:1, marginBottom:8}}>📊</div>
@@ -4814,8 +5005,8 @@ function MonthlyRecapModal({ recap, groupName, emoji, onClose }) {
             return (
               <div key={r.uid} className="recap-row" style={{
                 animationDelay:`${0.12 + i * 0.07}s`,
-                background:r.isYou ? "rgba(0,200,5,.08)" : T.input,
-                border:`1px solid ${r.isYou ? "rgba(0,200,5,.35)" : T.line}`,
+                background:r.isYou ? "rgba(var(--accent-rgb),.08)" : T.input,
+                border:`1px solid ${r.isYou ? "rgba(var(--accent-rgb),.35)" : T.line}`,
                 borderRadius:14, padding:"11px 13px",
               }}>
                 <div style={{display:"flex", alignItems:"center", gap:10}}>
@@ -4959,6 +5150,9 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
   const [active, setActive] = useState(null);        // selected group
   const [members, setMembers] = useState(null);
   const [states, setStates] = useState({});          // user_id -> tracker data
+  const [proIds, setProIds] = useState([]);          // Pro members you can see (for the PRO badge)
+  const isProUser = (uid) => proIds.includes(uid);
+  useEffect(() => { listProUserIds().then(setProIds).catch(()=>{}); }, [members]);
   const [profile, setProfile] = useState(null);      // member whose profile is open
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
@@ -5361,7 +5555,7 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
         border:"none", boxShadow:"0 8px 24px rgba(0,0,0,.5)",
       }}>← Back</button>
       <div className="card" style={{display:"flex", justifyContent:"space-between", alignItems:"center"}}>
-        <div className="h" style={{fontSize:19, color:T.tealDk}}>💪 {profile.username}</div>
+        <div className="h" style={{fontSize:19, color:T.tealDk}}>💪 {profile.username}{isProUser(profile.user_id) && <ProBadge />}</div>
         <span className="chip" style={{background:T.mint, color:T.green}}>read-only</span>
       </div>
       {!pdata ? (
@@ -5488,7 +5682,7 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
               {["👥","💪","🏋️","🔥","⚡","🏆","🐐","😤","🦾","❄️","🥩","🚀","🎯","🃏"].map(e=>(
                 <button key={e} onClick={()=>saveEmoji(e)} style={{
                   fontSize:20, padding:"5px 9px", borderRadius:10, lineHeight:1.2,
-                  background: (active.emoji||"👥")===e ? "rgba(0,200,5,.16)" : T.card,
+                  background: (active.emoji||"👥")===e ? "rgba(var(--accent-rgb),.16)" : T.card,
                   border:`1px solid ${(active.emoji||"👥")===e ? T.green : T.line}`,
                 }}>{e}</button>
               ))}
@@ -5600,7 +5794,7 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
 
           {/* group "journey" — everyone's steps combined into one fun number */}
           {stepBoard.total > 0 && (
-            <div style={{display:"flex", alignItems:"center", gap:11, background:"linear-gradient(100deg,rgba(0,200,5,.10),rgba(0,200,5,.02))",
+            <div style={{display:"flex", alignItems:"center", gap:11, background:"linear-gradient(100deg,rgba(var(--accent-rgb),.10),rgba(var(--accent-rgb),.02))",
               border:`1px solid ${T.line}`, borderRadius:14, padding:"11px 14px", marginBottom:10}}>
               <span style={{fontSize:24}}>🌍</span>
               <div style={{flex:1, minWidth:0}}>
@@ -5676,7 +5870,7 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
           {members.map(m=>(
             <div key={m.user_id} style={{display:"flex", alignItems:"center", gap:8, padding:"7px 0", borderBottom:`1px solid ${T.line}`, fontSize:14}}>
               <span style={{flex:1, fontWeight: m.user_id===user.id?700:500}}>
-                {m.user_id===active.created_by ? "👑 " : ""}{m.username}{m.user_id===user.id?" (you)":""}
+                {m.user_id===active.created_by ? "👑 " : ""}{m.username}{m.user_id===user.id?" (you)":""}{isProUser(m.user_id) && <ProBadge small />}
               </span>
               {isOwner && m.user_id !== user.id && (
                 <ConfirmX label="Remove" onConfirm={async ()=>{
