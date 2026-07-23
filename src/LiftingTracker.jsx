@@ -335,7 +335,6 @@ export default function LiftingTracker({ user }) {
   useEffect(() => {
     if (tab === "macros" && !nutritionOn) setTab("dash"); // non-dev accounts never land on Macros
     if (tab === "steps" && !stepsOn) setTab("dash");      // hide the Steps tab when the feature is off
-    if (tab === "records") setTab("dash");                // Records merged into Home
   }, [nutritionOn, stepsOn, tab]);
   const [loaded, setLoaded] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -443,31 +442,17 @@ export default function LiftingTracker({ user }) {
 
   if (!loaded) return <LoadingScreen />;
 
-  // Simplified nav for new users: the phone bottom bar shows 5 primary tabs; everything
-  // else lives under "More". Records now lives on Home; the exercise Library opens from Log.
-  //   full list (desktop top bar shows them all inline):
+  // order chosen so the phone bottom bar reads as two clean rows of four:
+  //   row 1: Dash · Log · Records · Library     row 2: Macros · Groups · Cardio · Body
   const tabs = [
-    ...(liftingOn ? [["dash","Home","🏠"],["log","Log","📝"]] : []),
-    ...(liftingOn && stepsOn ? [["steps","Steps","👟"]] : []),
-    ["friends","Groups","👥"],
-    ...(liftingOn ? [["cardio","Cardio","🏃"],["body","Body","⚖️"]] : []),
-    ["journal","Journal","📓"],
+    ...(liftingOn ? [["dash","Dash","📊"],["log","Log","📝"],["records","Records","🏆"],["ex","Library","📚"]] : []),
     ...(nutritionOn ? [["macros","Macros","🥗"]] : []),
-  ];
-  // secondary destinations tucked under "More" on phones
-  const moreTabs = [
-    ...(liftingOn ? [["cardio","Cardio","🏃"],["ex","Exercise library","📚"],["body","Body","⚖️"]] : []),
     ["journal","Journal","📓"],
-    ...(nutritionOn ? [["macros","Macros","🥗"]] : []),
-  ];
-  // the 5 the phone bottom bar actually shows
-  const primaryTabs = [
-    ...(liftingOn ? [["dash","Home","🏠"],["log","Log","📝"]] : []),
-    ...(liftingOn && stepsOn ? [["steps","Steps","👟"]] : []),
     ["friends","Groups","👥"],
-    ["more","More","⋯"],
+    ...(liftingOn ? [["cardio","Cardio","🏃"]] : []),
+    ...(liftingOn && stepsOn ? [["steps","Steps","👟"]] : []),
+    ...(liftingOn ? [["body","Body","⚖️"]] : []),
   ];
-  const moreIds = new Set([...moreTabs.map(t=>t[0]), "more"]); // when any of these is active, highlight "More"
 
   return (
     <UnitCtx.Provider value={units}>
@@ -596,10 +581,10 @@ export default function LiftingTracker({ user }) {
         @media(hover:hover){ .navbtn:hover:not(.on){ background:rgba(255,255,255,.05); color:${T.ink}; } }
         .navbtn:active { transform:scale(.9); }
         .app-main { max-width:860px; margin:0 auto; padding:16px 14px; }
-        /* bottom bar is a single row of 5 now — reserve just enough for one row */
-        .app-root { padding-bottom:calc(84px + min(env(safe-area-inset-bottom), 34px)); }
+        /* bottom bar is now up to THREE rows tall (10 tabs), so reserve room for 3 */
+        .app-root { padding-bottom:calc(176px + min(env(safe-area-inset-bottom), 34px)); }
         /* floating "back" on member profiles — above the bottom nav on phones */
-        .profile-back-fab { position:fixed; right:16px; z-index:40; bottom:calc(94px + min(env(safe-area-inset-bottom), 34px)); }
+        .profile-back-fab { position:fixed; right:16px; z-index:40; bottom:calc(136px + min(env(safe-area-inset-bottom), 34px)); }
 
         @media (min-width:900px) {
           /* desktop: tabs move into the TOP app bar, bottom bar disappears.
@@ -690,9 +675,9 @@ export default function LiftingTracker({ user }) {
 
       <main className={"app-main" + (tab==="macros" ? " app-main-wide" : "")}>
         <div className="tabview" key={tab}>
-          {tab==="dash" && liftingOn && <><Dashboard data={data} exMap={exMap} setData={setData} /><RecordsTab data={data} exMap={exMap} /></>}
-          {tab==="log" && liftingOn && <LogTab data={data} exMap={exMap} setData={setData} routinesOn={routinesOn} setTab={setTab} />}
-          {tab==="more" && <MoreMenu tabs={moreTabs} setTab={setTab} onSettings={()=>setShowSettings(true)} />}
+          {tab==="dash" && liftingOn && <Dashboard data={data} exMap={exMap} setData={setData} />}
+          {tab==="log" && liftingOn && <LogTab data={data} exMap={exMap} setData={setData} routinesOn={routinesOn} />}
+          {tab==="records" && liftingOn && <RecordsTab data={data} exMap={exMap} />}
           {tab==="journal" && <JournalTab data={data} setData={setData} />}
           {tab==="friends" && <FriendsTab user={user} nutritionOn={nutritionOn} streaksOn={streaksOn} />}
           {tab==="macros" && nutritionOn && <MacroTab data={data} setData={setData} streaksOn={streaksOn} waterOn={waterOn} />}
@@ -703,17 +688,14 @@ export default function LiftingTracker({ user }) {
         </div>
       </main>
 
-      {/* phone tab bar (bottom, thumb-reachable) — 5 primary tabs, one clean row. Hidden on desktop. */}
-      <nav className={"nav-bottom" + (navHidden ? " nav-hidden" : "")} style={{ gridTemplateColumns:`repeat(${primaryTabs.length}, 1fr)` }}>
-        {primaryTabs.map(([id,label,icon]) => {
-          const on = id==="more" ? moreIds.has(tab) : tab===id;
-          return (
-            <button key={id} onClick={()=>setTab(id)} className={"navbtn" + (on?" on":"")}>
-              <span className={"navicon" + (on?" on":"")}>{icon}</span>
-              <span className="navlbl">{label}</span>
-            </button>
-          );
-        })}
+      {/* phone tab bar (bottom, thumb-reachable) — up to two rows of four. Hidden on desktop. */}
+      <nav className={"nav-bottom" + (navHidden ? " nav-hidden" : "")}>
+        {tabs.map(([id,label,icon]) => (
+          <button key={id} onClick={()=>setTab(id)} className={"navbtn" + (tab===id?" on":"")}>
+            <span className={"navicon" + (tab===id?" on":"")}>{icon}</span>
+            <span className="navlbl">{label}</span>
+          </button>
+        ))}
       </nav>
     </div>
     </UnitCtx.Provider>
@@ -878,28 +860,7 @@ function RoutinesPanel({ data, setData, onPick }) {
 }
 
 /* ================= LOG ================= */
-/* "More" tab — a simple list of the secondary destinations that were pulled out of the
-   bottom bar to keep it to 5 tabs. Each row just switches to that tab. */
-function MoreMenu({ tabs, setTab, onSettings }) {
-  const Row = ({ icon, label, onClick }) => (
-    <button onClick={onClick} style={{ width:"100%", display:"flex", alignItems:"center", gap:13, background:T.card, border:`1px solid ${T.line}`,
-      borderRadius:14, padding:"15px 16px", color:T.ink, fontWeight:600, fontSize:15.5, cursor:"pointer", marginBottom:10 }}>
-      <span style={{ fontSize:22, width:26, textAlign:"center" }}>{icon}</span>
-      {label}
-      <span style={{ marginLeft:"auto", color:T.sub, fontSize:18 }}>›</span>
-    </button>
-  );
-  return (
-    <div className="tabview">
-      <div className="h" style={{ fontSize:22, marginBottom:4 }}>More</div>
-      <div style={{ fontSize:13, color:T.sub, marginBottom:16 }}>Everything else lives here.</div>
-      {tabs.map(([id,label,icon]) => <Row key={id} icon={icon} label={label} onClick={()=>setTab(id)} />)}
-      <Row icon="⚙️" label="Settings" onClick={onSettings} />
-    </div>
-  );
-}
-
-function LogTab({ data, exMap, setData, routinesOn, setTab }) {
+function LogTab({ data, exMap, setData, routinesOn }) {
   const sorted = useMemo(()=>[...data.log].sort((a,b)=>a.date.localeCompare(b.date)||a.id-b.id),[data.log]);
   const last = sorted[sorted.length-1];
   // date defaults to the "gym day" (before your Settings day-start hour = still yesterday);
@@ -1101,12 +1062,6 @@ function LogTab({ data, exMap, setData, routinesOn, setTab }) {
   };
 
   return (<>
-    {setTab && (
-      <button onClick={()=>setTab("ex")} style={{ width:"100%", display:"flex", alignItems:"center", gap:9, background:T.card, border:`1px solid ${T.line}`, borderRadius:12, padding:"10px 14px", marginBottom:14, color:T.ink, fontWeight:600, fontSize:13.5, cursor:"pointer" }}>
-        <span style={{ fontSize:17 }}>📚</span> Browse exercise library
-        <span style={{ marginLeft:"auto", color:T.sub }}>›</span>
-      </button>
-    )}
     {restDone && restLeft <= 0 && (
       <div className="card" style={{ padding:"12px 16px", marginBottom:14, borderColor:T.green, display:"flex", alignItems:"center", gap:10 }}>
         <span style={{ fontSize:15, fontWeight:800, color:T.green }}>✅ Rest done — next set!</span>
