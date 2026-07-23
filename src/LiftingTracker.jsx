@@ -707,7 +707,7 @@ export default function LiftingTracker({ user }) {
         <div className="tabview" key={tab}>
           {tab==="dash" && liftingOn && <Dashboard data={data} exMap={exMap} setData={setData} user={user} isPro={isPro} coachEnabled={coachEnabled} stepsEnabled={stepsEnabled} nutritionOn={nutritionOn} openSettings={()=>setShowSettings(true)} setTab={setTab} />}
           {tab==="log" && liftingOn && <LogTab data={data} exMap={exMap} setData={setData} routinesOn={routinesOn} />}
-          {tab==="records" && liftingOn && <RecordsTab data={data} exMap={exMap} />}
+          {tab==="records" && liftingOn && <RecordsTab data={data} exMap={exMap} setData={setData} />}
           {tab==="journal" && <JournalTab data={data} setData={setData} />}
           {tab==="friends" && <FriendsTab user={user} nutritionOn={nutritionOn} streaksOn={streaksOn} />}
           {tab==="macros" && nutritionOn && <MacroTab data={data} setData={setData} streaksOn={streaksOn} waterOn={waterOn} />}
@@ -2124,7 +2124,12 @@ const kpiL = { fontSize:11.5, color:T.sub };
 
 
 /* ================= RECORDS ================= */
-function RecordsTab({ data, exMap }) {
+function RecordsTab({ data, exMap, setData }) {
+  const setNote = (name, text) => setData?.(d => {
+    const notes = { ...(d.prNotes || {}) };
+    if (text.trim()) notes[name] = text; else delete notes[name];
+    return { ...d, prNotes: notes };
+  });
   const units = useUnit();
   const rows = useMemo(() => data.exercises.map(ex => {
     const entries = data.log.filter(e => e.exercise===ex.name);
@@ -2195,7 +2200,9 @@ function RecordsTab({ data, exMap }) {
           <div style={{display:"flex", alignItems:"center", gap:10}}>
             <div style={{flex:1, minWidth:0}}>
               <div style={{fontSize:15.5, fontWeight:700, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis"}}>{r.name}</div>
-              <div style={{fontSize:11.5, color:T.sub, marginTop:1}}>{muscleLabel(r)}</div>
+              {data.prNotes?.[r.name]
+                ? <div style={{fontSize:11.5, color:T.ink, marginTop:2, fontStyle:"italic", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis"}}>💬 {data.prNotes[r.name]}</div>
+                : <div style={{fontSize:11, color:T.sub, marginTop:2}}>Tap to add a PR note</div>}
             </div>
             <div style={{textAlign:"right", flexShrink:0}}>
               <div style={{fontSize:17, fontWeight:800, color:T.green}}>
@@ -2207,13 +2214,21 @@ function RecordsTab({ data, exMap }) {
             <span style={{color:T.sub, fontSize:12, transform: open ? "rotate(90deg)" : "none", transition:"transform .15s ease"}}>▶</span>
           </div>
           {open && (
-            <div style={{display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, marginTop:12, animation:"fadeSwap .18s ease-out both"}}>
-              <div style={statBox}><div style={statL}>Heaviest</div><div style={statV}>{r.heaviest}</div></div>
-              <div style={statBox}><div style={statL}>Best set</div><div style={statV}>{r.best}</div></div>
-              <div style={statBox}><div style={statL}>Most reps</div><div style={statV}>{r.mostReps}</div></div>
-              <div style={statBox}><div style={statL}>Top volume</div><div style={statV}>{r.vol}</div></div>
-              <div style={statBox}><div style={statL}>Sessions</div><div style={statV}>{r.sessions}</div></div>
-              <div style={statBox}><div style={statL}>Last done</div><div style={statV}>{fmtDate(r.lastDone)}</div></div>
+            <div onClick={e=>e.stopPropagation()} style={{animation:"fadeSwap .18s ease-out both"}}>
+              <div style={{display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, marginTop:12}}>
+                <div style={statBox}><div style={statL}>Heaviest</div><div style={statV}>{r.heaviest}</div></div>
+                <div style={statBox}><div style={statL}>Best set</div><div style={statV}>{r.best}</div></div>
+                <div style={statBox}><div style={statL}>Most reps</div><div style={statV}>{r.mostReps}</div></div>
+                <div style={statBox}><div style={statL}>Top volume</div><div style={statV}>{r.vol}</div></div>
+                <div style={statBox}><div style={statL}>Sessions</div><div style={statV}>{r.sessions}</div></div>
+                <div style={statBox}><div style={statL}>Last done</div><div style={statV}>{fmtDate(r.lastDone)}</div></div>
+              </div>
+              <div style={{marginTop:11}}>
+                <div style={{...statL, marginBottom:5}}>💬 PR note — shows in your groups</div>
+                <input value={data.prNotes?.[r.name] || ""} onChange={e=>setNote(r.name, e.target.value.slice(0,80))} maxLength={80}
+                  placeholder="e.g. finally hit 2 plates 🔥" style={{width:"100%"}} />
+                <div style={{fontSize:10.5, color:T.sub, textAlign:"right", marginTop:3}}>{(data.prNotes?.[r.name]||"").length}/80</div>
+              </div>
             </div>
           )}
         </div>
@@ -5413,7 +5428,7 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
         // PRs only get celebrated once a lift is established (first 5 sets don't count —
         // otherwise every early session is a "PR" and the chip means nothing)
         if (bestSoFar[e.exercise] != null && score > bestSoFar[e.exercise] && (seenCount[e.exercise] || 0) >= 5) {
-          (prsByDate[e.date] ||= []).push(isBW ? `${e.exercise} ${e.reps} reps` : `${e.exercise} ${dispW(e.weight,units)}×${e.reps}`);
+          (prsByDate[e.date] ||= []).push({ ex: e.exercise, label: isBW ? `${e.exercise} ${e.reps} reps` : `${e.exercise} ${dispW(e.weight,units)}×${e.reps}` });
         }
         bestSoFar[e.exercise] = Math.max(bestSoFar[e.exercise] ?? -1, score);
         seenCount[e.exercise] = (seenCount[e.exercise] || 0) + 1;
@@ -5422,7 +5437,7 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
         const names = [...new Set(entries.map(e=>e.exercise))];
         evs.push({ key:`${m.user_id}-${date}-lift`, date, user:m.username, kind:"lift",
           sets: entries.length, names: names.slice(0,3), more: Math.max(0, names.length-3),
-          prs: [...new Set(prsByDate[date] || [])] });
+          prs: Object.values((prsByDate[date] || []).reduce((acc,p)=>{ acc[p.ex] = { ...p, note: st.prNotes?.[p.ex] || "" }; return acc; }, {})) });
       }
       for (const c of (st.cardio || [])) {
         const txt = c.steps ? `${c.steps.toLocaleString()} steps — ${c.activity}` : `${c.duration} min ${c.activity}`;
@@ -5757,7 +5772,7 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
                         : <>logged {ev.sets} set{ev.sets===1?"":"s"} — {ev.names.join(", ")}{ev.more>0?` +${ev.more} more`:""}</>}
                     </>}
                 {ev.prs?.map(pr=>(
-                  <span key={pr} className="chip" style={{background:T.mint, color:T.green, marginLeft:6}}>🎉 PR: {pr}</span>
+                  <span key={pr.ex} className="chip" style={{background:T.mint, color:T.green, marginLeft:6}}>🎉 PR: {pr.label}{pr.note ? ` — “${pr.note}”` : ""}</span>
                 ))}
                 <div style={{marginTop:5, display:"flex", alignItems:"center", gap:8}}>
                   <button onClick={()=>toggleReact(ev.key)} style={{
