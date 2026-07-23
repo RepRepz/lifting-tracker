@@ -728,7 +728,13 @@ export default function LiftingTracker({ user }) {
       </main>
 
       {/* phone tab bar (bottom, thumb-reachable) — up to two rows of four. Hidden on desktop. */}
-      <nav className={"nav-bottom" + (navHidden ? " nav-hidden" : "")}>
+      <nav
+        className={"nav-bottom" + (navHidden ? " nav-hidden" : "")}
+        /* Balance the two rows: split the tabs as evenly as possible so we never
+           get a ragged half-empty second row (e.g. 8 tabs => 4+4, 10 => 5+5).
+           <=5 tabs stay on a single row. Overrides the CSS grid columns. */
+        style={{ gridTemplateColumns: `repeat(${tabs.length <= 5 ? tabs.length : Math.ceil(tabs.length / 2)}, 1fr)` }}
+      >
         {tabs.map(([id,label,icon]) => (
           <button key={id} onClick={()=>setTab(id)} className={"navbtn" + (tab===id?" on":"")}>
             <span className={"navicon" + (tab===id?" on":"")}>{icon}</span>
