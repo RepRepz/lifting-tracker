@@ -659,14 +659,10 @@ export default function LiftingTracker({ user }) {
               </button>
             ))}
           </nav>
-          <div style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0, marginLeft:"auto" }}>
-            {isPro && (
-              <span style={{ display:"inline-flex", alignItems:"center", gap:4, background:"linear-gradient(100deg, rgb(var(--accent-rgb)), #8fe3a0)", color:"#000", fontWeight:800, fontSize:11.5, padding:"5px 10px", borderRadius:99, letterSpacing:.3, boxShadow:"0 2px 10px rgba(var(--accent-rgb),.35)", whiteSpace:"nowrap" }}>✨ PRO</span>
-            )}
-            <button onClick={()=>setShowSettings(true)} style={{ display:"flex", alignItems:"center", gap:6, flexShrink:0, background:"rgba(255,255,255,.10)", color:"#fff", padding:"6px 12px 6px 13px", fontSize:13, fontWeight:600 }}>
-              💪 {username} <span style={{ fontSize:15, opacity:.8 }}>⚙️</span>
-            </button>
-          </div>
+          <button onClick={()=>setShowSettings(true)} style={{ display:"flex", alignItems:"center", gap:7, flexShrink:0, marginLeft:"auto", background:"rgba(255,255,255,.10)", color:"#fff", padding: isPro ? "5px 11px 5px 6px" : "6px 12px 6px 13px", fontSize:13, fontWeight:600, borderRadius:99 }}>
+            {isPro && <span style={{ fontSize:10, fontWeight:800, color:"#000", background:"linear-gradient(100deg, rgb(var(--accent-rgb)), #8fe3a0)", padding:"3px 8px", borderRadius:99, letterSpacing:.4, boxShadow:"0 1px 6px rgba(var(--accent-rgb),.4)", whiteSpace:"nowrap" }}>✨ PRO</span>}
+            <span style={{ whiteSpace:"nowrap" }}>💪 {username}</span> <span style={{ fontSize:15, opacity:.8 }}>⚙️</span>
+          </button>
         </div>
       </div>
 
@@ -2824,7 +2820,13 @@ function DuelsCard({ user, all, nameOf, myId, myName }) {
   const today = todayStr();
   const opps = Object.entries(nameOf).filter(([id])=>id!==myId);
   const sumRange = (map, s, e)=>{ let t=0; const m=map||{}; for (const d in m) if (d>=s && d<=e) t+=m[d]; return t; };
-  const mine = duels.filter(d => d.a_id===myId || d.b_id===myId);
+  // only duels vs someone in THIS context's roster (nameOf) — so opening a group you don't
+  // share with them won't show that duel. In the Steps tab nameOf = all your groupmates.
+  const mine = duels.filter(d => {
+    if (d.a_id!==myId && d.b_id!==myId) return false;
+    const oId = d.a_id===myId ? d.b_id : d.a_id;
+    return oId in nameOf;
+  });
 
   const create = async () => {
     if (!oppId) return;
@@ -2993,17 +2995,6 @@ function StepsTab({ user, data, setData }) {
   }
 
   return (<>
-    {celebrate && (
-      <div onClick={dismiss} style={{position:"fixed", inset:0, zIndex:60, background:"rgba(0,0,0,.6)", backdropFilter:"blur(2px)", display:"flex", alignItems:"center", justifyContent:"center", padding:24, animation:"fadeSwap .2s ease-out both"}}>
-        <div onClick={e=>e.stopPropagation()} style={{background:T.card, border:`1px solid ${T.green}`, borderRadius:18, padding:"26px 22px", maxWidth:340, textAlign:"center", animation:"calPop .28s cubic-bezier(.34,1.56,.64,1) both"}}>
-          <div style={{fontSize:44, marginBottom:8}}>🎉</div>
-          <div className="h" style={{fontSize:20, color:T.green, marginBottom:6}}>Whole squad logged!</div>
-          <div style={{fontSize:13.5, color:T.sub, lineHeight:1.55, marginBottom:16}}>Everyone in <b style={{color:T.ink}}>{celebrate}</b> got their steps in for {dayLabel(yStr)}. Momentum. 🔥</div>
-          <button onClick={dismiss} style={{background:T.green, color:"#000", fontWeight:800, fontSize:15, padding:"11px 20px", borderRadius:10, width:"100%"}}>Let's go</button>
-        </div>
-      </div>
-    )}
-
     {/* header + editable goal + reliable Sync now */}
     <div className="card">
       <div style={{display:"flex", alignItems:"center", justifyContent:"space-between", gap:10, flexWrap:"wrap", marginBottom:12}}>
@@ -5168,6 +5159,7 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
   const [proIds, setProIds] = useState([]);          // Pro members you can see (for the PRO badge)
   const isProUser = (uid) => proIds.includes(uid);
   useEffect(() => { listProUserIds().then(setProIds).catch(()=>{}); }, [members]);
+  const [squadCel, setSquadCel] = useState(null);    // "whole squad logged steps" popup, per group
   const [profile, setProfile] = useState(null);      // member whose profile is open
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
@@ -5232,6 +5224,20 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
     (async () => { try { const d = await listDuels(); if (alive) setDuels(d); } catch { /* table may be empty */ } })();
     return () => { alive = false; };
   }, [members]);
+
+  // "whole squad logged their steps" — only when THIS group is open and everyone in it
+  // has yesterday's steps in. Shown once per group per day.
+  useEffect(() => {
+    if (!active || !members || members.length < 2) { setSquadCel(null); return; }
+    const yStr = dAdd(todayStr(), -1);
+    const allIn = members.every(m => (memberSteps[m.user_id] || {})[yStr] != null);
+    if (allIn) { try { if (localStorage.getItem(`lt-squad-${active.id}-${yStr}`) === "1") return; } catch {} setSquadCel(yStr); }
+    else setSquadCel(null);
+  }, [active, members, memberSteps]);
+  const dismissSquad = () => {
+    if (active) { try { localStorage.setItem(`lt-squad-${active.id}-${dAdd(todayStr(), -1)}`, "1"); } catch {} }
+    setSquadCel(null);
+  };
 
   /* A member's finished-duel record (wins–losses–ties), computed from step totals. */
   const duelRecord = (uid) => {
@@ -5678,6 +5684,16 @@ function FriendsTab({ user, nutritionOn, streaksOn }) {
     return (<>
       {recap && <MonthlyRecapModal recap={recap} groupName={active.name} emoji={active.emoji} onClose={closeRecap} />}
       {facts && <StepFactsModal name={facts.name} isMe={facts.uid===user.id} map={memberSteps[facts.uid]} rank={(stepBoard.rows.findIndex(r=>r.uid===facts.uid)+1) || null} onClose={()=>setFacts(null)} />}
+      {squadCel && (
+        <div onClick={dismissSquad} style={{position:"fixed", inset:0, zIndex:60, background:"rgba(0,0,0,.6)", backdropFilter:"blur(2px)", display:"flex", alignItems:"center", justifyContent:"center", padding:24, animation:"fadeSwap .2s ease-out both"}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:T.card, border:`1px solid ${T.green}`, borderRadius:18, padding:"26px 22px", maxWidth:340, textAlign:"center", animation:"calPop .28s cubic-bezier(.34,1.56,.64,1) both"}}>
+            <div style={{fontSize:44, marginBottom:8}}>🎉</div>
+            <div className="h" style={{fontSize:20, color:T.green, marginBottom:6}}>Whole squad logged!</div>
+            <div style={{fontSize:13.5, color:T.sub, lineHeight:1.55, marginBottom:16}}>Everyone in <b style={{color:T.ink}}>{active.name}</b> got their steps in for {dayLabel(squadCel)}. Momentum. 🔥</div>
+            <button onClick={dismissSquad} style={{background:T.green, color:"#000", fontWeight:800, fontSize:15, padding:"11px 20px", borderRadius:10, width:"100%"}}>Let's go</button>
+          </div>
+        </div>
+      )}
       <button onClick={()=>{setActive(null); setMembers(null);}} style={{ background:"none", color:T.green, fontWeight:700, fontSize:14, marginBottom:10 }}>← All groups</button>
       <div className="card">
         <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", gap:8, flexWrap:"wrap"}}>
