@@ -328,7 +328,9 @@ export default function LiftingTracker({ user }) {
   const isPro = proIds.includes(user.id);
   // Nutrition/Macros is a Pro feature: auto-on when you have Pro, toggleable in Settings.
   // Legacy demo accounts keep it regardless.
-  const nutritionOn = (isPro && macrosOn) || MACRO_ACCOUNTS.includes((user.user_metadata?.username || "").toLowerCase());
+  // Nutrition/Macros is PAUSED for Pro members for now (was auto-on with Pro) — flip the
+  // `isPro && macrosOn` clause back on to re-enable it for everyone with Pro.
+  const nutritionOn = MACRO_ACCOUNTS.includes((user.user_metadata?.username || "").toLowerCase());
   const [streaksOn, setStreaksOn] = useState(() => localStorage.getItem("lt-streaks-on") !== "0"); // default on
   const [waterOn, setWaterOn] = useState(() => localStorage.getItem("lt-water-on") !== "0"); // default on
   useEffect(() => { localStorage.setItem("lt-streaks-on", streaksOn ? "1" : "0"); }, [streaksOn]);
@@ -650,10 +652,10 @@ export default function LiftingTracker({ user }) {
           /* Flush to the bottom edge — anchored, edge-to-edge, glass with a bright
              hairline top border. Cockpit dock, not a floating pill. */
           position:fixed; bottom:0; left:0; right:0; z-index:20;
-          /* GRID, not flex-wrap: columns are set inline to balance the rows evenly.
-             Flex-wrap used to spill a button onto a phantom extra row at launch on iOS
-             when the viewport width wasn't settled; grid can't. */
-          display:grid; grid-template-columns:repeat(5, 1fr); row-gap:2px; column-gap:2px;
+          /* Each row below is its OWN grid sized to that row's actual button count, so
+             adding/removing a tab never leaves a phantom empty slot in a shorter row —
+             every row's buttons always stretch to fill the full width. */
+          display:flex; flex-direction:column; row-gap:2px;
           padding:6px 6px calc(6px + min(env(safe-area-inset-bottom), 34px));
           background:linear-gradient(180deg, color-mix(in srgb, var(--card) 72%, transparent), color-mix(in srgb, var(--bg) 88%, transparent));
           -webkit-backdrop-filter:blur(26px) saturate(1.7); backdrop-filter:blur(26px) saturate(1.7);
@@ -679,6 +681,7 @@ export default function LiftingTracker({ user }) {
         .navbtn.on { background:linear-gradient(180deg, rgba(var(--accent-rgb),.26), rgba(var(--accent-rgb),.10)); color:${T.green}; font-weight:800; box-shadow:0 0 0 1px rgba(var(--accent-rgb),.35) inset, 0 6px 18px -6px rgba(var(--accent-rgb),.65); text-shadow:0 0 14px rgba(var(--accent-rgb),.5); }
         @media(hover:hover){ .navbtn:hover:not(.on){ background:rgba(255,255,255,.06); color:${T.ink}; } }
         .navbtn:active { transform:scale(.9); }
+        .navrow { display:grid; column-gap:2px; }
         .app-main { max-width:860px; margin:0 auto; padding:16px 14px; }
         /* flush two-row nav dock at the bottom — reserve clearance */
         .app-root { padding-bottom:calc(118px + min(env(safe-area-inset-bottom), 34px)); }
@@ -797,19 +800,21 @@ export default function LiftingTracker({ user }) {
         </div>
       </main>
 
-      {/* phone tab bar (bottom, thumb-reachable) — up to two rows of four. Hidden on desktop. */}
-      <nav
-        className={"nav-bottom" + (navHidden ? " nav-hidden" : "")}
-        /* Balance the two rows: split the tabs as evenly as possible so we never
-           get a ragged half-empty second row (e.g. 8 tabs => 4+4, 10 => 5+5).
-           <=5 tabs stay on a single row. Overrides the CSS grid columns. */
-        style={{ gridTemplateColumns: `repeat(${tabs.length <= 5 ? tabs.length : Math.ceil(tabs.length / 2)}, 1fr)` }}
-      >
-        {tabs.map(([id,label,icon]) => (
-          <button key={id} onClick={()=>setTab(id)} className={"navbtn" + (tab===id?" on":"")}>
-            <span className={"navicon" + (tab===id?" on":"")}>{icon}</span>
-            <span className="navlbl">{label}</span>
-          </button>
+      {/* phone tab bar (bottom, thumb-reachable) — up to two rows. Hidden on desktop.
+          Split as evenly as possible so a tab count change never leaves a ragged
+          half-empty row (e.g. 8 tabs => 4+4, 9 => 5+4, 10 => 5+5); each row is sized
+          to ITS OWN button count, so that shorter second row still fills edge-to-edge
+          instead of leaving a phantom empty slot at the old 5-column width. */}
+      <nav className={"nav-bottom" + (navHidden ? " nav-hidden" : "")}>
+        {(tabs.length <= 5 ? [tabs] : [tabs.slice(0, Math.ceil(tabs.length / 2)), tabs.slice(Math.ceil(tabs.length / 2))]).map((row, ri) => (
+          <div key={ri} className="navrow" style={{ gridTemplateColumns: `repeat(${row.length}, 1fr)` }}>
+            {row.map(([id,label,icon]) => (
+              <button key={id} onClick={()=>setTab(id)} className={"navbtn" + (tab===id?" on":"")}>
+                <span className={"navicon" + (tab===id?" on":"")}>{icon}</span>
+                <span className="navlbl">{label}</span>
+              </button>
+            ))}
+          </div>
         ))}
       </nav>
     </div>
@@ -4244,11 +4249,11 @@ function SettingsModal({ user, username, data, setData, startTab, setStartTab, t
           ) : <ProLocked feature="Lab's AI Coach" note="Personalized progression, plateau, and weak-point coaching from your own logs." onGoPro={goPro} />}
         </SettingsSection>
 
-        <SettingsSection icon="🥗" title="Nutrition & macros" desc={isPro ? "Log food, hit macro targets & track water" : "Full nutrition tracking · Pro"}>
-          {isPro ? (
-            <FeatureToggle label="Show the Macros tab" on={macrosOn} setOn={setMacrosOn}
-              desc="Adds a 🥗 Macros tab: log food, set calorie/protein/carb/fat targets, see daily and weekly trends, and (optionally) track water. On by default. Turning it off just hides it — anything you logged stays." />
-          ) : <ProLocked feature="Nutrition & macros" note="Log your food, set macro targets, and track calories, protein, carbs, fat, and water — all in one place." onGoPro={goPro} />}
+        <SettingsSection icon="🥗" title="Nutrition & macros" desc="Temporarily paused">
+          <div style={{ fontSize:13.5, color:T.sub, lineHeight:1.5, padding:"4px 2px" }}>
+            🥗 Nutrition & macros is turned off for everyone right now while it gets more work.
+            Anything you'd already logged is safe and untouched — it'll be back.
+          </div>
         </SettingsSection>
 
         <SettingsSection icon="🚶" title="Apple Health steps" desc={isPro ? "Auto-log your daily steps from your iPhone" : "Auto step tracking · Pro"}>
