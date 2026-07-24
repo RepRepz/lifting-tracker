@@ -1778,6 +1778,34 @@ function LiftHeaderPicker({ value, options, onPick, onRemove, exMap = {} }) {
   );
 }
 
+/* Dashboard chart exercise picker — same searchable, muscle-grouped dropdown as the
+   group strength headers, but full-width (styled like the select it replaces) and
+   scoped to only exercises you've actually logged (passed in via `options`). */
+function ChartExercisePicker({ value, options, onPick, exMap = {} }) {
+  const items = useMemo(() => {
+    const ord = (m) => { const i = MUSCLES.indexOf(m); return i < 0 ? 99 : i; };
+    return options
+      .map(o => ({ value: o, label: o, group: (exMap[o] && muscleOf(exMap[o])) || "Other", selected: o === value }))
+      .sort((a, b) => ord(a.group) - ord(b.group) || a.label.localeCompare(b.label));
+  }, [options, value, exMap]);
+  return (
+    <DropdownPicker
+      items={items} onPick={onPick} placeholder="Search exercises…" matchWidth desiredWidth={280}
+      renderButton={({ ref, toggle, open }) => (
+        <button ref={ref} onClick={toggle} title={value} style={{
+          display: "flex", alignItems: "center", gap: 8, justifyContent: "space-between",
+          flex: 1, minWidth: 0, background: T.cream, border: `1px solid ${open ? "var(--accent)" : "transparent"}`,
+          borderRadius: 10, color: T.ink, fontFamily: "inherit", fontWeight: 600, fontSize: 14.5,
+          padding: "9px 12px", cursor: "pointer", textAlign: "left",
+        }}>
+          <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{value}</span>
+          <span style={{ fontSize: 9, flexShrink: 0, color: open ? "var(--accent)" : T.sub }}>▼</span>
+        </button>
+      )}
+    />
+  );
+}
+
 /* ---------- drag-to-reorder (pointer events: works on mouse AND touch) ---------- */
 function useReorder(storageKey, defaultIds) {
   const [saved, setSaved] = useState(() => {
@@ -2247,11 +2275,7 @@ function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled
       return (
       <div className="card" key={p}>
         <div style={{display:"flex", gap:8, alignItems:"center", marginBottom: isBW?8:6}}>
-          <select value={p} onChange={e=>changePick(i, e.target.value)}
-            style={{flex:1, minWidth:0, background:T.cream, fontWeight:600}}>
-            {!chartOpts.includes(p) && <option key={p}>{p}</option>}
-            {chartOpts.map(x=><option key={x}>{x}</option>)}
-          </select>
+          <ChartExercisePicker value={p} options={chartOpts} exMap={exMap} onPick={x=>changePick(i, x)} />
           {own && (
           <button onClick={()=>togglePin(i)} title={pinned ? "Unpin — go back to most recent" : "Pin this chart"} style={{
             flexShrink:0, minHeight:38, padding:"5px 12px", fontSize:12.5, fontWeight:700, borderRadius:99,
