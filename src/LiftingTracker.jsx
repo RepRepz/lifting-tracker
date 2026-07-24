@@ -5137,8 +5137,15 @@ function CoachCard({ data, exMap, user, setData }) {
   const addRest = () => setCustom(days => [...days, { id: Math.random().toString(36).slice(2), rest: true, muscles: [] }]);
   const toggleMuscle = (id, m) => setCustom(days => days.map(x => x.id === id ? { ...x, muscles: x.muscles.includes(m) ? x.muscles.filter(z => z !== m) : [...x.muscles, m] } : x));
   const removeDay = (id) => setCustom(days => days.filter(x => x.id !== id));
-  // the repeating cycle is anchored to the day you finish building it (index 0 = that day)
+  // the repeating cycle is anchored to the day you finish building it (index 0 = that day).
+  // It ROLLS forward day-by-day and loops — it is NOT pinned to weekdays, so "Push/Pull/Legs/Rest"
+  // won't land on the same weekday each week; it just repeats on its own rhythm.
   const anchorCycle = () => setData(d => ({ ...d, profile: { ...(d.profile || {}), cycleStart: todayStr() } }));
+  const setCycleStart = (dateStr) => setData(d => ({ ...d, profile: { ...(d.profile || {}), cycleStart: dateStr } }));
+  const cycle = customDays.filter(x => x.rest || x.muscles?.length);
+  const cyStart = data.profile?.cycleStart || todayStr();
+  const cyPos = cycle.length ? (((dayGap(todayStr(), cyStart) % cycle.length) + cycle.length) % cycle.length) : -1;
+  const todayDayId = cyPos >= 0 ? cycle[cyPos].id : null;
   // editable weekly set targets per muscle (science-based defaults)
   const targets = setTargetsOf(data);
   const bumpTarget = (m, delta) => setData(d => { const cur = setTargetsOf(d); return { ...d, profile: { ...(d.profile || {}), setTargets: { ...(d.profile?.setTargets || {}), [m]: Math.max(0, Math.min(40, (cur[m] || 0) + delta)) } } }; });
@@ -5245,11 +5252,16 @@ function CoachCard({ data, exMap, user, setData }) {
           {/* custom builder — an ordered, repeating cycle of training + rest days */}
           {split === "custom" && (
             <div>
-              <div style={{ fontSize: 12, color: T.sub, lineHeight: 1.5, marginBottom: 10 }}>Build your rotation in order — add training days (tap the muscles they hit, incl. <b style={{ color: T.ink }}>Abs</b>) and <b style={{ color: T.ink }}>rest days</b>. It repeats on a loop, so <b style={{ color: T.ink }}>3 on / 1 off</b> or a full <b style={{ color: T.ink }}>7-day week</b> both work.</div>
-              {customDays.map((day, idx) => (
-                <div key={day.id} style={{ background: T.input, border: `1px solid ${day.rest ? "rgba(0,209,178,.35)" : day.muscles.length ? "rgba(var(--accent-rgb),.3)" : T.line}`, borderRadius: 13, padding: 12, marginBottom: 9 }}>
+              <div style={{ fontSize: 12, color: T.sub, lineHeight: 1.5, marginBottom: 10 }}>Build your rotation in order — add training days (tap the muscles they hit, incl. <b style={{ color: T.ink }}>Abs</b>) and <b style={{ color: T.ink }}>rest days</b>, then it <b style={{ color: T.green }}>loops forever</b>. e.g. <b style={{ color: T.ink }}>Push · Pull · Legs · Rest</b> → repeat. It rolls day-by-day, so it isn't locked to weekdays.</div>
+              {customDays.map((day, idx) => {
+                const isToday = day.id === todayDayId;
+                return (
+                <div key={day.id} style={{ background: T.input, borderRadius: 13, padding: 12, marginBottom: 9,
+                  border: `1px solid ${isToday ? "var(--accent)" : day.rest ? "rgba(0,209,178,.35)" : day.muscles.length ? "rgba(var(--accent-rgb),.3)" : T.line}`,
+                  boxShadow: isToday ? "0 0 0 2px rgba(var(--accent-rgb),.25)" : "none" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: day.rest ? 0 : 10 }}>
                     <span className="eyebrow" style={{ fontSize: 9, color: T.sub, flexShrink: 0 }}>Day {idx + 1}</span>
+                    {isToday && <span style={{ flexShrink: 0, fontSize: 8.5, fontWeight: 900, color: "#05140b", background: "var(--accent)", padding: "2px 7px", borderRadius: 99, letterSpacing: .6 }}>TODAY</span>}
                     <span style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 800, color: day.rest ? "#00D1B2" : day.muscles.length ? T.green : T.sub, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{day.rest ? "😴 Rest day" : dayLabel(day.muscles)}</span>
                     <button onClick={() => removeDay(day.id)} title="Remove day" style={{ flexShrink: 0, background: "none", border: `1px solid ${T.line}`, color: T.danger, width: 34, height: 34, borderRadius: 9, fontSize: 14 }}>🗑</button>
                   </div>
@@ -5268,11 +5280,31 @@ function CoachCard({ data, exMap, user, setData }) {
                     </div>
                   )}
                 </div>
-              ))}
+                );
+              })}
+              {/* the loop back to the top — this is what "repeats" means, made visible */}
+              {cycle.length > 0 && (
+                <div style={{ display: "flex", alignItems: "center", gap: 8, color: T.green, fontSize: 12, fontWeight: 800, padding: "2px 4px 10px", letterSpacing: .3 }}>
+                  <span style={{ fontSize: 15 }}>🔁</span>
+                  <span>Then loops back to Day 1 — repeats forever</span>
+                </div>
+              )}
               <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
                 <button onClick={addDay} style={{ flex: 1, background: T.input, border: `1px dashed ${T.line}`, color: T.green, fontWeight: 800, padding: "12px", borderRadius: 12, fontSize: 13 }}>+ Training day</button>
                 <button onClick={addRest} style={{ flex: 1, background: T.input, border: `1px dashed ${T.line}`, color: "#00D1B2", fontWeight: 800, padding: "12px", borderRadius: 12, fontSize: 13 }}>+ Rest day</button>
               </div>
+              {/* live position — proves it rolls with you, not the calendar week */}
+              {cycle.length > 0 && cyPos >= 0 && (
+                <div style={{ background: "rgba(var(--accent-rgb),.08)", border: `1px solid rgba(var(--accent-rgb),.3)`, borderRadius: 12, padding: "11px 13px", marginBottom: 4 }}>
+                  <div style={{ fontSize: 13, color: T.ink, fontWeight: 700, lineHeight: 1.45 }}>
+                    Right now you're on <span style={{ color: T.green }}>Day {cyPos + 1} · {dayTitle(cycle[cyPos])}</span>.
+                  </div>
+                  <div style={{ fontSize: 11.5, color: T.sub, lineHeight: 1.5, marginTop: 4 }}>
+                    The rotation rolls forward on its own — it won't land on the same weekday each week. Tap below to restart the loop from today.
+                  </div>
+                  <button onClick={() => setCycleStart(todayStr())} style={{ marginTop: 9, background: T.input, border: `1px solid ${T.line}`, color: T.green, fontWeight: 800, fontSize: 12.5, padding: "8px 14px", borderRadius: 99 }}>▶ Start the loop from today</button>
+                </div>
+              )}
             </div>
           )}
 
