@@ -4938,6 +4938,44 @@ const groupsLoggedOn = (log, exMap, date) => {
   for (const e of log) if (e.date === date) { const m = exMap[e.exercise]?.muscle; if (m) s.add(m); }
   return s;
 };
+/* Where you are in a custom rotation TODAY. Rather than blindly counting days from a
+   fixed anchor (which drifts if you skip days), we look at your most recent workout,
+   match it to the closest day in your cycle (best muscle overlap), then roll forward by
+   the days elapsed since. Falls back to the manual cycleStart anchor before you've logged
+   anything that matches. Returns { cycle, idx } (idx = -1 when there's nothing to place). */
+function customCyclePosition(data, log, exMap) {
+  const cycle = (Array.isArray(data.profile?.customSplit) ? data.profile.customSplit : []).filter(d => d.rest || d.muscles?.length);
+  if (!cycle.length) return { cycle, idx: -1 };
+  const today = todayStr();
+  const len = cycle.length;
+  const roll = (base, days) => (((base + days) % len) + len) % len;
+  // 1) log-driven anchor: match your latest logged session to the best-fitting training day
+  const dates = [...new Set((log || []).map(e => e.date))].sort();
+  const lastDate = dates[dates.length - 1];
+  if (lastDate) {
+    const g = groupsLoggedOn(log, exMap, lastDate);
+    if (g.size) {
+      let bestIdx = -1, best = 0;
+      cycle.forEach((d, i) => {
+        if (d.rest || !d.muscles?.length) return;
+        const set = new Set(d.muscles);
+        let inter = 0; g.forEach(m => { if (set.has(m)) inter++; });
+        const uni = new Set([...d.muscles, ...g]).size;
+        const jac = uni ? inter / uni : 0;               // Jaccard overlap — how well the day matches
+        if (jac > best) { best = jac; bestIdx = i; }
+      });
+      if (bestIdx >= 0) return { cycle, idx: roll(bestIdx, dayGap(today, lastDate)) };
+    }
+  }
+  // 2) fallback: count from the manually-anchored start day
+  const start = data.profile?.cycleStart || today;
+  return { cycle, idx: roll(0, dayGap(today, start)) };
+}
+/* First non-rest day at or after startIdx (wrapping once); null if the cycle is all rest. */
+const nextTrainingDay = (cycle, startIdx) => {
+  for (let i = 0; i < cycle.length; i++) { const d = cycle[(startIdx + i) % cycle.length]; if (!d.rest && d.muscles?.length) return d; }
+  return null;
+};
 
 function coachTips(data, exMap, units) {
   const log = Array.isArray(data.log) ? data.log : [];
@@ -4977,22 +5015,20 @@ function coachTips(data, exMap, units) {
   let focusMuscles = null;
 
   if (split === "custom") {
-    // an ordered, repeating cycle of training + rest days, anchored to profile.cycleStart.
-    // Covers both "set all 7 days" and "3 on, 1 off, repeat" — it just loops.
-    const cycle = (Array.isArray(data.profile?.customSplit) ? data.profile.customSplit : []).filter(d => d.rest || d.muscles?.length);
-    if (cycle.length) {
-      const start = data.profile?.cycleStart || today;
-      const idx = (((dayGap(today, start) % cycle.length) + cycle.length) % cycle.length);
+    // a repeating cycle of training + rest days. Position is read from your ACTUAL logs
+    // (last workout matched to a cycle day, rolled forward), so it self-corrects.
+    const { cycle, idx } = customCyclePosition(data, log, exMap);
+    if (cycle.length && idx >= 0) {
       const todayEntry = cycle[idx];
-      const nextTrain = () => { for (let i = 1; i <= cycle.length; i++) { const d = cycle[(idx + i) % cycle.length]; if (!d.rest && d.muscles?.length) return d; } return null; };
+      const nextEntry = cycle[(idx + 1) % cycle.length];
+      const nextTrain = nextTrainingDay(cycle, (idx + 1) % cycle.length);
+      const nextLabel = nextEntry.rest ? "a rest day 😴" : `your "${dayLabel(nextEntry.muscles)}" day`;
       if (trainedToday) {
-        const nx = nextTrain();
-        if (nx) focusMuscles = nx.muscles;
-        pushTrain(`done-cust-${today}`, `Nice — logged ${todayList} today.${nx ? ` Next up: your "${dayLabel(nx.muscles)}" day.` : ""}`, "💪");
+        if (nextTrain) focusMuscles = nextTrain.muscles;
+        pushTrain(`done-cust-${today}`, `Nice — logged ${todayList} today. Next up: ${nextLabel}.`, "💪");
       } else if (todayEntry.rest) {
-        const nx = nextTrain();
-        if (nx) focusMuscles = nx.muscles;
-        pushTrain(`rest-cust-${today}`, `Scheduled rest day 😴 — recover, hydrate and eat well.${nx ? ` Tomorrow: your "${dayLabel(nx.muscles)}" day.` : ""}`, "🛌");
+        if (nextTrain) focusMuscles = nextTrain.muscles;
+        pushTrain(`rest-cust-${today}`, `Scheduled rest day 😴 — recover, hydrate and eat well. Tomorrow: ${nextLabel}.`, "🛌");
       } else {
         focusMuscles = todayEntry.muscles;
         pushTrain(`train-cust-${todayEntry.id}-${today}`, `Today's your "${dayLabel(todayEntry.muscles)}" day — go hit ${dayLabel(todayEntry.muscles)}.`);
@@ -5117,7 +5153,8 @@ function coachTips(data, exMap, units) {
   const totalSets = Object.values(wsets).reduce((a, b) => a + b, 0);
   if (totalSets >= 6) {
     // prefer a muscle you're about to train (focus) that's behind; else the one furthest below.
-    const behind = (m) => { const tgt = targets[m]; if (!tgt) return null; const got = wsets[m] || 0; if (got < 1) return null; const deficit = tgt - got; return deficit >= 3 ? { m, got, tgt, deficit } : null; };
+    // Skip anything you already trained today — you can't act on it now; it'll resurface later.
+    const behind = (m) => { if (todayGroups.has(m)) return null; const tgt = targets[m]; if (!tgt) return null; const got = wsets[m] || 0; if (got < 1) return null; const deficit = tgt - got; return deficit >= 3 ? { m, got, tgt, deficit } : null; };
     const pickWorst = (pool) => pool.map(behind).filter(Boolean).sort((a, b) => b.deficit - a.deficit)[0] || null;
     const worst = (focusMuscles && focusMuscles.length && pickWorst(focusMuscles)) || pickWorst(MUSCLES);
     if (worst) tips.push({ key: `vol-${worst.m}-${wk}`, icon: "📊", cat: "Volume",
@@ -5171,9 +5208,8 @@ function CoachCard({ data, exMap, user, setData }) {
   // won't land on the same weekday each week; it just repeats on its own rhythm.
   const anchorCycle = () => setData(d => ({ ...d, profile: { ...(d.profile || {}), cycleStart: todayStr() } }));
   const setCycleStart = (dateStr) => setData(d => ({ ...d, profile: { ...(d.profile || {}), cycleStart: dateStr } }));
-  const cycle = customDays.filter(x => x.rest || x.muscles?.length);
-  const cyStart = data.profile?.cycleStart || todayStr();
-  const cyPos = cycle.length ? (((dayGap(todayStr(), cyStart) % cycle.length) + cycle.length) % cycle.length) : -1;
+  // position is read from your logs (same logic the coach uses), so the builder agrees with the tips
+  const { cycle, idx: cyPos } = customCyclePosition(data, data.log || [], exMap);
   const todayDayId = cyPos >= 0 ? cycle[cyPos].id : null;
   // editable weekly set targets per muscle (science-based defaults)
   const targets = setTargetsOf(data);
@@ -5329,7 +5365,7 @@ function CoachCard({ data, exMap, user, setData }) {
                     Right now you're on <span style={{ color: T.green }}>Day {cyPos + 1} · {dayTitle(cycle[cyPos])}</span>.
                   </div>
                   <div style={{ fontSize: 11.5, color: T.sub, lineHeight: 1.5, marginTop: 4 }}>
-                    The rotation rolls forward on its own — it won't land on the same weekday each week. Tap below to restart the loop from today.
+                    The coach reads your last workout to place you here, then rolls forward — it won't lock to weekdays. Tap below to hard-reset the loop to start today.
                   </div>
                   <button onClick={() => setCycleStart(todayStr())} style={{ marginTop: 9, background: T.input, border: `1px solid ${T.line}`, color: T.green, fontWeight: 800, fontSize: 12.5, padding: "8px 14px", borderRadius: 99 }}>▶ Start the loop from today</button>
                 </div>
