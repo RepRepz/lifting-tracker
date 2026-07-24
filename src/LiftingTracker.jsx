@@ -5738,25 +5738,21 @@ function FriendsTab({ user, nutritionOn, streaksOn, isPro, openPro }) {
   const isOwner = active?.created_by === user.id;
   // which lifts the group's strength board tracks — owner-configurable, defaults to the big lifts
   const recordLifts = (Array.isArray(active?.record_lifts) && active.record_lifts.length) ? active.record_lifts : BIG_LIFTS;
-  const [editLifts, setEditLifts] = useState(false);
-  const [draftLifts, setDraftLifts] = useState([]);
-  const [openLift, setOpenLift] = useState(null);   // which lift's PR breakdown is expanded
+  // every exercise the owner can point a column at: the big lifts + anything anyone's logged
   const liftOptions = useMemo(() => {
-    const s = new Set(BIG_LIFTS);
+    const s = new Set([...BIG_LIFTS, ...recordLifts]);
     for (const m of (members || [])) for (const e of (states[m.user_id]?.log || [])) if (e.exercise) s.add(e.exercise);
     return [...s].sort();
-  }, [members, states]);
-  const openLiftEditor = () => { setDraftLifts(recordLifts.slice()); setEditLifts(true); };
-  const toggleDraftLift = (l) => setDraftLifts(ls => ls.includes(l) ? ls.filter(x => x !== l) : [...ls, l]);
-  const saveLifts = async () => {
-    const list = draftLifts.length ? draftLifts : null; // empty selection → fall back to defaults
-    try {
-      await setGroupRecordLifts(active.id, list);
-      setActive(a => ({ ...a, record_lifts: list }));
-      setGroups(gs => gs.map(g => g.id === active.id ? { ...g, record_lifts: list } : g));
-      setEditLifts(false);
-    } catch (e) { setErr(String(e?.message || e)); }
+  }, [members, states, recordLifts]);
+  // owner-only: persist the column set (optimistic + server). null → back to default big lifts.
+  const commitLifts = (list) => {
+    const val = (list && list.length) ? list : null;
+    setActive(a => ({ ...a, record_lifts: val }));
+    setGroups(gs => gs.map(g => g.id === active.id ? { ...g, record_lifts: val } : g));
+    setGroupRecordLifts(active.id, val).catch(e => setErr(String(e?.message || e)));
   };
+  const swapLift = (i, ex) => { const b = recordLifts.slice(); if (ex === "__remove__") b.splice(i, 1); else b[i] = ex; commitLifts(b); };
+  const addLift = () => { const used = new Set(recordLifts); const opt = liftOptions.find(o => !used.has(o)) || liftOptions[0]; if (opt) commitLifts([...recordLifts, opt]); };
 
   const startDuel = async () => {
     if (!profile) return;
@@ -6448,75 +6444,41 @@ function FriendsTab({ user, nutritionOn, streaksOn, isPro, openPro }) {
               desc="You can see the squad's steps here — go Pro to auto-track your own, climb the board, and challenge friends to head-to-head step duels ⚔️" />}
 
         <div className="card">
-          <div style={{display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:8, marginBottom:2}}>
-            <div className="h" style={{fontSize:17, color:T.tealDk}}>🏋️ Strength — best est. 1RM ({uLabel(units)})</div>
-            {isOwner && !editLifts && (
-              <button onClick={openLiftEditor} title="Choose which lifts this group tracks" style={{flexShrink:0, background:T.input, border:`1px solid ${T.line}`, color:T.ink, fontSize:12, fontWeight:700, padding:"5px 11px", borderRadius:99}}>✎ Lifts</button>
-            )}
+          <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:2}}>🏋️ Strength — best est. 1RM ({uLabel(units)})</div>
+          <div style={{fontSize:12, color:T.sub, marginBottom:8}}>Green = group best.{isOwner ? " Tap a column's exercise to swap what it tracks — everyone's number updates." : ""}</div>
+          <div style={{overflowX:"auto"}}>
+            <table><thead><tr>
+              <th>Member</th>
+              {recordLifts.map((l,i)=>(
+                <th key={i} style={{textAlign:"center", minWidth: isOwner?104:undefined}}>
+                  {isOwner ? (
+                    <select value={l} onChange={e=>swapLift(i, e.target.value)} title={l}
+                      style={{background:T.input, color:T.ink, border:`1px solid ${T.line}`, borderRadius:8, padding:"5px 6px", fontSize:12, fontWeight:700, maxWidth:120, cursor:"pointer"}}>
+                      {!liftOptions.includes(l) && <option value={l}>{l}</option>}
+                      {liftOptions.map(o=><option key={o} value={o}>{o}</option>)}
+                      <option value="__remove__">✕ Remove column</option>
+                    </select>
+                  ) : liftShort(l)}
+                </th>
+              ))}
+              {isOwner && recordLifts.length < 8 && (
+                <th style={{textAlign:"center"}}>
+                  <button onClick={addLift} title="Add a lift column" style={{background:T.input, border:`1px solid ${T.line}`, color:T.green, fontWeight:800, fontSize:15, width:30, height:30, borderRadius:8}}>＋</button>
+                </th>
+              )}
+            </tr></thead>
+              <tbody>{strength.rows.map(r=>(
+                <tr key={r.uid}>
+                  <td>{nameEl(r.uid, r.user, { you: r.uid===user.id, weight: r.uid===user.id?700:400 })}</td>
+                  {recordLifts.map((l,i)=>(
+                    <td key={i} style={{ textAlign:"center", color: r.lifts[l] && r.lifts[l]===strength.best[l] ? T.green : T.ink, fontWeight: r.lifts[l] && r.lifts[l]===strength.best[l] ? 700 : 400 }}>
+                      {r.lifts[l] == null ? "—" : dispW(r.lifts[l], units)}
+                    </td>
+                  ))}
+                  {isOwner && recordLifts.length < 8 && <td />}
+                </tr>
+              ))}</tbody></table>
           </div>
-          <div style={{fontSize:12, color:T.sub, marginBottom:8}}>Tap a lift to see everyone's best estimated 1RM.{isOwner && !editLifts ? " Owner picks which lifts show." : ""}</div>
-
-          {editLifts ? (
-            <div style={{background:T.input, border:`1px solid ${T.line}`, borderRadius:12, padding:12}}>
-              <div style={{fontSize:12.5, color:T.sub, lineHeight:1.5, marginBottom:10}}>Tap the lifts your group cares about — they become the columns here and drive the <b style={{color:T.ink}}>Top 1RM</b> record. Only you (the owner) can change this.</div>
-              <div style={{display:"flex", flexWrap:"wrap", gap:7, marginBottom:12}}>
-                {liftOptions.map(l=>{
-                  const on = draftLifts.includes(l);
-                  return (
-                    <button key={l} onClick={()=>toggleDraftLift(l)} style={{
-                      padding:"7px 13px", borderRadius:99, fontSize:12.5, fontWeight:700,
-                      background: on ? "linear-gradient(180deg, rgba(var(--accent-rgb),.24), rgba(var(--accent-rgb),.12))" : T.card,
-                      color: on ? T.green : T.sub, border:`1px solid ${on ? "rgba(var(--accent-rgb),.45)" : T.line}`,
-                    }}>{on ? "✓ " : ""}{l}</button>
-                  );
-                })}
-              </div>
-              <div style={{fontSize:11.5, color:T.sub, marginBottom:10}}>{draftLifts.length ? `${draftLifts.length} selected` : "None selected — saving will reset to the default big lifts."}</div>
-              <div style={{display:"flex", gap:8}}>
-                <button onClick={saveLifts} className="btn-primary" style={{flex:1, padding:"10px", fontSize:13.5}}>Save</button>
-                <button onClick={()=>setEditLifts(false)} style={{background:T.card, color:T.sub, border:`1px solid ${T.line}`, padding:"10px 16px", fontSize:13.5, borderRadius:10}}>Cancel</button>
-              </div>
-            </div>
-          ) : (
-            <div>
-              {recordLifts.map(l => {
-                const ranked = strength.rows.map(r => ({ uid:r.uid, user:r.user, val:r.lifts[l] })).filter(x => x.val != null).sort((a,b)=>b.val-a.val);
-                const best = strength.best[l] || 0;
-                const leader = ranked[0];
-                const isOpen = openLift === l;
-                return (
-                  <div key={l} style={{borderTop:`1px solid ${T.creamLine}`}}>
-                    <button onClick={()=>setOpenLift(isOpen?null:l)} style={{width:"100%", background:"none", display:"flex", alignItems:"center", gap:10, padding:"12px 2px", textAlign:"left"}}>
-                      <span style={{flex:1, minWidth:0, fontSize:14, fontWeight:700, color:T.ink, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{l}</span>
-                      {best>0 ? (
-                        <span style={{display:"flex", alignItems:"center", gap:6, minWidth:0}}>
-                          <span style={{fontSize:12, color:T.sub, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", maxWidth:96}}>👑 {leader?.user}{leader?.uid===user.id?" (you)":""}</span>
-                          <span style={{fontSize:13.5, fontWeight:800, color:T.green, fontVariantNumeric:"tabular-nums", flexShrink:0}}>{dispW(best,units)}{uLabel(units)}</span>
-                        </span>
-                      ) : <span style={{fontSize:12.5, color:T.sub}}>no data</span>}
-                      <span style={{flexShrink:0, color:T.sub, fontSize:11, transform:isOpen?"rotate(180deg)":"none", transition:"transform .2s"}}>▼</span>
-                    </button>
-                    {isOpen && (
-                      <div style={{padding:"0 2px 12px"}}>
-                        {ranked.length === 0 ? (
-                          <div style={{fontSize:12.5, color:T.sub, padding:"2px 0 6px"}}>No one's logged {l} yet.</div>
-                        ) : ranked.map((x,i)=>(
-                          <div key={x.uid} style={{display:"flex", alignItems:"center", gap:9, padding:"7px 0"}}>
-                            <span style={{width:20, flexShrink:0, textAlign:"center", fontWeight:800, fontSize:13, color:i===0?T.green:T.sub}}>{i===0?"👑":i+1}</span>
-                            <span style={{flex:"0 1 auto", minWidth:40, maxWidth:150, display:"flex", fontSize:13.5}}>{nameEl(x.uid, x.user, { you: x.uid===user.id })}</span>
-                            <span style={{flex:1, minWidth:36, height:7, background:T.input, borderRadius:99, overflow:"hidden"}}>
-                              <span style={{display:"block", width:`${x.val/best*100}%`, height:"100%", background:i===0?T.green:"rgba(var(--accent-rgb),.5)", borderRadius:99, transition:"width .5s ease"}} />
-                            </span>
-                            <b style={{fontSize:13, flexShrink:0, minWidth:54, textAlign:"right", color:T.ink, fontVariantNumeric:"tabular-nums"}}>{dispW(x.val,units)}{uLabel(units)}</b>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
         </div>
 
         {records.length > 0 && (
