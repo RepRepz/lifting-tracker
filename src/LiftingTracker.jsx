@@ -514,8 +514,10 @@ export default function LiftingTracker({ user }) {
         @media(hover:hover){ tbody tr { transition:background .15s ease; } tbody tr:hover { background:rgba(var(--accent-rgb),.05); } }
         /* group-strength exercise picker menu — hover "hit box" so you can see what you'll click */
         [data-lift-menu] .lift-opt { width:100%; display:flex; align-items:center; gap:8px; text-align:left; background:none; border:1px solid transparent; border-radius:10px; cursor:pointer; font-family:inherit; font-size:13.5px; font-weight:600; color:${T.ink}; padding:11px 12px; white-space:nowrap; overflow:hidden; transition:background .12s ease, border-color .12s ease, color .12s ease; }
-        [data-lift-menu] .lift-opt > span { overflow:hidden; text-overflow:ellipsis; }
-        [data-lift-menu] .lift-opt .tick { flex-shrink:0; width:15px; text-align:center; color:${T.green}; }
+        [data-lift-menu] .lift-opt .name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; }
+        [data-lift-menu] .lift-opt .name .sub { color:${T.sub}; font-weight:500; font-size:12px; }
+        @media(hover:hover){ [data-lift-menu] .lift-opt:hover .name .sub { color:color-mix(in srgb, var(--accent) 60%, ${T.sub}); } }
+        [data-lift-menu] .lift-opt .tick { flex-shrink:0; color:${T.green}; font-weight:900; }
         @media(hover:hover){ [data-lift-menu] .lift-opt:hover { background:rgba(var(--accent-rgb),.13); border-color:rgba(var(--accent-rgb),.4); color:${T.green}; } }
         [data-lift-menu] .lift-opt.sel { background:rgba(var(--accent-rgb),.09); color:${T.green}; font-weight:800; }
         @media(hover:hover){ [data-lift-menu] .lift-opt.sel:hover { background:rgba(var(--accent-rgb),.17); border-color:rgba(var(--accent-rgb),.4); } }
@@ -1127,14 +1129,6 @@ function LogTab({ data, exMap, setData, routinesOn }) {
     if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  // exercise search (matches anywhere in the name)
-  const [exQ, setExQ] = useState("");
-  const exMatches = useMemo(() => {
-    const q = exQ.trim().toLowerCase();
-    if (!q) return [];
-    return data.exercises.filter(x => x.name.toLowerCase().includes(q)).slice(0, 8);
-  }, [exQ, data.exercises]);
-
   const [histQ, setHistQ] = useState("");
   const [histLimit, setHistLimit] = useState(50); // show newest 50, "Show more" reveals the rest
   const histFull = useMemo(() => {
@@ -1194,30 +1188,9 @@ function LogTab({ data, exMap, setData, routinesOn }) {
         <label style={lbl}>Set #<input type="number" min="1" value={setNum} onChange={e=>setSetNum(parseInt(e.target.value)||1)} /></label>
       </div>
       <label style={lbl}>Exercise
-        <input value={exQ} onChange={e=>setExQ(e.target.value)} placeholder="🔍 Type to search (e.g. push)…"
-          autoCapitalize="none" autoCorrect="off" spellCheck={false} style={{marginBottom:6}} />
-        {exMatches.length > 0 && (
-          <div style={{border:`1px solid ${T.line}`, borderRadius:10, overflow:"hidden", marginBottom:6}}>
-            {exMatches.map(x=>(
-              <button key={x.name} type="button" onClick={()=>{ startNewExercise(x.name); setExQ(""); }}
-                style={{display:"block", width:"100%", textAlign:"left", padding:"11px 13px", background:T.input,
-                  color:T.ink, borderRadius:0, borderBottom:`1px solid ${T.line}`, fontSize:14.5, fontWeight:600}}>
-                {x.name} <span style={{color:T.sub, fontSize:12, fontWeight:500}}>· {muscleOf(x)}</span>
-              </button>
-            ))}
-          </div>
-        )}
-        {exQ.trim() && !exMatches.length && (
-          <div style={{fontSize:12.5, color:T.sub, marginBottom:6}}>No match — you can add new moves in the 📚 Library tab.</div>
-        )}
-        <select value={exName} onChange={e=>startNewExercise(e.target.value)}>
-          <option value="">— pick an exercise —</option>
-          {MUSCLES.map(m => (
-            <optgroup key={m} label={m}>
-              {data.exercises.filter(x=>muscleOf(x)===m).map(x=><option key={x.name}>{x.name}</option>)}
-            </optgroup>
-          ))}
-        </select>
+        <div style={{ marginTop: 6 }}>
+          <ExercisePicker exercises={data.exercises} value={exName} onPick={startNewExercise} />
+        </div>
       </label>
 
       {exName && (
@@ -1603,10 +1576,11 @@ function ConfirmX({ onConfirm, label }) {
   );
 }
 
-/* A high-tech column-header picker for the group strength table. Shows a compact,
-   app-font label; clicking opens a fixed-position menu (so the table's horizontal
-   scroll can't clip it) to swap the tracked exercise or remove the column. */
-function LiftHeaderPicker({ value, options, onPick, onRemove }) {
+/* Reusable searchable dropdown. Renders its own trigger via `renderButton` and a
+   fixed-position, viewport-clamped menu through a portal on <body> — so a transformed
+   or overflow-scrolled ancestor can't offset or clip it. Used by the group strength
+   header pickers and the Logs exercise field. items: [{ value, label, sub, selected }]. */
+function DropdownPicker({ renderButton, items, onPick, footer, placeholder = "Search…", emptyHint, desiredWidth = 230, matchWidth = false }) {
   const [open, setOpen] = useState(false);
   const [rect, setRect] = useState(null);
   const [query, setQuery] = useState("");
@@ -1615,11 +1589,9 @@ function LiftHeaderPicker({ value, options, onPick, onRemove }) {
   useEffect(() => {
     if (!open) return;
     const onDown = (e) => { if (btnRef.current && !btnRef.current.contains(e.target) && !e.target.closest?.("[data-lift-menu]")) setOpen(false); };
-    // Close when the PAGE scrolls, but NOT when the menu's own list is scrolled —
-    // otherwise scrolling to reach lower exercises instantly closed the menu.
+    // Close when the PAGE scrolls, but NOT when the menu's own list is scrolled.
     const onScroll = (e) => { if (e.target?.closest?.("[data-lift-menu]")) return; setOpen(false); };
-    // Only close on a real resize (orientation) — NOT the height change from the phone
-    // keyboard opening when the search box autofocuses.
+    // Only close on a real resize (orientation) — NOT the phone keyboard opening on autofocus.
     const w0 = window.innerWidth;
     const onResize = () => { if (window.innerWidth !== w0) setOpen(false); };
     document.addEventListener("pointerdown", onDown);
@@ -1627,73 +1599,112 @@ function LiftHeaderPicker({ value, options, onPick, onRemove }) {
     window.addEventListener("scroll", onScroll, true);
     return () => { document.removeEventListener("pointerdown", onDown); window.removeEventListener("resize", onResize); window.removeEventListener("scroll", onScroll, true); };
   }, [open]);
-  // fresh search box + focus each time it opens
   useEffect(() => { if (!open) return; setQuery(""); const t = setTimeout(() => inputRef.current?.focus(), 40); return () => clearTimeout(t); }, [open]);
-  const q = query.trim().toLowerCase();
-  const filtered = q ? options.filter(o => o.toLowerCase().includes(q)) : options;
   const toggle = () => { if (!open && btnRef.current) setRect(btnRef.current.getBoundingClientRect()); setOpen(o => !o); };
-  // Menu geometry, clamped to the viewport. Rendered through a portal on <body> so a
-  // transformed/overflow ancestor can't offset or clip it (that was the "flies to the
-  // side / invisible on phone" bug — position:fixed was resolving against a transformed parent).
+  const q = query.trim().toLowerCase();
+  const filtered = q ? items.filter(it => it.label.toLowerCase().includes(q) || (it.sub || "").toLowerCase().includes(q)) : items;
+  const pick = (it) => { onPick(it.value); setOpen(false); };
   const vw = typeof window !== "undefined" ? window.innerWidth : 360;
   const vh = typeof window !== "undefined" ? window.innerHeight : 640;
-  const W = Math.min(230, vw - 16);
+  const W = matchWidth && rect ? Math.min(Math.max(rect.width, 220), vw - 16) : Math.min(desiredWidth, vw - 16);
   let menuStyle = null;
   if (rect) {
-    const left = Math.min(Math.max(rect.left + rect.width / 2 - W / 2, 8), vw - W - 8);
+    const left = matchWidth
+      ? Math.min(Math.max(rect.left, 8), vw - W - 8)
+      : Math.min(Math.max(rect.left + rect.width / 2 - W / 2, 8), vw - W - 8);
     const spaceBelow = vh - rect.bottom;
-    const openUp = spaceBelow < 220 && rect.top > spaceBelow;
-    const maxH = Math.max(140, (openUp ? rect.top - 12 : spaceBelow - 12));
+    const openUp = spaceBelow < 240 && rect.top > spaceBelow;
+    const maxH = Math.max(160, (openUp ? rect.top - 12 : spaceBelow - 12));
     menuStyle = openUp
-      ? { position: "fixed", bottom: vh - rect.top + 6, left, width: W, maxHeight: Math.min(320, maxH) }
-      : { position: "fixed", top: rect.bottom + 6, left, width: W, maxHeight: Math.min(320, maxH) };
+      ? { position: "fixed", bottom: vh - rect.top + 6, left, width: W, maxHeight: Math.min(340, maxH) }
+      : { position: "fixed", top: rect.bottom + 6, left, width: W, maxHeight: Math.min(340, maxH) };
   }
   return (
     <>
-      <button ref={btnRef} onClick={toggle} title={value} style={{
-        display: "inline-flex", alignItems: "center", gap: 6, justifyContent: "center",
-        background: open ? "rgba(var(--accent-rgb),.14)" : T.input,
-        border: `1px solid ${open ? "var(--accent)" : T.line}`, borderRadius: 9,
-        color: T.ink, fontFamily: "inherit", fontSize: 11, fontWeight: 800, letterSpacing: ".5px", textTransform: "uppercase",
-        padding: "7px 10px", cursor: "pointer", maxWidth: 120, whiteSpace: "nowrap",
-      }}>
-        <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{liftShort(value)}</span>
-        <span style={{ fontSize: 8, color: open ? "var(--accent)" : T.sub }}>▼</span>
-      </button>
+      {renderButton({ ref: btnRef, toggle, open })}
       {open && menuStyle && createPortal(
         <div data-lift-menu style={{
           ...menuStyle, zIndex: 3000, display: "flex", flexDirection: "column", textAlign: "left",
           background: T.card, border: `1px solid ${T.line}`, borderRadius: 12, boxShadow: "0 18px 44px -12px rgba(0,0,0,.65)",
         }}>
-          {/* search box — pinned to the top */}
           <div style={{ padding: 8, borderBottom: `1px solid ${T.line}`, flexShrink: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 7, background: T.input, border: `1px solid ${T.line}`, borderRadius: 9, padding: "0 10px" }}>
               <span style={{ fontSize: 13, color: T.sub }}>🔍</span>
-              <input ref={inputRef} value={query} onChange={e => setQuery(e.target.value)} placeholder="Search exercises…"
-                onKeyDown={e => { if (e.key === "Enter" && filtered[0]) { onPick(filtered[0]); setOpen(false); } else if (e.key === "Escape") setOpen(false); }}
+              <input ref={inputRef} value={query} onChange={e => setQuery(e.target.value)} placeholder={placeholder}
+                autoCapitalize="none" autoCorrect="off" spellCheck={false}
+                onKeyDown={e => { if (e.key === "Enter" && filtered[0]) pick(filtered[0]); else if (e.key === "Escape") setOpen(false); }}
                 style={{ flex: 1, minWidth: 0, background: "none", border: "none", outline: "none", boxShadow: "none", color: T.ink, fontFamily: "inherit", fontSize: 13, fontWeight: 600, padding: "9px 0" }} />
               {query && <button onClick={() => { setQuery(""); inputRef.current?.focus(); }} style={{ background: "none", border: "none", color: T.sub, fontSize: 14, cursor: "pointer", padding: "2px 2px" }}>✕</button>}
             </div>
           </div>
-          {/* scrollable results */}
           <div style={{ flex: 1, minHeight: 0, overflowY: "auto", WebkitOverflowScrolling: "touch", overscrollBehavior: "contain", touchAction: "pan-y", padding: 6, display: "flex", flexDirection: "column", gap: 1 }}>
             {filtered.length === 0 ? (
-              <div style={{ fontSize: 12.5, color: T.sub, padding: "12px 10px" }}>No exercises match “{query}”.</div>
-            ) : filtered.map(o => (
-              <button key={o} className={"lift-opt" + (o === value ? " sel" : "")} onClick={() => { onPick(o); setOpen(false); }}>
-                <span className="tick">{o === value ? "✓" : ""}</span>
-                <span>{o}</span>
+              <div style={{ fontSize: 12.5, color: T.sub, padding: "12px 10px", lineHeight: 1.5 }}>{emptyHint || <>No matches for “{query}”.</>}</div>
+            ) : filtered.map(it => (
+              <button key={it.value} className={"lift-opt" + (it.selected ? " sel" : "")} onClick={() => pick(it)}>
+                <span className="name">{it.label}{it.sub ? <span className="sub"> · {it.sub}</span> : null}</span>
+                {it.selected && <span className="tick">✓</span>}
               </button>
             ))}
           </div>
-          {/* remove column — pinned to the bottom */}
-          <div style={{ flexShrink: 0, borderTop: `1px solid ${T.line}` }}>
-            <button className="lift-rm" onClick={() => { onRemove(); setOpen(false); }} style={{ borderRadius: "0 0 12px 12px" }}>🗑 Remove this column</button>
-          </div>
+          {footer && <div style={{ flexShrink: 0, borderTop: `1px solid ${T.line}` }}>{footer(() => setOpen(false))}</div>}
         </div>,
         document.body
       )}
     </>
+  );
+}
+
+/* Group-strength column header: compact uppercase pill that swaps/removes the tracked lift. */
+function LiftHeaderPicker({ value, options, onPick, onRemove }) {
+  const items = options.map(o => ({ value: o, label: o, selected: o === value }));
+  return (
+    <DropdownPicker
+      items={items} onPick={onPick} placeholder="Search exercises…" desiredWidth={230}
+      renderButton={({ ref, toggle, open }) => (
+        <button ref={ref} onClick={toggle} title={value} style={{
+          display: "inline-flex", alignItems: "center", gap: 6, justifyContent: "center",
+          background: open ? "rgba(var(--accent-rgb),.14)" : T.input,
+          border: `1px solid ${open ? "var(--accent)" : T.line}`, borderRadius: 9,
+          color: T.ink, fontFamily: "inherit", fontSize: 11, fontWeight: 800, letterSpacing: ".5px", textTransform: "uppercase",
+          padding: "7px 10px", cursor: "pointer", maxWidth: 120, whiteSpace: "nowrap",
+        }}>
+          <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{liftShort(value)}</span>
+          <span style={{ fontSize: 8, color: open ? "var(--accent)" : T.sub }}>▼</span>
+        </button>
+      )}
+      footer={(close) => (
+        <button className="lift-rm" onClick={() => { onRemove(); close(); }} style={{ borderRadius: "0 0 12px 12px" }}>🗑 Remove this column</button>
+      )}
+    />
+  );
+}
+
+/* Logs exercise field: a full-width searchable picker replacing the old type-to-search input. */
+function ExercisePicker({ exercises, value, onPick }) {
+  const items = useMemo(() => [...exercises]
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map(x => ({ value: x.name, label: x.name, sub: muscleOf(x), selected: x.name === value })), [exercises, value]);
+  const sel = exercises.find(x => x.name === value);
+  return (
+    <DropdownPicker
+      items={items} onPick={onPick} placeholder="Search exercises…" desiredWidth={360} matchWidth
+      emptyHint={<>No match — add new moves in the 📚 Library tab.</>}
+      renderButton={({ ref, toggle, open }) => (
+        <button ref={ref} onClick={toggle} type="button" style={{
+          width: "100%", display: "flex", alignItems: "center", gap: 8, textAlign: "left",
+          background: T.input, border: `1px solid ${open ? "var(--accent)" : T.line}`, borderRadius: 12,
+          color: sel ? T.ink : T.sub, fontFamily: "inherit", fontSize: 15, fontWeight: 600, padding: "12px 13px", minHeight: 46, cursor: "pointer",
+          boxShadow: open ? "0 0 0 3px rgba(var(--accent-rgb),.18)" : "none",
+        }}>
+          <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {sel ? sel.name : "Pick an exercise"}
+            {sel && <span style={{ color: T.sub, fontWeight: 500, fontSize: 13, marginLeft: 7 }}>· {muscleOf(sel)}</span>}
+          </span>
+          <span style={{ fontSize: 9, color: open ? "var(--accent)" : T.sub, flexShrink: 0 }}>▼</span>
+        </button>
+      )}
+    />
   );
 }
 
