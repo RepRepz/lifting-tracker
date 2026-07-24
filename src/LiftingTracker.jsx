@@ -4924,6 +4924,11 @@ const ARNOLD_NAME = { cb: "chest & back", sa: "shoulders & arms", legs: "legs" }
    per muscle per week as the growth sweet spot; these defaults sit mid-range and
    are fully editable per user (data.profile.setTargets). */
 const REC_SETS = { Chest: 14, Back: 16, Shoulders: 16, Biceps: 14, Triceps: 12, Legs: 16, Abs: 10 };
+/* Which muscles a push/pull/legs (and Arnold) day actually targets — used to keep
+   the coach's insights relevant to the day it's pointing you at. */
+const GROUP_MUSCLES = { push: ["Chest", "Shoulders", "Triceps"], pull: ["Back", "Biceps"], legs: ["Legs"] };
+const ARNOLD_MUSCLES = { cb: ["Chest", "Back"], sa: ["Shoulders", "Biceps", "Triceps"], legs: ["Legs"] };
+const ALL_UPPER = ["Chest", "Back", "Shoulders", "Biceps", "Triceps"];
 const setTargetsOf = (data) => ({ ...REC_SETS, ...(data.profile?.setTargets || {}) });
 /* A custom-split day can be a rest day; label it accordingly. */
 const dayTitle = (day) => day?.rest ? "Rest day" : dayLabel(day?.muscles);
@@ -4956,10 +4961,7 @@ function coachTips(data, exMap, units) {
     if (t0.weight === t1.weight && (t0.reps || 0) >= 8)
       progressions.push({ ex, cur: t0.weight, curReps: t0.reps, next: t0.weight + inc, reps: Math.max(5, (t0.reps || 8) - 2) });
   }
-  progressions.sort((a, b) => (BIG_LIFT_SET.has(b.ex) - BIG_LIFT_SET.has(a.ex)));
-  for (const p of progressions.slice(0, 2))
-    tips.push({ key: `prog-${p.ex}-${p.cur}-${p.reps}`, icon: "📈", cat: "Progression",
-      text: `You hit ${dispW(p.cur, units)}${uLabel(units)}×${p.curReps} on ${p.ex} twice — try ${dispW(p.next, units)}${uLabel(units)}×${p.reps} next session.` });
+  // (progressions are pushed later, once we know which muscles today's plan targets)
 
   // ---- WHAT TO TRAIN TODAY: tailored to the user's chosen split ----
   // We never assume a rotation until they've told us their split (data.profile.split).
@@ -4970,6 +4972,9 @@ function coachTips(data, exMap, units) {
   const lastByGroup = { push: null, pull: null, legs: null };
   for (const e of log) { const g = MUSCLE_GROUP(exMap[e.exercise]?.muscle); if (g in lastByGroup && (!lastByGroup[g] || e.date > lastByGroup[g])) lastByGroup[g] = e.date; }
   const pushTrain = (key, text, icon = "📅") => tips.push({ key, icon, cat: "Train today", text });
+  // the muscles the coach is steering you toward today (or the next training day) —
+  // insights below are filtered/ranked so they stay relevant to this, not stale work.
+  let focusMuscles = null;
 
   if (split === "custom") {
     // an ordered, repeating cycle of training + rest days, anchored to profile.cycleStart.
@@ -4982,10 +4987,14 @@ function coachTips(data, exMap, units) {
       const nextTrain = () => { for (let i = 1; i <= cycle.length; i++) { const d = cycle[(idx + i) % cycle.length]; if (!d.rest && d.muscles?.length) return d; } return null; };
       if (trainedToday) {
         const nx = nextTrain();
+        if (nx) focusMuscles = nx.muscles;
         pushTrain(`done-cust-${today}`, `Nice — logged ${todayList} today.${nx ? ` Next up: your "${dayLabel(nx.muscles)}" day.` : ""}`, "💪");
       } else if (todayEntry.rest) {
-        pushTrain(`rest-cust-${today}`, `Scheduled rest day 😴 — recover, hydrate and eat well. Back at it tomorrow.`, "🛌");
+        const nx = nextTrain();
+        if (nx) focusMuscles = nx.muscles;
+        pushTrain(`rest-cust-${today}`, `Scheduled rest day 😴 — recover, hydrate and eat well.${nx ? ` Tomorrow: your "${dayLabel(nx.muscles)}" day.` : ""}`, "🛌");
       } else {
+        focusMuscles = todayEntry.muscles;
         pushTrain(`train-cust-${todayEntry.id}-${today}`, `Today's your "${dayLabel(todayEntry.muscles)}" day — go hit ${dayLabel(todayEntry.muscles)}.`);
       }
     }
@@ -4994,6 +5003,7 @@ function coachTips(data, exMap, units) {
     let staleG = null, staleD = null;
     for (const g of ["push", "pull", "legs"]) { const d = lastByGroup[g]; if (!d || d === today) continue; if (!staleD || d < staleD) { staleD = d; staleG = g; } }
     const gapS = staleD ? dayGap(today, staleD) : 0;
+    if (staleG) focusMuscles = GROUP_MUSCLES[staleG];
     if (staleG && gapS >= 3)
       pushTrain(`done-${today}`, `Nice — you trained ${todayList} today. ${GSHORT[staleG]} is your most-rested (${gapS}d) if you've got more in you.`, "💪");
     else
@@ -5002,6 +5012,7 @@ function coachTips(data, exMap, units) {
     // the push/pull/legs group left longest
     let sg = null, sd = null;
     for (const g of ["push", "pull", "legs"]) { const d = lastByGroup[g]; if (!d) continue; if (!sd || d < sd) { sd = d; sg = g; } }
+    if (sg) focusMuscles = GROUP_MUSCLES[sg];
     if (sg && dayGap(today, sd) >= 3)
       tips.push({ key: `train-${sg}-${sd}`, icon: "📅", cat: "Train today",
         text: `It's been ${dayGap(today, sd)} days since you trained ${GNAME[sg]} — a solid pick for today.` });
@@ -5011,6 +5022,7 @@ function coachTips(data, exMap, units) {
     for (const e of log) { const g = ARNOLD_DAY(exMap[e.exercise]?.muscle); if (g in lastAr && (!lastAr[g] || e.date > lastAr[g])) lastAr[g] = e.date; }
     let sg = null, sd = null;
     for (const g of ["cb", "sa", "legs"]) { const d = lastAr[g]; if (!d) continue; if (!sd || d < sd) { sd = d; sg = g; } }
+    if (sg) focusMuscles = ARNOLD_MUSCLES[sg];
     if (sg && dayGap(today, sd) >= 3)
       tips.push({ key: `train-ar-${sg}-${sd}`, icon: "📅", cat: "Train today",
         text: `It's been ${dayGap(today, sd)} days since your ${ARNOLD_NAME[sg]} day — a solid pick for today.` });
@@ -5022,6 +5034,7 @@ function coachTips(data, exMap, units) {
     if (lastUpper && lastLower) { if (lastUpper <= lastLower) { region = "upper"; rDate = lastUpper; } else { region = "lower"; rDate = lastLower; } }
     else if (lastUpper && !lastLower) { region = "lower"; rDate = lastUpper; }
     else if (lastLower && !lastUpper) { region = "upper"; rDate = lastLower; }
+    if (region) focusMuscles = region === "upper" ? ALL_UPPER : GROUP_MUSCLES.legs;
     if (region && dayGap(today, rDate) >= 2)
       tips.push({ key: `train-ul-${region}-${rDate}`, icon: "📅", cat: "Train today",
         text: `It's been ${dayGap(today, rDate)} days since your last ${region === "upper" ? "upper-body (chest/back/shoulders/arms)" : "lower-body (legs)"} session — good pick for today.` });
@@ -5037,11 +5050,26 @@ function coachTips(data, exMap, units) {
     for (const e of log) { const m = exMap[e.exercise]?.muscle; if (!m) continue; if (!lastMuscle[m] || e.date > lastMuscle[m]) lastMuscle[m] = e.date; }
     let bm = null, bd = null;
     for (const [m, d] of Object.entries(lastMuscle)) { if (!bd || d < bd) { bd = d; bm = m; } }
+    if (bm) focusMuscles = [bm];
     if (bm && dayGap(today, bd) >= 4)
       tips.push({ key: `train-bro-${bm}-${bd}`, icon: "📅", cat: "Train today",
         text: `It's been ${dayGap(today, bd)} days since you hit ${bm.toLowerCase()} — a good muscle to target today.` });
   }
   // split === "other" or unset: no rotation nudge (the card asks you to pick a split)
+
+  // ---- PROGRESSION tips, now filtered to stay relevant to today's plan ----
+  // Drop suggestions for muscles you already trained today (stale), and — when the coach
+  // knows what you're hitting next — prefer moves for those muscles.
+  const progMuscle = (ex) => exMap[ex]?.muscle;
+  let progPool = progressions.filter(p => !todayGroups.has(progMuscle(p.ex)));
+  if (focusMuscles && focusMuscles.length) {
+    const focused = progPool.filter(p => focusMuscles.includes(progMuscle(p.ex)));
+    if (focused.length) progPool = focused;   // only narrow when we actually have focus-relevant moves
+  }
+  progPool.sort((a, b) => (BIG_LIFT_SET.has(b.ex) - BIG_LIFT_SET.has(a.ex)));
+  for (const p of progPool.slice(0, 2))
+    tips.push({ key: `prog-${p.ex}-${p.cur}-${p.reps}`, icon: "📈", cat: "Progression",
+      text: `You hit ${dispW(p.cur, units)}${uLabel(units)}×${p.curReps} on ${p.ex} twice — try ${dispW(p.next, units)}${uLabel(units)}×${p.reps} next session.` });
 
   // ---- PR PROJECTION / ETA: a big lift trending up → project the next milestone ----
   for (const ex of BIG_LIFTS) {
@@ -5088,9 +5116,10 @@ function coachTips(data, exMap, units) {
   for (const e of log) { if (weekStart(e.date) !== wk) continue; for (const [m, c] of muscleCredits(exMap[e.exercise])) wsets[m] = (wsets[m] || 0) + c; }
   const totalSets = Object.values(wsets).reduce((a, b) => a + b, 0);
   if (totalSets >= 6) {
-    // surface the muscle furthest below its target (that you've at least started)
-    let worst = null;
-    for (const m of MUSCLES) { const tgt = targets[m]; if (!tgt) continue; const got = wsets[m] || 0; if (got < 1) continue; const deficit = tgt - got; if (deficit >= 3 && (!worst || deficit > worst.deficit)) worst = { m, got, tgt, deficit }; }
+    // prefer a muscle you're about to train (focus) that's behind; else the one furthest below.
+    const behind = (m) => { const tgt = targets[m]; if (!tgt) return null; const got = wsets[m] || 0; if (got < 1) return null; const deficit = tgt - got; return deficit >= 3 ? { m, got, tgt, deficit } : null; };
+    const pickWorst = (pool) => pool.map(behind).filter(Boolean).sort((a, b) => b.deficit - a.deficit)[0] || null;
+    const worst = (focusMuscles && focusMuscles.length && pickWorst(focusMuscles)) || pickWorst(MUSCLES);
     if (worst) tips.push({ key: `vol-${worst.m}-${wk}`, icon: "📊", cat: "Volume",
       text: `${worst.m} is at ${Math.round(worst.got)} of your ${worst.tgt} weekly-set target — add ${Math.ceil(worst.deficit)} more set${Math.ceil(worst.deficit) === 1 ? "" : "s"} this week to keep growing.` });
   }
