@@ -1603,10 +1603,13 @@ function LiftHeaderPicker({ value, options, onPick, onRemove }) {
     if (!open) return;
     const close = () => setOpen(false);
     const onDown = (e) => { if (btnRef.current && !btnRef.current.contains(e.target) && !e.target.closest?.("[data-lift-menu]")) setOpen(false); };
+    // Close when the PAGE scrolls, but NOT when the menu's own list is scrolled —
+    // otherwise scrolling to reach lower exercises instantly closed the menu.
+    const onScroll = (e) => { if (e.target?.closest?.("[data-lift-menu]")) return; setOpen(false); };
     document.addEventListener("pointerdown", onDown);
     window.addEventListener("resize", close);
-    window.addEventListener("scroll", close, true);
-    return () => { document.removeEventListener("pointerdown", onDown); window.removeEventListener("resize", close); window.removeEventListener("scroll", close, true); };
+    window.addEventListener("scroll", onScroll, true);
+    return () => { document.removeEventListener("pointerdown", onDown); window.removeEventListener("resize", close); window.removeEventListener("scroll", onScroll, true); };
   }, [open]);
   const toggle = () => { if (!open && btnRef.current) setRect(btnRef.current.getBoundingClientRect()); setOpen(o => !o); };
   // Menu geometry, clamped to the viewport. Rendered through a portal on <body> so a
@@ -1639,7 +1642,7 @@ function LiftHeaderPicker({ value, options, onPick, onRemove }) {
       </button>
       {open && menuStyle && createPortal(
         <div data-lift-menu style={{
-          ...menuStyle, zIndex: 3000, overflowY: "auto", textAlign: "left",
+          ...menuStyle, zIndex: 3000, overflowY: "auto", WebkitOverflowScrolling: "touch", overscrollBehavior: "contain", touchAction: "pan-y", textAlign: "left",
           background: T.card, border: `1px solid ${T.line}`, borderRadius: 12, boxShadow: "0 18px 44px -12px rgba(0,0,0,.65)", padding: 6,
         }}>
           <div className="eyebrow" style={{ fontSize: 9, color: T.sub, padding: "4px 8px 6px" }}>Track this column</div>
