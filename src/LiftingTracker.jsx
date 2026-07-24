@@ -1129,6 +1129,16 @@ function LogTab({ data, exMap, setData, routinesOn }) {
     if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
+  // exercise search — Logs tab's own inline search (matches the name OR the muscle)
+  const [exQ, setExQ] = useState("");
+  const exMatches = useMemo(() => {
+    const q = exQ.trim().toLowerCase();
+    if (!q) return [];
+    return data.exercises
+      .filter(x => x.name.toLowerCase().includes(q) || muscleOf(x).toLowerCase().includes(q))
+      .slice(0, 12);
+  }, [exQ, data.exercises]);
+
   const [histQ, setHistQ] = useState("");
   const [histLimit, setHistLimit] = useState(50); // show newest 50, "Show more" reveals the rest
   const histFull = useMemo(() => {
@@ -1188,9 +1198,30 @@ function LogTab({ data, exMap, setData, routinesOn }) {
         <label style={lbl}>Set #<input type="number" min="1" value={setNum} onChange={e=>setSetNum(parseInt(e.target.value)||1)} /></label>
       </div>
       <label style={lbl}>Exercise
-        <div style={{ marginTop: 6 }}>
-          <ExercisePicker exercises={data.exercises} value={exName} onPick={startNewExercise} />
-        </div>
+        <input value={exQ} onChange={e=>setExQ(e.target.value)} placeholder="🔍 Type to search (e.g. push, chest)…"
+          autoCapitalize="none" autoCorrect="off" spellCheck={false} style={{marginBottom:6}} />
+        {exMatches.length > 0 && (
+          <div style={{border:`1px solid ${T.line}`, borderRadius:10, overflow:"hidden", marginBottom:6}}>
+            {exMatches.map(x=>(
+              <button key={x.name} type="button" onClick={()=>{ startNewExercise(x.name); setExQ(""); }}
+                style={{display:"block", width:"100%", textAlign:"left", padding:"11px 13px", background:T.input,
+                  color:T.ink, borderRadius:0, borderBottom:`1px solid ${T.line}`, fontSize:14.5, fontWeight:600}}>
+                {x.name} <span style={{color:T.sub, fontSize:12, fontWeight:500}}>· {muscleOf(x)}</span>
+              </button>
+            ))}
+          </div>
+        )}
+        {exQ.trim() && !exMatches.length && (
+          <div style={{fontSize:12.5, color:T.sub, marginBottom:6}}>No match — you can add new moves in the 📚 Library tab.</div>
+        )}
+        <select value={exName} onChange={e=>startNewExercise(e.target.value)}>
+          <option value="">— pick an exercise —</option>
+          {MUSCLES.map(m => (
+            <optgroup key={m} label={m}>
+              {data.exercises.filter(x=>muscleOf(x)===m).map(x=><option key={x.name}>{x.name}</option>)}
+            </optgroup>
+          ))}
+        </select>
       </label>
 
       {exName && (
@@ -1675,34 +1706,6 @@ function LiftHeaderPicker({ value, options, onPick, onRemove }) {
       )}
       footer={(close) => (
         <button className="lift-rm" onClick={() => { onRemove(); close(); }} style={{ borderRadius: "0 0 12px 12px" }}>🗑 Remove this column</button>
-      )}
-    />
-  );
-}
-
-/* Logs exercise field: a full-width searchable picker replacing the old type-to-search input. */
-function ExercisePicker({ exercises, value, onPick }) {
-  const items = useMemo(() => [...exercises]
-    .sort((a, b) => a.name.localeCompare(b.name))
-    .map(x => ({ value: x.name, label: x.name, sub: muscleOf(x), selected: x.name === value })), [exercises, value]);
-  const sel = exercises.find(x => x.name === value);
-  return (
-    <DropdownPicker
-      items={items} onPick={onPick} placeholder="Search exercises…" desiredWidth={360} matchWidth
-      emptyHint={<>No match — add new moves in the 📚 Library tab.</>}
-      renderButton={({ ref, toggle, open }) => (
-        <button ref={ref} onClick={toggle} type="button" style={{
-          width: "100%", display: "flex", alignItems: "center", gap: 8, textAlign: "left",
-          background: T.input, border: `1px solid ${open ? "var(--accent)" : T.line}`, borderRadius: 12,
-          color: sel ? T.ink : T.sub, fontFamily: "inherit", fontSize: 15, fontWeight: 600, padding: "12px 13px", minHeight: 46, cursor: "pointer",
-          boxShadow: open ? "0 0 0 3px rgba(var(--accent-rgb),.18)" : "none",
-        }}>
-          <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {sel ? sel.name : "Pick an exercise"}
-            {sel && <span style={{ color: T.sub, fontWeight: 500, fontSize: 13, marginLeft: 7 }}>· {muscleOf(sel)}</span>}
-          </span>
-          <span style={{ fontSize: 9, color: open ? "var(--accent)" : T.sub, flexShrink: 0 }}>▼</span>
-        </button>
       )}
     />
   );
