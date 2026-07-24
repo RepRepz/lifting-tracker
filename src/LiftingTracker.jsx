@@ -56,7 +56,7 @@ const SEED_EXERCISES = [
   ["Step-Up",["Legs"]],["Hip Thrust",["Legs"]],["Glute Bridge",["Legs"]],["Hip Abduction Machine",["Legs"]],
   ["Kettlebell Swing",["Legs"],["Back"]],["Standing Calf Raise",["Legs"]],["Seated Calf Raise",["Legs"]],
   // abs / full body
-  ["Plank",["Abs"]],["Hanging Leg Raise",["Abs"]],["Cable Crunch",["Abs"]],["Ab Wheel",["Abs"]],
+  ["Plank",["Abs"]],["Hanging Leg Raise",["Abs"]],["Vertical Knee Raise",["Abs"]],["Cable Crunch",["Abs"]],["Ab Wheel",["Abs"]],
   ["Sit-Up",["Abs"]],["Crunch",["Abs"]],["Decline Ab Crunch",["Abs"]],["Russian Twist",["Abs"]],["Mountain Climber",["Abs"]],
   ["Farmer's Carry",["Back"],["Abs"]],
 ];
@@ -186,7 +186,7 @@ const defaultData = {
   journal: {}, // { "YYYY-MM-DD": { mood, sleep, text } } — daily notes
   profile: {}, // heightIn (inches) lives here once set
   pins: [],    // pinned dashboard charts (exercise names)
-  libraryV: 8, // bumped when the seed library changes, so existing users get the update once
+  libraryV: 9, // bumped when the seed library changes, so existing users get the update once
 };
 
 /* One-time upgrade of previously saved data: pull in newly added seed exercises and
@@ -4919,6 +4919,21 @@ const ARNOLD_DAY = (m) => {
 };
 const ARNOLD_NAME = { cb: "chest & back", sa: "shoulders & arms", legs: "legs" };
 
+/* Recommended weekly hard-set targets per muscle for maximum hypertrophy.
+   Research (Schoenfeld / Israetel volume landmarks) points to ~10–20 hard sets
+   per muscle per week as the growth sweet spot; these defaults sit mid-range and
+   are fully editable per user (data.profile.setTargets). */
+const REC_SETS = { Chest: 14, Back: 16, Shoulders: 16, Biceps: 14, Triceps: 12, Legs: 16, Abs: 10 };
+const setTargetsOf = (data) => ({ ...REC_SETS, ...(data.profile?.setTargets || {}) });
+/* A custom-split day can be a rest day; label it accordingly. */
+const dayTitle = (day) => day?.rest ? "Rest day" : dayLabel(day?.muscles);
+/* Muscle groups actually logged on a given date. */
+const groupsLoggedOn = (log, exMap, date) => {
+  const s = new Set();
+  for (const e of log) if (e.date === date) { const m = exMap[e.exercise]?.muscle; if (m) s.add(m); }
+  return s;
+};
+
 function coachTips(data, exMap, units) {
   const log = Array.isArray(data.log) ? data.log : [];
   const cardio = Array.isArray(data.cardio) ? data.cardio : [];
@@ -4949,10 +4964,41 @@ function coachTips(data, exMap, units) {
   // ---- WHAT TO TRAIN TODAY: tailored to the user's chosen split ----
   // We never assume a rotation until they've told us their split (data.profile.split).
   const split = data.profile?.split || null;
+  const todayGroups = groupsLoggedOn(log, exMap, today);   // what you actually logged TODAY
+  const trainedToday = todayGroups.size > 0;
+  const todayList = [...todayGroups].join(" & ");
   const lastByGroup = { push: null, pull: null, legs: null };
   for (const e of log) { const g = MUSCLE_GROUP(exMap[e.exercise]?.muscle); if (g in lastByGroup && (!lastByGroup[g] || e.date > lastByGroup[g])) lastByGroup[g] = e.date; }
+  const pushTrain = (key, text, icon = "📅") => tips.push({ key, icon, cat: "Train today", text });
 
-  if (split === "ppl") {
+  if (split === "custom") {
+    // an ordered, repeating cycle of training + rest days, anchored to profile.cycleStart.
+    // Covers both "set all 7 days" and "3 on, 1 off, repeat" — it just loops.
+    const cycle = (Array.isArray(data.profile?.customSplit) ? data.profile.customSplit : []).filter(d => d.rest || d.muscles?.length);
+    if (cycle.length) {
+      const start = data.profile?.cycleStart || today;
+      const idx = (((dayGap(today, start) % cycle.length) + cycle.length) % cycle.length);
+      const todayEntry = cycle[idx];
+      const nextTrain = () => { for (let i = 1; i <= cycle.length; i++) { const d = cycle[(idx + i) % cycle.length]; if (!d.rest && d.muscles?.length) return d; } return null; };
+      if (trainedToday) {
+        const nx = nextTrain();
+        pushTrain(`done-cust-${today}`, `Nice — logged ${todayList} today.${nx ? ` Next up: your "${dayLabel(nx.muscles)}" day.` : ""}`, "💪");
+      } else if (todayEntry.rest) {
+        pushTrain(`rest-cust-${today}`, `Scheduled rest day 😴 — recover, hydrate and eat well. Back at it tomorrow.`, "🛌");
+      } else {
+        pushTrain(`train-cust-${todayEntry.id}-${today}`, `Today's your "${dayLabel(todayEntry.muscles)}" day — go hit ${dayLabel(todayEntry.muscles)}.`);
+      }
+    }
+  } else if (split && trainedToday) {
+    // any fixed split: acknowledge today's session and point at what's still most-rested
+    let staleG = null, staleD = null;
+    for (const g of ["push", "pull", "legs"]) { const d = lastByGroup[g]; if (!d || d === today) continue; if (!staleD || d < staleD) { staleD = d; staleG = g; } }
+    const gapS = staleD ? dayGap(today, staleD) : 0;
+    if (staleG && gapS >= 3)
+      pushTrain(`done-${today}`, `Nice — you trained ${todayList} today. ${GSHORT[staleG]} is your most-rested (${gapS}d) if you've got more in you.`, "💪");
+    else
+      pushTrain(`done-${today}`, `Nice — logged ${todayList} today. You're on rhythm — rest or hit the next day in your rotation tomorrow.`, "💪");
+  } else if (split === "ppl") {
     // the push/pull/legs group left longest
     let sg = null, sd = null;
     for (const g of ["push", "pull", "legs"]) { const d = lastByGroup[g]; if (!d) continue; if (!sd || d < sd) { sd = d; sg = g; } }
@@ -4994,23 +5040,6 @@ function coachTips(data, exMap, units) {
     if (bm && dayGap(today, bd) >= 4)
       tips.push({ key: `train-bro-${bm}-${bd}`, icon: "📅", cat: "Train today",
         text: `It's been ${dayGap(today, bd)} days since you hit ${bm.toLowerCase()} — a good muscle to target today.` });
-  } else if (split === "custom") {
-    // user-defined days (data.profile.customSplit). A day is "trained" whenever any of
-    // its muscles were logged — the coach suggests the day you've rested longest, and
-    // prioritizes any day you haven't logged yet.
-    const days = (Array.isArray(data.profile?.customSplit) ? data.profile.customSplit : []).filter(d => d.muscles?.length);
-    const lastFor = (musc) => { let last = null; for (const e of log) { const m = exMap[e.exercise]?.muscle; if (m && musc.includes(m) && (!last || e.date > last)) last = e.date; } return last; };
-    const withDates = days.map(d => ({ d, name: dayLabel(d.muscles), last: lastFor(d.muscles) }));
-    const never = withDates.find(x => !x.last);
-    if (never) {
-      tips.push({ key: `train-cust-${never.d.id}-new`, icon: "📅", cat: "Train today",
-        text: `You haven't logged your "${never.name}" day yet — a good one to hit today.` });
-    } else if (withDates.length) {
-      const oldest = withDates.reduce((a, b) => (b.last < a.last ? b : a));
-      if (dayGap(today, oldest.last) >= 2)
-        tips.push({ key: `train-cust-${oldest.d.id}-${oldest.last}`, icon: "📅", cat: "Train today",
-          text: `It's been ${dayGap(today, oldest.last)} days since your "${oldest.name}" day — a solid pick for today.` });
-    }
   }
   // split === "other" or unset: no rotation nudge (the card asks you to pick a split)
 
@@ -5051,15 +5080,19 @@ function coachTips(data, exMap, units) {
         text: `${LIFT_SHORT[ex] || ex} hasn't moved in ~4 weeks. Deload a week (−10%) or switch rep range to break the stall.` });
   }
 
-  // ---- WEEKLY VOLUME per muscle vs a ~10 set/week target (MEV) ----
-  const wvol = { push: 0, pull: 0, legs: 0 };
-  for (const e of log) { if (weekStart(e.date) !== wk) continue; const g = MUSCLE_GROUP(exMap[e.exercise]?.muscle); if (g in wvol) wvol[g]++; }
-  if (wvol.push + wvol.pull + wvol.legs >= 6) {
-    for (const g of ["push", "pull", "legs"]) if (wvol[g] >= 1 && wvol[g] < 6) {
-      tips.push({ key: `vol-${g}-${wk}`, icon: "📊", cat: "Volume",
-        text: `${GSHORT[g]} is only ${wvol[g]} set${wvol[g] === 1 ? "" : "s"} this week — aim for ~10+ weekly sets per muscle to keep growing.` });
-      break;
-    }
+  // ---- WEEKLY VOLUME per muscle vs your customizable hypertrophy targets ----
+  // Secondaries count as half a set (muscleCredits); target defaults are science-based
+  // (~10–20 hard sets/wk) and editable in the coach (data.profile.setTargets).
+  const targets = setTargetsOf(data);
+  const wsets = {};
+  for (const e of log) { if (weekStart(e.date) !== wk) continue; for (const [m, c] of muscleCredits(exMap[e.exercise])) wsets[m] = (wsets[m] || 0) + c; }
+  const totalSets = Object.values(wsets).reduce((a, b) => a + b, 0);
+  if (totalSets >= 6) {
+    // surface the muscle furthest below its target (that you've at least started)
+    let worst = null;
+    for (const m of MUSCLES) { const tgt = targets[m]; if (!tgt) continue; const got = wsets[m] || 0; if (got < 1) continue; const deficit = tgt - got; if (deficit >= 3 && (!worst || deficit > worst.deficit)) worst = { m, got, tgt, deficit }; }
+    if (worst) tips.push({ key: `vol-${worst.m}-${wk}`, icon: "📊", cat: "Volume",
+      text: `${worst.m} is at ${Math.round(worst.got)} of your ${worst.tgt} weekly-set target — add ${Math.ceil(worst.deficit)} more set${Math.ceil(worst.deficit) === 1 ? "" : "s"} this week to keep growing.` });
   }
 
   // ---- BALANCE: push/pull ratio + leg neglect over the last 28 days ----
@@ -5101,8 +5134,15 @@ function CoachCard({ data, exMap, user, setData }) {
   const customDays = Array.isArray(data.profile?.customSplit) ? data.profile.customSplit : [];
   const setCustom = (fn) => setData(d => { const cur = Array.isArray(d.profile?.customSplit) ? d.profile.customSplit : []; return { ...d, profile: { ...(d.profile || {}), customSplit: fn(cur) } }; });
   const addDay = () => setCustom(days => [...days, { id: Math.random().toString(36).slice(2), muscles: [] }]);
+  const addRest = () => setCustom(days => [...days, { id: Math.random().toString(36).slice(2), rest: true, muscles: [] }]);
   const toggleMuscle = (id, m) => setCustom(days => days.map(x => x.id === id ? { ...x, muscles: x.muscles.includes(m) ? x.muscles.filter(z => z !== m) : [...x.muscles, m] } : x));
   const removeDay = (id) => setCustom(days => days.filter(x => x.id !== id));
+  // the repeating cycle is anchored to the day you finish building it (index 0 = that day)
+  const anchorCycle = () => setData(d => ({ ...d, profile: { ...(d.profile || {}), cycleStart: todayStr() } }));
+  // editable weekly set targets per muscle (science-based defaults)
+  const targets = setTargetsOf(data);
+  const bumpTarget = (m, delta) => setData(d => { const cur = setTargetsOf(d); return { ...d, profile: { ...(d.profile || {}), setTargets: { ...(d.profile?.setTargets || {}), [m]: Math.max(0, Math.min(40, (cur[m] || 0) + delta)) } } }; });
+  const [showTargets, setShowTargets] = useState(false);
   // the split setup collapses once you've chosen one; expands again via the ✎ chip
   const [editing, setEditing] = useState(!split);
 
@@ -5202,37 +5242,66 @@ function CoachCard({ data, exMap, user, setData }) {
             })}
           </div>
 
-          {/* custom builder — tap muscles only, days auto-name themselves */}
+          {/* custom builder — an ordered, repeating cycle of training + rest days */}
           {split === "custom" && (
             <div>
-              <div style={{ fontSize: 12, color: T.sub, lineHeight: 1.5, marginBottom: 10 }}>Add a day for each workout, then just tap the muscles it hits — including <b style={{ color: T.ink }}>Abs</b>. Each day names itself.</div>
+              <div style={{ fontSize: 12, color: T.sub, lineHeight: 1.5, marginBottom: 10 }}>Build your rotation in order — add training days (tap the muscles they hit, incl. <b style={{ color: T.ink }}>Abs</b>) and <b style={{ color: T.ink }}>rest days</b>. It repeats on a loop, so <b style={{ color: T.ink }}>3 on / 1 off</b> or a full <b style={{ color: T.ink }}>7-day week</b> both work.</div>
               {customDays.map((day, idx) => (
-                <div key={day.id} style={{ background: T.input, border: `1px solid ${day.muscles.length ? "rgba(var(--accent-rgb),.3)" : T.line}`, borderRadius: 13, padding: 12, marginBottom: 9 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                <div key={day.id} style={{ background: T.input, border: `1px solid ${day.rest ? "rgba(0,209,178,.35)" : day.muscles.length ? "rgba(var(--accent-rgb),.3)" : T.line}`, borderRadius: 13, padding: 12, marginBottom: 9 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: day.rest ? 0 : 10 }}>
                     <span className="eyebrow" style={{ fontSize: 9, color: T.sub, flexShrink: 0 }}>Day {idx + 1}</span>
-                    <span style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 800, color: day.muscles.length ? T.green : T.sub, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{dayLabel(day.muscles)}</span>
+                    <span style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 800, color: day.rest ? "#00D1B2" : day.muscles.length ? T.green : T.sub, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{day.rest ? "😴 Rest day" : dayLabel(day.muscles)}</span>
                     <button onClick={() => removeDay(day.id)} title="Remove day" style={{ flexShrink: 0, background: "none", border: `1px solid ${T.line}`, color: T.danger, width: 34, height: 34, borderRadius: 9, fontSize: 14 }}>🗑</button>
                   </div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                    {MUSCLES.map(m => {
-                      const on = day.muscles.includes(m);
-                      return (
-                        <button key={m} onClick={() => toggleMuscle(day.id, m)} style={{
-                          padding: "6px 13px", borderRadius: 99, fontSize: 12.5, fontWeight: 700,
-                          background: on ? "linear-gradient(180deg, rgba(var(--accent-rgb),.24), rgba(var(--accent-rgb),.12))" : T.card,
-                          color: on ? T.green : T.sub, border: `1px solid ${on ? "rgba(var(--accent-rgb),.45)" : T.line}`,
-                        }}>{on ? "✓ " : ""}{m}</button>
-                      );
-                    })}
-                  </div>
+                  {!day.rest && (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                      {MUSCLES.map(m => {
+                        const on = day.muscles.includes(m);
+                        return (
+                          <button key={m} onClick={() => toggleMuscle(day.id, m)} style={{
+                            padding: "6px 13px", borderRadius: 99, fontSize: 12.5, fontWeight: 700,
+                            background: on ? "linear-gradient(180deg, rgba(var(--accent-rgb),.24), rgba(var(--accent-rgb),.12))" : T.card,
+                            color: on ? T.green : T.sub, border: `1px solid ${on ? "rgba(var(--accent-rgb),.45)" : T.line}`,
+                          }}>{on ? "✓ " : ""}{m}</button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               ))}
-              <button onClick={addDay} style={{ width: "100%", background: T.input, border: `1px dashed ${T.line}`, color: T.green, fontWeight: 800, padding: "12px", borderRadius: 12, fontSize: 13.5, marginBottom: 10 }}>+ Add a training day</button>
+              <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+                <button onClick={addDay} style={{ flex: 1, background: T.input, border: `1px dashed ${T.line}`, color: T.green, fontWeight: 800, padding: "12px", borderRadius: 12, fontSize: 13 }}>+ Training day</button>
+                <button onClick={addRest} style={{ flex: 1, background: T.input, border: `1px dashed ${T.line}`, color: "#00D1B2", fontWeight: 800, padding: "12px", borderRadius: 12, fontSize: 13 }}>+ Rest day</button>
+              </div>
+            </div>
+          )}
+
+          {/* weekly set targets — science-based, fully editable */}
+          {split && (
+            <div style={{ marginBottom: 12 }}>
+              <button onClick={() => setShowTargets(v => !v)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, background: T.input, border: `1px solid ${T.line}`, borderRadius: 12, padding: "11px 13px", color: T.ink, fontWeight: 700, fontSize: 13 }}>
+                <span style={{ fontSize: 16 }}>📊</span>
+                <span style={{ flex: 1, textAlign: "left" }}>Weekly set targets</span>
+                <span style={{ color: T.sub, fontSize: 12, fontWeight: 600 }}>{showTargets ? "Hide" : "Customize"} {showTargets ? "▲" : "▼"}</span>
+              </button>
+              {showTargets && (
+                <div style={{ marginTop: 9 }}>
+                  <div style={{ fontSize: 11.5, color: T.sub, lineHeight: 1.55, marginBottom: 10 }}>Research points to <b style={{ color: T.ink }}>~10–20 hard sets per muscle per week</b> for maximum growth. These are set to a proven default — nudge them to fit you. The coach checks your logged sets against these each week.</div>
+                  {MUSCLES.map(m => (
+                    <div key={m} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 2px", borderTop: `1px solid ${T.creamLine}` }}>
+                      <span style={{ flex: 1, fontSize: 13.5, fontWeight: 700, color: T.ink }}>{m}</span>
+                      <button onClick={() => bumpTarget(m, -1)} style={{ width: 30, height: 30, borderRadius: 8, background: T.card, border: `1px solid ${T.line}`, color: T.ink, fontSize: 17, lineHeight: 1 }}>−</button>
+                      <span style={{ minWidth: 42, textAlign: "center", fontSize: 15, fontWeight: 800, color: T.green, fontVariantNumeric: "tabular-nums" }}>{targets[m]}</span>
+                      <button onClick={() => bumpTarget(m, 1)} style={{ width: 30, height: 30, borderRadius: 8, background: T.card, border: `1px solid ${T.line}`, color: T.ink, fontSize: 17, lineHeight: 1 }}>+</button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
           {split && (
-            <button onClick={() => setEditing(false)} className="btn-primary" style={{ width: "100%", padding: "12px", fontSize: 14 }}>✓ Done — show my tips</button>
+            <button onClick={() => { if (split === "custom") anchorCycle(); setEditing(false); }} className="btn-primary" style={{ width: "100%", padding: "12px", fontSize: 14 }}>✓ Done — show my tips</button>
           )}
         </div>
       )}
