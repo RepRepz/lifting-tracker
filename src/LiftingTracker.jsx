@@ -512,6 +512,17 @@ export default function LiftingTracker({ user }) {
         th { background:none; color:${T.sub}; font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.8px; white-space:nowrap; border-bottom:1px solid ${T.line}; }
         td { border-bottom:1px solid color-mix(in srgb, var(--line) 65%, transparent); }
         @media(hover:hover){ tbody tr { transition:background .15s ease; } tbody tr:hover { background:rgba(var(--accent-rgb),.05); } }
+        /* group-strength exercise picker menu — hover "hit box" so you can see what you'll click */
+        [data-lift-menu] .lift-opt { width:100%; display:flex; align-items:center; gap:8px; text-align:left; background:none; border:1px solid transparent; border-radius:10px; cursor:pointer; font-family:inherit; font-size:13.5px; font-weight:600; color:${T.ink}; padding:11px 12px; white-space:nowrap; overflow:hidden; transition:background .12s ease, border-color .12s ease, color .12s ease; }
+        [data-lift-menu] .lift-opt > span { overflow:hidden; text-overflow:ellipsis; }
+        [data-lift-menu] .lift-opt .tick { flex-shrink:0; width:15px; text-align:center; color:${T.green}; }
+        @media(hover:hover){ [data-lift-menu] .lift-opt:hover { background:rgba(var(--accent-rgb),.13); border-color:rgba(var(--accent-rgb),.4); color:${T.green}; } }
+        [data-lift-menu] .lift-opt.sel { background:rgba(var(--accent-rgb),.09); color:${T.green}; font-weight:800; }
+        @media(hover:hover){ [data-lift-menu] .lift-opt.sel:hover { background:rgba(var(--accent-rgb),.17); border-color:rgba(var(--accent-rgb),.4); } }
+        [data-lift-menu] .lift-opt:active { background:rgba(var(--accent-rgb),.2); }
+        [data-lift-menu] .lift-rm { width:100%; display:flex; align-items:center; justify-content:center; gap:8px; background:none; border:none; cursor:pointer; font-family:inherit; font-size:12.5px; font-weight:700; letter-spacing:.2px; color:${T.sub}; padding:12px; transition:background .12s ease, color .12s ease; }
+        @media(hover:hover){ [data-lift-menu] .lift-rm:hover { background:rgba(255,90,90,.12); color:#ff6b6b; } }
+        [data-lift-menu] .lift-rm:active { background:rgba(255,90,90,.18); }
         /* slim themed scrollbars (desktop) */
         *::-webkit-scrollbar { width:10px; height:10px; }
         *::-webkit-scrollbar-thumb { background:color-mix(in srgb, var(--line) 70%, transparent); border-radius:99px; border:2px solid transparent; background-clip:content-box; }
@@ -1665,22 +1676,20 @@ function LiftHeaderPicker({ value, options, onPick, onRemove }) {
             </div>
           </div>
           {/* scrollable results */}
-          <div style={{ flex: 1, minHeight: 0, overflowY: "auto", WebkitOverflowScrolling: "touch", overscrollBehavior: "contain", touchAction: "pan-y", padding: 6 }}>
+          <div style={{ flex: 1, minHeight: 0, overflowY: "auto", WebkitOverflowScrolling: "touch", overscrollBehavior: "contain", touchAction: "pan-y", padding: 6, display: "flex", flexDirection: "column", gap: 1 }}>
             {filtered.length === 0 ? (
-              <div style={{ fontSize: 12.5, color: T.sub, padding: "10px 8px" }}>No exercises match “{query}”.</div>
+              <div style={{ fontSize: 12.5, color: T.sub, padding: "12px 10px" }}>No exercises match “{query}”.</div>
             ) : filtered.map(o => (
-              <button key={o} onClick={() => { onPick(o); setOpen(false); }} style={{
-                width: "100%", textAlign: "left", background: o === value ? "rgba(var(--accent-rgb),.14)" : "none", border: "none",
-                color: o === value ? T.green : T.ink, fontFamily: "inherit", fontSize: 13, fontWeight: o === value ? 800 : 600,
-                padding: "10px 11px", borderRadius: 8, cursor: "pointer", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-              }}>{o === value ? "✓ " : ""}{o}</button>
+              <button key={o} className={"lift-opt" + (o === value ? " sel" : "")} onClick={() => { onPick(o); setOpen(false); }}>
+                <span className="tick">{o === value ? "✓" : ""}</span>
+                <span>{o}</span>
+              </button>
             ))}
           </div>
           {/* remove column — pinned to the bottom */}
-          <button onClick={() => { onRemove(); setOpen(false); }} style={{
-            flexShrink: 0, width: "100%", textAlign: "left", background: "none", border: "none", borderTop: `1px solid ${T.line}`, color: T.danger,
-            fontFamily: "inherit", fontSize: 13, fontWeight: 700, padding: "11px", borderRadius: "0 0 12px 12px", cursor: "pointer",
-          }}>✕ Remove this column</button>
+          <div style={{ flexShrink: 0, borderTop: `1px solid ${T.line}` }}>
+            <button className="lift-rm" onClick={() => { onRemove(); setOpen(false); }} style={{ borderRadius: "0 0 12px 12px" }}>🗑 Remove this column</button>
+          </div>
         </div>,
         document.body
       )}
