@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, lazy, Suspense, Fragment, createContext, useContext } from "react";
-import { supabase, loadUserState, saveUserState, listMyGroups, listMembers, createGroup, joinGroup, leaveGroup, listReactions, addReaction, removeReaction, setSecurityQuestion, getSecurityQuestion, lastActiveFor, setGroupEmoji, resetInviteCode, listCloudBackups, getCloudBackup, getStepToken, stepsFor, lastStepSync, createDuel, listDuels, deleteDuel, acceptDuel, declineDuel, listProUserIds } from "./lib/storage.js";
+import { supabase, loadUserState, saveUserState, listMyGroups, listMembers, createGroup, joinGroup, leaveGroup, listReactions, addReaction, removeReaction, setSecurityQuestion, getSecurityQuestion, lastActiveFor, setGroupEmoji, resetInviteCode, listCloudBackups, getCloudBackup, getStepToken, stepsFor, lastStepSync, createDuel, listDuels, deleteDuel, acceptDuel, declineDuel, forfeitDuel, requestDuelCancel, clearDuelCancel, setGroupRecordLifts, listProUserIds } from "./lib/storage.js";
 import { SECURITY_QUESTIONS } from "./AuthScreen.jsx";
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
@@ -2831,26 +2831,38 @@ function StepRingChart({ map, goal, meta }) {
   const rangeSub = { "1D":"Yesterday", W:"Past week", M:"Past 30 days", "6M":"Past 6 months", Y:"Past year", "5Y":"Past 5 years" };
   const goalK = goal % 1000 === 0 ? `${goal/1000}k` : goal.toLocaleString();
 
+  const hit = yCount >= goal;
+  const remaining = Math.max(0, goal - yCount);
   return (<>
-    <div className="card">
+    <div className="card" style={hit ? { borderColor:"rgba(var(--accent-rgb),.5)", background:"radial-gradient(120% 90% at 100% 0%, rgba(var(--accent-rgb),.12), transparent 55%), var(--card)" } : undefined}>
       <div style={{display:"flex", alignItems:"center", gap:20}}>
         <div style={{position:"relative", width:120, height:120, flexShrink:0}}>
           <svg width="120" height="120">
             <circle cx="60" cy="60" r={R} fill="none" stroke={T.line} strokeWidth="10" />
             <circle cx="60" cy="60" r={R} fill="none" stroke={T.green} strokeWidth="10" strokeLinecap="round"
-              strokeDasharray={C} strokeDashoffset={C*(1-pct)} transform="rotate(-90 60 60)" style={{transition:"stroke-dashoffset .8s cubic-bezier(.22,1,.36,1)"}} />
+              strokeDasharray={C} strokeDashoffset={C*(1-pct)} transform="rotate(-90 60 60)"
+              style={{transition:"stroke-dashoffset .8s cubic-bezier(.22,1,.36,1)", filter: hit ? "drop-shadow(0 0 6px rgba(var(--accent-rgb),.7))" : "none"}} />
           </svg>
           <div style={{position:"absolute", inset:0, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center"}}>
-            <div style={{fontSize:22, fontWeight:800, color:T.ink, fontVariantNumeric:"tabular-nums", lineHeight:1}}>{yCount.toLocaleString()}</div>
-            <div style={{fontSize:10.5, color:T.sub, marginTop:3}}>{Math.round(pct*100)}% of {goalK}</div>
+            <div style={{fontSize:23, fontWeight:900, color:T.ink, fontVariantNumeric:"tabular-nums", lineHeight:1}}>{yCount.toLocaleString()}</div>
+            <div style={{fontSize:11, fontWeight:800, color: hit?T.green:T.sub, marginTop:3}}>{hit ? "✓ 100%" : `${Math.round(pct*100)}% of ${goalK}`}</div>
           </div>
         </div>
         <div style={{flex:1, minWidth:0}}>
-          <div style={{fontSize:12.5, color:T.sub}}>Yesterday</div>
-          <div style={{fontSize:15, fontWeight:700, color:T.ink, marginBottom:12}}>{yCount>=goal ? "Goal smashed 💪" : yCount>0 ? "Keep it moving" : "No steps yet"}</div>
+          <div className="eyebrow" style={{fontSize:10, color:T.sub, marginBottom:7}}>Yesterday</div>
+          {/* clear, high-contrast goal status — no more squinting */}
+          <div style={{display:"inline-flex", alignItems:"center", gap:7, padding:"6px 12px", borderRadius:99, marginBottom:13,
+            background: hit ? "var(--accent)" : yCount>0 ? "rgba(var(--accent-rgb),.12)" : T.input,
+            border: hit ? "none" : `1px solid ${T.line}`,
+            boxShadow: hit ? "0 6px 18px -6px rgba(var(--accent-rgb),.7)" : "none"}}>
+            <span style={{fontSize:15}}>{hit ? "🏆" : yCount>0 ? "🚶" : "😴"}</span>
+            <span style={{fontSize:13.5, fontWeight:800, color: hit ? "#05140b" : yCount>0 ? T.green : T.sub}}>
+              {hit ? "Goal reached!" : yCount>0 ? `${remaining.toLocaleString()} steps to go` : "No steps yet"}
+            </span>
+          </div>
           <div style={{display:"flex", gap:18}}>
-            <div><div style={{fontSize:17, fontWeight:800, color:T.ink}}>{hero.avg.toLocaleString()}</div><div style={{fontSize:10.5, color:T.sub}}>7-day avg</div></div>
-            <div><div style={{fontSize:17, fontWeight:800, color:T.ink}}>{hero.best.toLocaleString()}</div><div style={{fontSize:10.5, color:T.sub}}>best day</div></div>
+            <div><div style={{fontSize:18, fontWeight:800, color:T.ink, fontVariantNumeric:"tabular-nums"}}>{hero.avg.toLocaleString()}</div><div style={{fontSize:10.5, color:T.sub}}>7-day avg</div></div>
+            <div><div style={{fontSize:18, fontWeight:800, color:T.ink, fontVariantNumeric:"tabular-nums"}}>{hero.best.toLocaleString()}</div><div style={{fontSize:10.5, color:T.sub}}>best day</div></div>
           </div>
         </div>
       </div>
@@ -2944,6 +2956,9 @@ function DuelsCard({ user, all, nameOf, myId, myName, proIds = [] }) {
   const remove  = async (id) => { try { await deleteDuel(id); await load(); } catch {} };
   const accept  = async (d)  => { const n = Math.max(1, Math.min(365, d.days||7)); try { await acceptDuel(d.id, today, dAdd(today, n-1)); await load(); } catch(e){ setErr(String(e?.message||e)); } };
   const decline = async (id) => { try { await declineDuel(id); await load(); } catch {} };
+  const forfeit = async (id, winnerId) => { try { await forfeitDuel(id, winnerId); await load(); } catch {} };
+  const reqCancel = async (id) => { try { await requestDuelCancel(id, myId); await load(); } catch {} };
+  const undoCancel = async (id) => { try { await clearDuelCancel(id); await load(); } catch {} };
 
   return (
     <div className="card">
@@ -3016,19 +3031,22 @@ function DuelsCard({ user, all, nameOf, myId, myName, proIds = [] }) {
         const mySum = sumRange(all[myId] || all[user.id], d.start_day, d.end_day);
         const oppSum = sumRange(all[oId], d.start_day, d.end_day);
         const mx = Math.max(mySum, oppSum, 1);
-        const finished = today > d.end_day;
+        const forfeited = d.status === "forfeited";
+        const dateOver = today > d.end_day;
+        const finished = forfeited || dateOver;
         const daysLeft = finished ? 0 : Math.round((new Date(d.end_day+"T00:00") - new Date(today+"T00:00"))/86400000) + 1;
-        const status = finished
-          ? (mySum>oppSum ? "🏆 You won!" : oppSum>mySum ? `${oName} won` : "Tie — dead heat")
-          : `${daysLeft} day${daysLeft===1?"":"s"} left`;
-        const statusColor = finished ? (mySum>oppSum?T.green:oppSum>mySum?T.danger:T.sub) : T.sub;
+        const iWon = forfeited ? d.winner_id === myId : mySum > oppSum;
+        const status = !finished ? `${daysLeft} day${daysLeft===1?"":"s"} left`
+          : forfeited ? (iWon ? "🏆 Won — forfeit" : "Forfeited")
+          : (mySum>oppSum ? "🏆 You won!" : oppSum>mySum ? `${oName} won` : "Tie — dead heat");
+        const statusColor = !finished ? T.sub : (forfeited ? (iWon?T.green:T.danger) : (mySum>oppSum?T.green:oppSum>mySum?T.danger:T.sub));
         return (
           <div key={d.id} style={{borderTop:`1px solid ${T.creamLine}`, padding:"11px 0"}}>
             <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8}}>
               <span style={{fontSize:13.5, fontWeight:800, color:T.ink}}>You vs <span style={{color:oIsPro(oId)?T.green:"inherit"}}>{oName}{oIsPro(oId) && <ProBadge small />}</span></span>
               <span style={{fontSize:12.5, fontWeight:800, color:statusColor}}>{status}</span>
             </div>
-            {[["You", mySum, true],[oName, oppSum, false]].map(([nm,val,me])=>(
+            {!forfeited && [["You", mySum, true],[oName, oppSum, false]].map(([nm,val,me])=>(
               <div key={nm+String(me)} style={{display:"flex", alignItems:"center", gap:8, marginBottom:5}}>
                 <span style={{width:66, fontSize:12.5, fontWeight: me?800:600, color: (me||oIsPro(oId))?T.green:T.ink, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{nm}{!me && oIsPro(oId) && <ProBadge small />}</span>
                 <span style={{flex:1, height:8, background:T.input, borderRadius:99, overflow:"hidden"}}>
@@ -3037,10 +3055,34 @@ function DuelsCard({ user, all, nameOf, myId, myName, proIds = [] }) {
                 <b style={{fontSize:12.5, color:T.ink, minWidth:54, textAlign:"right", fontVariantNumeric:"tabular-nums"}}>{val.toLocaleString()}</b>
               </div>
             ))}
-            <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginTop:4}}>
-              <span style={{fontSize:11, color:T.sub}}>{fmtDate(d.start_day)} – {fmtDate(d.end_day)}</span>
-              <ConfirmX label={finished?"Remove":"Cancel"} onConfirm={()=>remove(d.id)} />
-            </div>
+            {forfeited && (
+              <div style={{fontSize:12, color:T.sub, marginBottom:2}}>{iWon ? `${oName} forfeited — counts as your win.` : "You forfeited this duel."}</div>
+            )}
+            {/* finished duels are the permanent W-L record, so they can't be unilaterally deleted */}
+            {finished ? (
+              <div style={{fontSize:11, color:T.sub, marginTop:4}}>Final · {fmtDate(d.start_day)} – {fmtDate(d.end_day)}</div>
+            ) : d.cancel_req === myId ? (
+              <div style={{display:"flex", alignItems:"center", justifyContent:"space-between", gap:8, background:T.input, borderRadius:9, padding:"8px 11px", marginTop:6}}>
+                <span style={{fontSize:12, color:T.sub}}>⏳ Waiting for {oName} to agree to void…</span>
+                <button onClick={()=>undoCancel(d.id)} style={{background:"none", border:`1px solid ${T.line}`, color:T.ink, fontSize:12, fontWeight:700, padding:"5px 11px", borderRadius:99}}>Withdraw</button>
+              </div>
+            ) : d.cancel_req === oId ? (
+              <div style={{background:T.input, borderRadius:9, padding:"9px 11px", marginTop:6}}>
+                <div style={{fontSize:12.5, color:T.ink, fontWeight:700, marginBottom:8}}>🤝 {oName} wants to void this duel — no win or loss for either of you.</div>
+                <div style={{display:"flex", gap:8}}>
+                  <button onClick={()=>remove(d.id)} style={{flex:1, background:T.green, color:"#000", fontWeight:800, fontSize:12.5, padding:"8px", borderRadius:9}}>Agree & void</button>
+                  <button onClick={()=>undoCancel(d.id)} style={{flex:1, background:T.card, color:T.sub, fontWeight:700, fontSize:12.5, padding:"8px", borderRadius:9}}>Keep dueling</button>
+                </div>
+              </div>
+            ) : (
+              <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", gap:8, marginTop:6}}>
+                <span style={{fontSize:11, color:T.sub}}>{fmtDate(d.start_day)} – {fmtDate(d.end_day)}</span>
+                <div style={{display:"flex", gap:7, alignItems:"center"}}>
+                  <button onClick={()=>reqCancel(d.id)} title="Both sides must agree to void a duel" style={{background:"none", border:`1px solid ${T.line}`, color:T.sub, fontSize:11.5, fontWeight:700, padding:"5px 11px", borderRadius:99}}>Ask to void</button>
+                  <ConfirmX label="Forfeit" onConfirm={()=>forfeit(d.id, oId)} />
+                </div>
+              </div>
+            )}
           </div>
         );
       })}
@@ -4863,6 +4905,8 @@ function SecurityCard({ username }) {
 /* ================= FRIENDS ================= */
 const BIG_LIFTS = ["Bench Press","Incline Bench Press","Incline Dumbbell Press","Back Squat","Deadlift","Overhead Press"];
 const LIFT_SHORT = { "Bench Press":"Bench", "Incline Bench Press":"Inc Bench", "Incline Dumbbell Press":"Inc DB", "Back Squat":"Squat", "Deadlift":"Dead", "Overhead Press":"OHP" };
+/* Compact column label for any lift (custom group boards can track anything). */
+const liftShort = (l) => LIFT_SHORT[l] || (l.length > 10 ? l.slice(0, 9) + "…" : l);
 const BIG_LIFT_SET = new Set(BIG_LIFTS);
 /* High-rep sets don't give a trustworthy estimated 1RM. Cap the reps that count:
    the competitive "big lifts" cut off at 12, everything else is more lenient at 15. */
@@ -5681,6 +5725,26 @@ function FriendsTab({ user, nutritionOn, streaksOn, isPro, openPro }) {
   const [duelMsg, setDuelMsg] = useState("");
   const myName = user.user_metadata?.username || "you";
   const isOwner = active?.created_by === user.id;
+  // which lifts the group's strength board tracks — owner-configurable, defaults to the big lifts
+  const recordLifts = (Array.isArray(active?.record_lifts) && active.record_lifts.length) ? active.record_lifts : BIG_LIFTS;
+  const [editLifts, setEditLifts] = useState(false);
+  const [draftLifts, setDraftLifts] = useState([]);
+  const liftOptions = useMemo(() => {
+    const s = new Set(BIG_LIFTS);
+    for (const m of (members || [])) for (const e of (states[m.user_id]?.log || [])) if (e.exercise) s.add(e.exercise);
+    return [...s].sort();
+  }, [members, states]);
+  const openLiftEditor = () => { setDraftLifts(recordLifts.slice()); setEditLifts(true); };
+  const toggleDraftLift = (l) => setDraftLifts(ls => ls.includes(l) ? ls.filter(x => x !== l) : [...ls, l]);
+  const saveLifts = async () => {
+    const list = draftLifts.length ? draftLifts : null; // empty selection → fall back to defaults
+    try {
+      await setGroupRecordLifts(active.id, list);
+      setActive(a => ({ ...a, record_lifts: list }));
+      setGroups(gs => gs.map(g => g.id === active.id ? { ...g, record_lifts: list } : g));
+      setEditLifts(false);
+    } catch (e) { setErr(String(e?.message || e)); }
+  };
 
   const startDuel = async () => {
     if (!profile) return;
@@ -5748,8 +5812,9 @@ function FriendsTab({ user, nutritionOn, streaksOn, isPro, openPro }) {
     let w=0, l=0, t=0;
     const sumRange = (map,s,e)=>{ let x=0; const m=map||{}; for (const d in m) if (d>=s && d<=e) x+=m[d]; return x; };
     for (const d of duels) {
-      if (d.status !== "active") continue;          // pending/declined don't count
       if (d.a_id!==uid && d.b_id!==uid) continue;
+      if (d.status === "forfeited") { if (d.winner_id === uid) w++; else l++; continue; }
+      if (d.status !== "active") continue;          // pending/declined don't count
       if (today <= d.end_day) continue; // only finished duels count toward the record
       const mine = sumRange(memberSteps[uid], d.start_day, d.end_day);
       const oId = d.a_id===uid ? d.b_id : d.a_id;
@@ -5941,10 +6006,14 @@ function FriendsTab({ user, nutritionOn, streaksOn, isPro, openPro }) {
       for (const d of days) { syncedPerDay[d] = (syncedPerDay[d] || 0) + 1; if (mp[d] > best) { best = mp[d]; bestDate = d; } }
       if (best >= 10000 && bestDate)
         evs.push({ key:`${m.user_id}-${bestDate}-rec`, date:bestDate, user:m.username, uid:m.user_id, kind:"step", icon:"🔥", text:`set a new step record — ${best.toLocaleString()} steps` });
+      // Goal alert threshold = the higher of 10k and the person's own goal. So a 15k-goal
+      // person only pings the group at 15k, but a 7k-goal person still isn't announced until 10k.
+      const goal = Math.max(10000, (states[m.user_id]?.profile?.stepGoal) || 10000);
+      const goalK = goal % 1000 === 0 ? `${goal/1000}k` : goal.toLocaleString();
       let latestGoal = null;
-      for (const d of days) if (mp[d] >= 10000 && (!latestGoal || d > latestGoal)) latestGoal = d;
+      for (const d of days) if (mp[d] >= goal && (!latestGoal || d > latestGoal)) latestGoal = d;
       if (latestGoal && latestGoal !== bestDate)
-        evs.push({ key:`${m.user_id}-${latestGoal}-goal`, date:latestGoal, user:m.username, uid:m.user_id, kind:"step", icon:"🎯", text:`hit their 10k goal — ${mp[latestGoal].toLocaleString()} steps` });
+        evs.push({ key:`${m.user_id}-${latestGoal}-goal`, date:latestGoal, user:m.username, uid:m.user_id, kind:"step", icon:"🎯", text:`hit their ${goalK} goal — ${mp[latestGoal].toLocaleString()} steps` });
     }
     if (members.length >= 2) {
       const full = Object.keys(syncedPerDay).filter(d => syncedPerDay[d] === members.length).sort();
@@ -6006,7 +6075,7 @@ function FriendsTab({ user, nutritionOn, streaksOn, isPro, openPro }) {
     const rows = members.map(m => {
       const st = states[m.user_id] || {};
       const lifts = {};
-      for (const lift of BIG_LIFTS) {
+      for (const lift of recordLifts) {
         const entries = (st.log || []).filter(e => e.exercise === lift);
         const best = bestEst1RM(lift, entries);
         lifts[lift] = best != null ? Math.round(best) : null;
@@ -6014,9 +6083,9 @@ function FriendsTab({ user, nutritionOn, streaksOn, isPro, openPro }) {
       return { user: m.username, uid: m.user_id, lifts };
     });
     const best = {};
-    for (const lift of BIG_LIFTS) best[lift] = Math.max(0, ...rows.map(r => r.lifts[lift] || 0));
+    for (const lift of recordLifts) best[lift] = Math.max(0, ...rows.map(r => r.lifts[lift] || 0));
     return { rows, best };
-  }, [members, states]);
+  }, [members, states, recordLifts]);
 
   /* all-time group records */
   const records = useMemo(() => {
@@ -6033,7 +6102,7 @@ function FriendsTab({ user, nutritionOn, streaksOn, isPro, openPro }) {
       // biggest all-time estimated-1RM across the big lifts (progress, not just who's heaviest today).
       // Uses the rep cap so a 30-rep burnout set can't fake a huge 1RM.
       let top1rm = 0, top1rmLift = "";
-      for (const lift of BIG_LIFTS) {
+      for (const lift of recordLifts) {
         const est = bestEst1RM(lift, (st.log || []).filter(e => e.exercise === lift));
         if (est != null && est > top1rm) { top1rm = est; top1rmLift = lift; }
       }
@@ -6062,7 +6131,7 @@ function FriendsTab({ user, nutritionOn, streaksOn, isPro, openPro }) {
       weekMost     && { icon:"📅", label:"Most workout days in a week", ...weekMost },
       cardioLong   && { icon:"🏃", label:"Longest cardio", ...cardioLong },
     ].filter(Boolean);
-  }, [members, states, units]);
+  }, [members, states, units, recordLifts]);
 
   /* ---- read-only profile view ---- */
   if (profile) {
@@ -6367,21 +6436,50 @@ function FriendsTab({ user, nutritionOn, streaksOn, isPro, openPro }) {
               desc="You can see the squad's steps here — go Pro to auto-track your own, climb the board, and challenge friends to head-to-head step duels ⚔️" />}
 
         <div className="card">
-          <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:2}}>🏋️ Strength — best est. 1RM ({uLabel(units)})</div>
-          <div style={{fontSize:12, color:T.sub, marginBottom:8}}>Green = group best.</div>
-          <div style={{overflowX:"auto"}}>
-            <table><thead><tr><th>Member</th>{BIG_LIFTS.map(l=><th key={l} style={{textAlign:"center"}}>{LIFT_SHORT[l]}</th>)}</tr></thead>
-              <tbody>{strength.rows.map(r=>(
-                <tr key={r.uid}>
-                  <td>{nameEl(r.uid, r.user, { you: r.uid===user.id, weight: r.uid===user.id?700:400 })}</td>
-                  {BIG_LIFTS.map(l=>(
-                    <td key={l} style={{ textAlign:"center", color: r.lifts[l] && r.lifts[l]===strength.best[l] ? T.green : T.ink, fontWeight: r.lifts[l] && r.lifts[l]===strength.best[l] ? 700 : 400 }}>
-                      {r.lifts[l] == null ? "—" : dispW(r.lifts[l], units)}
-                    </td>
-                  ))}
-                </tr>
-              ))}</tbody></table>
+          <div style={{display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:8, marginBottom:2}}>
+            <div className="h" style={{fontSize:17, color:T.tealDk}}>🏋️ Strength — best est. 1RM ({uLabel(units)})</div>
+            {isOwner && !editLifts && (
+              <button onClick={openLiftEditor} title="Choose which lifts this group tracks" style={{flexShrink:0, background:T.input, border:`1px solid ${T.line}`, color:T.ink, fontSize:12, fontWeight:700, padding:"5px 11px", borderRadius:99}}>✎ Lifts</button>
+            )}
           </div>
+          <div style={{fontSize:12, color:T.sub, marginBottom:8}}>Green = group best.{isOwner && !editLifts ? " Owner picks which lifts show." : ""}</div>
+
+          {editLifts ? (
+            <div style={{background:T.input, border:`1px solid ${T.line}`, borderRadius:12, padding:12}}>
+              <div style={{fontSize:12.5, color:T.sub, lineHeight:1.5, marginBottom:10}}>Tap the lifts your group cares about — they become the columns here and drive the <b style={{color:T.ink}}>Top 1RM</b> record. Only you (the owner) can change this.</div>
+              <div style={{display:"flex", flexWrap:"wrap", gap:7, marginBottom:12}}>
+                {liftOptions.map(l=>{
+                  const on = draftLifts.includes(l);
+                  return (
+                    <button key={l} onClick={()=>toggleDraftLift(l)} style={{
+                      padding:"7px 13px", borderRadius:99, fontSize:12.5, fontWeight:700,
+                      background: on ? "linear-gradient(180deg, rgba(var(--accent-rgb),.24), rgba(var(--accent-rgb),.12))" : T.card,
+                      color: on ? T.green : T.sub, border:`1px solid ${on ? "rgba(var(--accent-rgb),.45)" : T.line}`,
+                    }}>{on ? "✓ " : ""}{l}</button>
+                  );
+                })}
+              </div>
+              <div style={{fontSize:11.5, color:T.sub, marginBottom:10}}>{draftLifts.length ? `${draftLifts.length} selected` : "None selected — saving will reset to the default big lifts."}</div>
+              <div style={{display:"flex", gap:8}}>
+                <button onClick={saveLifts} className="btn-primary" style={{flex:1, padding:"10px", fontSize:13.5}}>Save</button>
+                <button onClick={()=>setEditLifts(false)} style={{background:T.card, color:T.sub, border:`1px solid ${T.line}`, padding:"10px 16px", fontSize:13.5, borderRadius:10}}>Cancel</button>
+              </div>
+            </div>
+          ) : (
+            <div style={{overflowX:"auto"}}>
+              <table><thead><tr><th>Member</th>{recordLifts.map(l=><th key={l} style={{textAlign:"center"}}>{liftShort(l)}</th>)}</tr></thead>
+                <tbody>{strength.rows.map(r=>(
+                  <tr key={r.uid}>
+                    <td>{nameEl(r.uid, r.user, { you: r.uid===user.id, weight: r.uid===user.id?700:400 })}</td>
+                    {recordLifts.map(l=>(
+                      <td key={l} style={{ textAlign:"center", color: r.lifts[l] && r.lifts[l]===strength.best[l] ? T.green : T.ink, fontWeight: r.lifts[l] && r.lifts[l]===strength.best[l] ? 700 : 400 }}>
+                        {r.lifts[l] == null ? "—" : dispW(r.lifts[l], units)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}</tbody></table>
+            </div>
+          )}
         </div>
 
         {records.length > 0 && (

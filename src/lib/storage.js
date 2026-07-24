@@ -123,6 +123,26 @@ export async function deleteDuel(id) {
   if (error) throw error;
 }
 
+/** Forfeit an active duel — the other person is recorded as the winner. */
+export async function forfeitDuel(id, winnerId) {
+  const { error } = await supabase.from("duels")
+    .update({ status: "forfeited", winner_id: winnerId, cancel_req: null }).eq("id", id);
+  if (error) throw error;
+}
+
+/** Ask to void an active duel with no result. Voiding only happens once BOTH sides agree:
+    one calls this to request, the other calls deleteDuel to agree (or clearDuelCancel to decline). */
+export async function requestDuelCancel(id, myId) {
+  const { error } = await supabase.from("duels").update({ cancel_req: myId }).eq("id", id);
+  if (error) throw error;
+}
+
+/** Withdraw / decline a pending void request. */
+export async function clearDuelCancel(id) {
+  const { error } = await supabase.from("duels").update({ cancel_req: null }).eq("id", id);
+  if (error) throw error;
+}
+
 /* ---------- security question (password reset without email) ---------- */
 
 /** Signed-in user sets/changes their reset question + answer (answer is hashed server-side). */
@@ -148,7 +168,7 @@ export async function resetPasswordWithAnswer(uname, answer, new_password) {
 
 /** Groups the signed-in user belongs to. */
 export async function listMyGroups() {
-  const { data, error } = await supabase.from("groups").select("id, name, invite_code, emoji, created_by").order("created_at");
+  const { data, error } = await supabase.from("groups").select("id, name, invite_code, emoji, created_by, record_lifts").order("created_at");
   if (error) throw error;
   return data ?? [];
 }
@@ -156,6 +176,13 @@ export async function listMyGroups() {
 /** Any member can change the group's emoji (only the emoji column is writable). */
 export async function setGroupEmoji(groupId, emoji) {
   const { error } = await supabase.from("groups").update({ emoji }).eq("id", groupId);
+  if (error) throw error;
+}
+
+/** Owner-only: set which lifts appear on the group's strength/records board (array of
+    exercise names, or null to fall back to the default big lifts). Enforced server-side. */
+export async function setGroupRecordLifts(groupId, lifts) {
+  const { error } = await supabase.rpc("set_group_record_lifts", { p_group_id: groupId, p_lifts: lifts });
   if (error) throw error;
 }
 
