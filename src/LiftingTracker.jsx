@@ -513,7 +513,9 @@ export default function LiftingTracker({ user }) {
         td { border-bottom:1px solid color-mix(in srgb, var(--line) 65%, transparent); }
         @media(hover:hover){ tbody tr { transition:background .15s ease; } tbody tr:hover { background:rgba(var(--accent-rgb),.05); } }
         /* group-strength exercise picker menu — hover "hit box" so you can see what you'll click */
-        [data-lift-menu] .lift-opt { width:100%; display:flex; align-items:center; gap:8px; text-align:left; background:none; border:1px solid transparent; border-radius:10px; cursor:pointer; font-family:inherit; font-size:13.5px; font-weight:600; color:${T.ink}; padding:11px 12px; white-space:nowrap; overflow:hidden; transition:background .12s ease, border-color .12s ease, color .12s ease; }
+        [data-lift-menu] .lift-group { font-size:10px; font-weight:800; letter-spacing:.9px; text-transform:uppercase; color:${T.sub}; padding:11px 10px 4px; }
+        [data-lift-menu] .lift-group:first-child { padding-top:4px; }
+        [data-lift-menu] .lift-opt { width:100%; display:flex; align-items:center; gap:8px; text-align:left; background:none; border:1px solid transparent; border-radius:10px; cursor:pointer; font-family:inherit; font-size:14.5px; font-weight:600; color:${T.ink}; padding:11px 13px; white-space:nowrap; overflow:hidden; transition:background .12s ease, border-color .12s ease, color .12s ease; }
         [data-lift-menu] .lift-opt .name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; }
         [data-lift-menu] .lift-opt .name .sub { color:${T.sub}; font-weight:500; font-size:12px; }
         @media(hover:hover){ [data-lift-menu] .lift-opt:hover .name .sub { color:color-mix(in srgb, var(--accent) 60%, ${T.sub}); } }
@@ -773,7 +775,7 @@ export default function LiftingTracker({ user }) {
           {tab==="log" && liftingOn && <LogTab data={data} exMap={exMap} setData={setData} routinesOn={routinesOn} />}
           {tab==="records" && liftingOn && <RecordsTab data={data} exMap={exMap} setData={setData} />}
           {tab==="journal" && <JournalTab data={data} setData={setData} />}
-          {tab==="friends" && <FriendsTab user={user} nutritionOn={nutritionOn} streaksOn={streaksOn} isPro={isPro} openPro={()=>setShowSettings(true)} />}
+          {tab==="friends" && <FriendsTab user={user} exMap={exMap} nutritionOn={nutritionOn} streaksOn={streaksOn} isPro={isPro} openPro={()=>setShowSettings(true)} />}
           {tab==="macros" && nutritionOn && <MacroTab data={data} setData={setData} streaksOn={streaksOn} waterOn={waterOn} />}
           {tab==="body" && liftingOn && <BodyTab data={data} setData={setData} hunit={hunit} />}
           {tab==="cardio" && liftingOn && <CardioTab data={data} setData={setData} latestBW={latestBW} user={user} stepsOn={stepsEnabled} />}
@@ -1668,15 +1670,24 @@ function DropdownPicker({ renderButton, items, onPick, footer, placeholder = "Se
               {query && <button onClick={() => { setQuery(""); inputRef.current?.focus(); }} style={{ background: "none", border: "none", color: T.sub, fontSize: 14, cursor: "pointer", padding: "2px 2px" }}>✕</button>}
             </div>
           </div>
-          <div style={{ flex: 1, minHeight: 0, overflowY: "auto", WebkitOverflowScrolling: "touch", overscrollBehavior: "contain", touchAction: "pan-y", padding: 6, display: "flex", flexDirection: "column", gap: 1 }}>
+          <div style={{ flex: 1, minHeight: 0, overflowY: "auto", WebkitOverflowScrolling: "touch", overscrollBehavior: "contain", touchAction: "pan-y", padding: 6 }}>
             {filtered.length === 0 ? (
               <div style={{ fontSize: 12.5, color: T.sub, padding: "12px 10px", lineHeight: 1.5 }}>{emptyHint || <>No matches for “{query}”.</>}</div>
-            ) : filtered.map(it => (
-              <button key={it.value} className={"lift-opt" + (it.selected ? " sel" : "")} onClick={() => pick(it)}>
-                <span className="name">{it.label}{it.sub ? <span className="sub"> · {it.sub}</span> : null}</span>
-                {it.selected && <span className="tick">✓</span>}
-              </button>
-            ))}
+            ) : (() => {
+              // Logs-style organization: section header whenever the muscle group changes
+              // (items arrive pre-sorted by group), with the search filtering across all.
+              const rows = []; let lastG = null;
+              for (const it of filtered) {
+                if (it.group && it.group !== lastG) { rows.push(<div key={"g-" + it.group} className="lift-group">{it.group}</div>); lastG = it.group; }
+                rows.push(
+                  <button key={it.value} className={"lift-opt" + (it.selected ? " sel" : "")} onClick={() => pick(it)}>
+                    <span className="name">{it.label}{it.sub ? <span className="sub"> · {it.sub}</span> : null}</span>
+                    {it.selected && <span className="tick">✓</span>}
+                  </button>
+                );
+              }
+              return rows;
+            })()}
           </div>
           {footer && <div style={{ flexShrink: 0, borderTop: `1px solid ${T.line}` }}>{footer(() => setOpen(false))}</div>}
         </div>,
@@ -1686,12 +1697,18 @@ function DropdownPicker({ renderButton, items, onPick, footer, placeholder = "Se
   );
 }
 
-/* Group-strength column header: compact uppercase pill that swaps/removes the tracked lift. */
-function LiftHeaderPicker({ value, options, onPick, onRemove }) {
-  const items = options.map(o => ({ value: o, label: o, selected: o === value }));
+/* Group-strength column header: compact uppercase pill that swaps/removes the tracked lift.
+   Its menu borrows the Logs organization — muscle-grouped sections — plus a search box. */
+function LiftHeaderPicker({ value, options, onPick, onRemove, exMap = {} }) {
+  const items = useMemo(() => {
+    const ord = (m) => { const i = MUSCLES.indexOf(m); return i < 0 ? 99 : i; };
+    return options
+      .map(o => ({ value: o, label: o, group: (exMap[o] && muscleOf(exMap[o])) || "Other", selected: o === value }))
+      .sort((a, b) => ord(a.group) - ord(b.group) || a.label.localeCompare(b.label));
+  }, [options, value, exMap]);
   return (
     <DropdownPicker
-      items={items} onPick={onPick} placeholder="Search exercises…" desiredWidth={230}
+      items={items} onPick={onPick} placeholder="Search exercises…" desiredWidth={264}
       renderButton={({ ref, toggle, open }) => (
         <button ref={ref} onClick={toggle} title={value} style={{
           display: "inline-flex", alignItems: "center", gap: 6, justifyContent: "center",
@@ -5808,7 +5825,7 @@ function StepFactsModal({ name, isMe, map, rank, onClose }) {
   );
 }
 
-function FriendsTab({ user, nutritionOn, streaksOn, isPro, openPro }) {
+function FriendsTab({ user, exMap = {}, nutritionOn, streaksOn, isPro, openPro }) {
   const units = useUnit();
   const [groups, setGroups] = useState(null);        // null = loading
   const [active, setActive] = useState(null);        // selected group
@@ -6572,7 +6589,7 @@ function FriendsTab({ user, nutritionOn, streaksOn, isPro, openPro }) {
               {recordLifts.map((l,i)=>(
                 <th key={i} style={{textAlign:"center", minWidth: isOwner?110:undefined}}>
                   {isOwner
-                    ? <LiftHeaderPicker value={l} options={liftOptions} onPick={ex=>swapLift(i, ex)} onRemove={()=>swapLift(i, "__remove__")} />
+                    ? <LiftHeaderPicker value={l} options={liftOptions} exMap={exMap} onPick={ex=>swapLift(i, ex)} onRemove={()=>swapLift(i, "__remove__")} />
                     : liftShort(l)}
                 </th>
               ))}
