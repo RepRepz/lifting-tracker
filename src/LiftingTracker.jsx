@@ -1714,11 +1714,12 @@ function LiftHeaderPicker({ value, options, onPick, onRemove, exMap = {} }) {
           display: "inline-flex", alignItems: "center", gap: 6, justifyContent: "center",
           background: open ? "rgba(var(--accent-rgb),.14)" : T.input,
           border: `1px solid ${open ? "var(--accent)" : T.line}`, borderRadius: 9,
-          color: T.ink, fontFamily: "inherit", fontSize: 11, fontWeight: 800, letterSpacing: ".5px", textTransform: "uppercase",
-          padding: "7px 10px", cursor: "pointer", maxWidth: 120, whiteSpace: "nowrap",
+          color: T.ink, fontFamily: "inherit", fontSize: 11, fontWeight: 800, letterSpacing: ".3px", textTransform: "uppercase",
+          padding: "7px 11px", cursor: "pointer", maxWidth: 178, lineHeight: 1.2, textAlign: "center",
         }}>
-          <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{liftShort(value)}</span>
-          <span style={{ fontSize: 8, color: open ? "var(--accent)" : T.sub }}>▼</span>
+          {/* full exercise name (no cryptic abbreviations); wraps rather than truncating */}
+          <span style={{ minWidth: 0, whiteSpace: "normal", overflowWrap: "anywhere" }}>{value}</span>
+          <span style={{ fontSize: 8, flexShrink: 0, color: open ? "var(--accent)" : T.sub }}>▼</span>
         </button>
       )}
       footer={(close) => (
@@ -5050,8 +5051,6 @@ function SecurityCard({ username }) {
 /* ================= FRIENDS ================= */
 const BIG_LIFTS = ["Bench Press","Incline Bench Press","Incline Dumbbell Press","Back Squat","Deadlift","Overhead Press"];
 const LIFT_SHORT = { "Bench Press":"Bench", "Incline Bench Press":"Inc Bench", "Incline Dumbbell Press":"Inc DB", "Back Squat":"Squat", "Deadlift":"Dead", "Overhead Press":"OHP" };
-/* Compact column label for any lift (custom group boards can track anything). */
-const liftShort = (l) => LIFT_SHORT[l] || (l.length > 10 ? l.slice(0, 9) + "…" : l);
 const BIG_LIFT_SET = new Set(BIG_LIFTS);
 /* High-rep sets don't give a trustworthy estimated 1RM. Cap the reps that count:
    the competitive "big lifts" cut off at 12, everything else is more lenient at 15. */
@@ -6216,21 +6215,29 @@ function FriendsTab({ user, exMap = {}, nutritionOn, streaksOn, isPro, openPro }
   }, [members, memberSteps, stepRange]);
 
   const strength = useMemo(() => {
-    if (!members) return { rows: [], best: {} };
+    if (!members) return { rows: [], best: {}, bw: {} };
+    // bodyweight moves have no weight → rank them by the most reps done in ONE set instead
+    const bw = {};
+    for (const lift of recordLifts) bw[lift] = (exMap[lift]?.type === "Bodyweight") || BW_SET.has(lift);
     const rows = members.map(m => {
       const st = states[m.user_id] || {};
       const lifts = {};
       for (const lift of recordLifts) {
         const entries = (st.log || []).filter(e => e.exercise === lift);
-        const best = bestEst1RM(lift, entries);
-        lifts[lift] = best != null ? Math.round(best) : null;
+        if (bw[lift]) {
+          const reps = entries.map(e => e.reps || 0).filter(r => r > 0);
+          lifts[lift] = reps.length ? Math.max(...reps) : null;   // best single-set reps
+        } else {
+          const best = bestEst1RM(lift, entries);
+          lifts[lift] = best != null ? Math.round(best) : null;
+        }
       }
       return { user: m.username, uid: m.user_id, lifts };
     });
     const best = {};
     for (const lift of recordLifts) best[lift] = Math.max(0, ...rows.map(r => r.lifts[lift] || 0));
-    return { rows, best };
-  }, [members, states, recordLifts]);
+    return { rows, best, bw };
+  }, [members, states, recordLifts, exMap]);
 
   /* all-time group records */
   const records = useMemo(() => {
@@ -6582,15 +6589,15 @@ function FriendsTab({ user, exMap = {}, nutritionOn, streaksOn, isPro, openPro }
 
         <div className="card">
           <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:2}}>🏋️ Strength — best est. 1RM ({uLabel(units)})</div>
-          <div style={{fontSize:12, color:T.sub, marginBottom:8}}>Green = group best.{isOwner ? " Tap a column's exercise to swap what it tracks — everyone's number updates." : ""}</div>
+          <div style={{fontSize:12, color:T.sub, marginBottom:8}}>Green = group best. Bodyweight moves show the most reps done in one set.{isOwner ? " Tap a column's exercise to swap it." : ""}</div>
           <div style={{overflowX:"auto"}}>
             <table><thead><tr>
               <th>Member</th>
               {recordLifts.map((l,i)=>(
-                <th key={i} style={{textAlign:"center", minWidth: isOwner?110:undefined}}>
+                <th key={i} style={{textAlign:"center", minWidth: isOwner?150:120}}>
                   {isOwner
                     ? <LiftHeaderPicker value={l} options={liftOptions} exMap={exMap} onPick={ex=>swapLift(i, ex)} onRemove={()=>swapLift(i, "__remove__")} />
-                    : liftShort(l)}
+                    : <span style={{display:"inline-block", whiteSpace:"normal", maxWidth:170, lineHeight:1.2}}>{l}</span>}
                 </th>
               ))}
               {isOwner && recordLifts.length < 8 && (
@@ -6604,7 +6611,7 @@ function FriendsTab({ user, exMap = {}, nutritionOn, streaksOn, isPro, openPro }
                   <td>{nameEl(r.uid, r.user, { you: r.uid===user.id, weight: r.uid===user.id?700:400 })}</td>
                   {recordLifts.map((l,i)=>(
                     <td key={i} style={{ textAlign:"center", color: r.lifts[l] && r.lifts[l]===strength.best[l] ? T.green : T.ink, fontWeight: r.lifts[l] && r.lifts[l]===strength.best[l] ? 700 : 400 }}>
-                      {r.lifts[l] == null ? "—" : dispW(r.lifts[l], units)}
+                      {r.lifts[l] == null ? "—" : strength.bw[l] ? <>{r.lifts[l]}<span style={{fontSize:10, color:T.sub, fontWeight:500}}> reps</span></> : dispW(r.lifts[l], units)}
                     </td>
                   ))}
                   {isOwner && recordLifts.length < 8 && <td />}
