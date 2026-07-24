@@ -14,10 +14,32 @@
     <meta name="apple-mobile-web-app-title" content="The Lab" />
     <title>The Lab</title>
     <style>
-      :root { --accent-rgb: 0,200,5; --accent: rgb(0,200,5); --bg: #070809; --card: #101215; --cardAlt: #171A1F; --input: #15181C; --line: #242A31; --ink: #FFFFFF; --sub: #8A9098; --creamLine: #26302B; }
+      :root { --accent-rgb: 0,200,5; --accent: rgb(0,200,5); --bg: #070809; --card: #101215; --cardAlt: #171A1F; --input: #15181C; --line: #242A31; --ink: #FFFFFF; --sub: #8A9098; --creamLine: #26302B;
+        --appfont: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+      /* Twemoji colour emoji — bundled, self-hosted. Restricted to emoji code points so
+         normal text keeps using the system font. Only pulled in on non-Apple devices
+         (see the classlist script below), so iOS/macOS keep their nicer native emoji. */
+      @font-face {
+        font-family: "TwemojiLab";
+        src: url("./fonts/twemoji.woff2") format("woff2");
+        font-display: swap;
+        unicode-range: U+00A9, U+00AE, U+203C, U+2049, U+2122, U+2139, U+2194-2199, U+21A9-21AA, U+231A-231B, U+2328, U+23CF, U+23E9-23F3, U+23F8-23FA, U+24C2, U+25AA-25AB, U+25B6, U+25C0, U+25FB-25FE, U+2600-26FF, U+2702-27B0, U+27BF, U+2934-2935, U+2B05-2B07, U+2B1B-2B1C, U+2B50, U+2B55, U+3030, U+303D, U+3297, U+3299, U+FE0F, U+1F004, U+1F0CF, U+1F170-1F251, U+1F300-1F6FF, U+1F900-1FAFF, U+1F1E6-1F1FF, U+E0020-E007F, U+200D, U+20E3;
+      }
+      /* non-Apple devices opt into Twemoji by adding TwemojiLab to the app font stack */
+      html.tw { --appfont: system-ui, -apple-system, "Segoe UI", Roboto, "TwemojiLab", sans-serif; }
       html { color-scheme: dark; background: var(--bg); -webkit-text-size-adjust: 100%; }
-      body { margin: 0; background: var(--bg); color: var(--ink); font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; min-height: 100dvh; overscroll-behavior-y: none; }
+      body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--appfont); min-height: 100dvh; overscroll-behavior-y: none; }
     </style>
+    <script>
+      /* iPhone/iPad/Mac already have great native emoji — only swap in Twemoji elsewhere
+         (Windows/Android/Linux), where the OS emoji look flat. iPadOS 13+ reports as Mac. */
+      (function () {
+        var ua = navigator.userAgent || "";
+        var isApple = /iPhone|iPad|iPod|Macintosh|Mac OS X/.test(ua) ||
+          (navigator.platform && /Mac|iPhone|iPad|iPod/.test(navigator.platform));
+        if (!isApple) document.documentElement.classList.add("tw");
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

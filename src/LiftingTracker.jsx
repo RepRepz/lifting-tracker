@@ -489,7 +489,7 @@ export default function LiftingTracker({ user }) {
 
   return (
     <UnitCtx.Provider value={units}>
-    <div style={{ fontFamily:"system-ui,-apple-system,'Segoe UI',Roboto,sans-serif", background:"radial-gradient(135% 72% at 50% -6%, rgba(var(--accent-rgb),.10), transparent 52%), var(--bg)", backgroundAttachment:"fixed", minHeight:"100dvh", color:T.ink, position:"relative", isolation:"isolate" }} className="app-root">
+    <div style={{ fontFamily:"var(--appfont)", background:"radial-gradient(135% 72% at 50% -6%, rgba(var(--accent-rgb),.10), transparent 52%), var(--bg)", backgroundAttachment:"fixed", minHeight:"100dvh", color:T.ink, position:"relative", isolation:"isolate" }} className="app-root">
       <style>{`
         html { color-scheme:dark; scroll-behavior:smooth; }
         * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
