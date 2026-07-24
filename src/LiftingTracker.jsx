@@ -1598,19 +1598,28 @@ function ConfirmX({ onConfirm, label }) {
 function LiftHeaderPicker({ value, options, onPick, onRemove }) {
   const [open, setOpen] = useState(false);
   const [rect, setRect] = useState(null);
+  const [query, setQuery] = useState("");
   const btnRef = useRef(null);
+  const inputRef = useRef(null);
   useEffect(() => {
     if (!open) return;
-    const close = () => setOpen(false);
     const onDown = (e) => { if (btnRef.current && !btnRef.current.contains(e.target) && !e.target.closest?.("[data-lift-menu]")) setOpen(false); };
     // Close when the PAGE scrolls, but NOT when the menu's own list is scrolled —
     // otherwise scrolling to reach lower exercises instantly closed the menu.
     const onScroll = (e) => { if (e.target?.closest?.("[data-lift-menu]")) return; setOpen(false); };
+    // Only close on a real resize (orientation) — NOT the height change from the phone
+    // keyboard opening when the search box autofocuses.
+    const w0 = window.innerWidth;
+    const onResize = () => { if (window.innerWidth !== w0) setOpen(false); };
     document.addEventListener("pointerdown", onDown);
-    window.addEventListener("resize", close);
+    window.addEventListener("resize", onResize);
     window.addEventListener("scroll", onScroll, true);
-    return () => { document.removeEventListener("pointerdown", onDown); window.removeEventListener("resize", close); window.removeEventListener("scroll", onScroll, true); };
+    return () => { document.removeEventListener("pointerdown", onDown); window.removeEventListener("resize", onResize); window.removeEventListener("scroll", onScroll, true); };
   }, [open]);
+  // fresh search box + focus each time it opens
+  useEffect(() => { if (!open) return; setQuery(""); const t = setTimeout(() => inputRef.current?.focus(), 40); return () => clearTimeout(t); }, [open]);
+  const q = query.trim().toLowerCase();
+  const filtered = q ? options.filter(o => o.toLowerCase().includes(q)) : options;
   const toggle = () => { if (!open && btnRef.current) setRect(btnRef.current.getBoundingClientRect()); setOpen(o => !o); };
   // Menu geometry, clamped to the viewport. Rendered through a portal on <body> so a
   // transformed/overflow ancestor can't offset or clip it (that was the "flies to the
@@ -1642,21 +1651,35 @@ function LiftHeaderPicker({ value, options, onPick, onRemove }) {
       </button>
       {open && menuStyle && createPortal(
         <div data-lift-menu style={{
-          ...menuStyle, zIndex: 3000, overflowY: "auto", WebkitOverflowScrolling: "touch", overscrollBehavior: "contain", touchAction: "pan-y", textAlign: "left",
-          background: T.card, border: `1px solid ${T.line}`, borderRadius: 12, boxShadow: "0 18px 44px -12px rgba(0,0,0,.65)", padding: 6,
+          ...menuStyle, zIndex: 3000, display: "flex", flexDirection: "column", textAlign: "left",
+          background: T.card, border: `1px solid ${T.line}`, borderRadius: 12, boxShadow: "0 18px 44px -12px rgba(0,0,0,.65)",
         }}>
-          <div className="eyebrow" style={{ fontSize: 9, color: T.sub, padding: "4px 8px 6px" }}>Track this column</div>
-          {options.map(o => (
-            <button key={o} onClick={() => { onPick(o); setOpen(false); }} style={{
-              width: "100%", textAlign: "left", background: o === value ? "rgba(var(--accent-rgb),.14)" : "none", border: "none",
-              color: o === value ? T.green : T.ink, fontFamily: "inherit", fontSize: 13, fontWeight: o === value ? 800 : 600,
-              padding: "10px 11px", borderRadius: 8, cursor: "pointer", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-            }}>{o === value ? "✓ " : ""}{o}</button>
-          ))}
-          <div style={{ height: 1, background: T.line, margin: "5px 6px" }} />
+          {/* search box — pinned to the top */}
+          <div style={{ padding: 8, borderBottom: `1px solid ${T.line}`, flexShrink: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 7, background: T.input, border: `1px solid ${T.line}`, borderRadius: 9, padding: "0 10px" }}>
+              <span style={{ fontSize: 13, color: T.sub }}>🔍</span>
+              <input ref={inputRef} value={query} onChange={e => setQuery(e.target.value)} placeholder="Search exercises…"
+                onKeyDown={e => { if (e.key === "Enter" && filtered[0]) { onPick(filtered[0]); setOpen(false); } else if (e.key === "Escape") setOpen(false); }}
+                style={{ flex: 1, minWidth: 0, background: "none", border: "none", outline: "none", color: T.ink, fontFamily: "inherit", fontSize: 13, fontWeight: 600, padding: "9px 0" }} />
+              {query && <button onClick={() => { setQuery(""); inputRef.current?.focus(); }} style={{ background: "none", border: "none", color: T.sub, fontSize: 14, cursor: "pointer", padding: "2px 2px" }}>✕</button>}
+            </div>
+          </div>
+          {/* scrollable results */}
+          <div style={{ flex: 1, minHeight: 0, overflowY: "auto", WebkitOverflowScrolling: "touch", overscrollBehavior: "contain", touchAction: "pan-y", padding: 6 }}>
+            {filtered.length === 0 ? (
+              <div style={{ fontSize: 12.5, color: T.sub, padding: "10px 8px" }}>No exercises match “{query}”.</div>
+            ) : filtered.map(o => (
+              <button key={o} onClick={() => { onPick(o); setOpen(false); }} style={{
+                width: "100%", textAlign: "left", background: o === value ? "rgba(var(--accent-rgb),.14)" : "none", border: "none",
+                color: o === value ? T.green : T.ink, fontFamily: "inherit", fontSize: 13, fontWeight: o === value ? 800 : 600,
+                padding: "10px 11px", borderRadius: 8, cursor: "pointer", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+              }}>{o === value ? "✓ " : ""}{o}</button>
+            ))}
+          </div>
+          {/* remove column — pinned to the bottom */}
           <button onClick={() => { onRemove(); setOpen(false); }} style={{
-            width: "100%", textAlign: "left", background: "none", border: "none", color: T.danger,
-            fontFamily: "inherit", fontSize: 13, fontWeight: 700, padding: "10px 11px", borderRadius: 8, cursor: "pointer",
+            flexShrink: 0, width: "100%", textAlign: "left", background: "none", border: "none", borderTop: `1px solid ${T.line}`, color: T.danger,
+            fontFamily: "inherit", fontSize: 13, fontWeight: 700, padding: "11px", borderRadius: "0 0 12px 12px", cursor: "pointer",
           }}>✕ Remove this column</button>
         </div>,
         document.body
