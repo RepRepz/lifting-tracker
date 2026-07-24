@@ -1636,19 +1636,24 @@ function DropdownPicker({ renderButton, items, onPick, footer, placeholder = "Se
   const [query, setQuery] = useState("");
   const btnRef = useRef(null);
   const inputRef = useRef(null);
+  // The search box autofocuses ~40ms after opening. On iOS, that first-ever keyboard
+  // raise animates in slowly (300-800ms+) and the page auto-scrolls repeatedly while it
+  // does, to keep the input visible — each of those is a real "scroll" event fired on
+  // `document`/`window` (no `.closest()`, so the old check always treated it as an
+  // outside scroll and slammed the menu shut mid-animation). A SECOND open right after
+  // is fast because the keyboard is already up, which is why it "worked on attempt 2".
+  // Rather than guess a fixed timeout, keep pushing the grace deadline out for as long as
+  // the visual viewport is actively resizing (the keyboard animation), capped so a
+  // deliberate later scroll still closes the menu.
+  const graceUntilRef = useRef(0);
   useEffect(() => {
     if (!open) return;
-    // The search box autofocuses ~40ms after opening, and mobile browsers respond by
-    // auto-scrolling the page to keep it visible above the keyboard — that's a real
-    // "scroll" event fired on `document`/`window` (no `.closest`, so the old check always
-    // treated it as an outside scroll and slammed the menu shut the instant you tapped
-    // search). Ignore scroll-close for a short grace window right after opening so that
-    // nudge can't self-close the very picker whose input was just focused.
-    const openedAt = Date.now();
+    graceUntilRef.current = Date.now() + 600;
     const onDown = (e) => { if (btnRef.current && !btnRef.current.contains(e.target) && !e.target.closest?.("[data-lift-menu]")) setOpen(false); };
-    // Close when the PAGE scrolls, but NOT when the menu's own list is scrolled.
+    // Close when the PAGE scrolls, but NOT when the menu's own list is scrolled, and NOT
+    // during the keyboard-opening grace window.
     const onScroll = (e) => {
-      if (Date.now() - openedAt < 500) return;
+      if (Date.now() < graceUntilRef.current) return;
       if (e.target instanceof Element && e.target.closest("[data-lift-menu]")) return;
       setOpen(false);
     };
@@ -1663,11 +1668,17 @@ function DropdownPicker({ renderButton, items, onPick, footer, placeholder = "Se
   useEffect(() => { if (!open) return; setQuery(""); const t = setTimeout(() => inputRef.current?.focus(), 40); return () => clearTimeout(t); }, [open]);
   // Re-measure when the on-screen keyboard opens/closes (mobile shrinks the visual
   // viewport without firing a normal `resize`) so the menu doesn't render taller than
-  // the space actually visible above the keyboard.
+  // the space actually visible above the keyboard. Each resize during the animation also
+  // extends the scroll-close grace window (capped at 2.5s after open) so a slow first-time
+  // iOS keyboard raise can't get cut off mid-animation.
   const [, forceTick] = useState(0);
   useEffect(() => {
     if (!open || typeof window === "undefined" || !window.visualViewport) return;
-    const onVV = () => forceTick(t => t + 1);
+    const openedAt = Date.now();
+    const onVV = () => {
+      graceUntilRef.current = Math.min(Date.now() + 400, openedAt + 2500);
+      forceTick(t => t + 1);
+    };
     window.visualViewport.addEventListener("resize", onVV);
     return () => window.visualViewport.removeEventListener("resize", onVV);
   }, [open]);
