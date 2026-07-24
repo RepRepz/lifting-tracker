@@ -11,8 +11,16 @@ const addDays = (dateStr, n) => { const d = new Date(dateStr + "T00:00"); d.setD
 const mondayOf = (dateStr) => { const d = new Date(dateStr + "T00:00"); const dow = (d.getDay() + 6) % 7; return addDays(dateStr, -dow); };
 
 /* Open Food Facts — free, no API key. Search by name or fetch by barcode.
-   Uses the newer Search-a-licious engine sorted by scan popularity, which returns far
-   more relevant results than the classic search; falls back to the old endpoint. */
+   NOTE on the two text-search endpoints below: the newer "search-a-licious" engine
+   (search.openfoodfacts.org) does NOT send an Access-Control-Allow-Origin header, so a
+   browser fetch to it is ALWAYS blocked by CORS — confirmed directly against their
+   server, not a guess. It's kept as a best-effort long-shot (some deployments/regions
+   may differ) but never counted on. The legacy `cgi/search.pl` free-text endpoint has
+   also been effectively retired on Open Food Facts' end (frequently 500/503, and even
+   the newer `/api/v2/search?search_terms=` returns zero hits regardless of query — their
+   whole free-text Mongo search backend is currently down, not something a client fix can
+   route around). Barcode lookup (`offBarcode` below) hits a DIFFERENT, healthy backend
+   and works fine — so scanning stays fully reliable even while OFF's text search is out. */
 // fetch with a hard timeout so a slow/hung free API can't leave search spinning forever
 async function fetchT(url, ms = 6000) {
   const ctrl = new AbortController();
@@ -21,23 +29,32 @@ async function fetchT(url, ms = 6000) {
   finally { clearTimeout(t); }
 }
 async function offSearch(q) {
+  // best-effort long-shot — see the CORS note above; failures here are expected and cheap
   try {
-    const r = await fetchT(`https://search.openfoodfacts.org/search?q=${encodeURIComponent(q)}&page_size=15&sort_by=-unique_scans_n`);
-    if (!r.ok) throw new Error("sal failed");
-    const j = await r.json();
-    const out = (j.hits || []).filter(p => p.product_name && p.nutriments).map(offToFood);
-    if (out.length) return rankResults(out, q);
+    const r = await fetchT(`https://search.openfoodfacts.org/search?q=${encodeURIComponent(q)}&page_size=15&sort_by=-unique_scans_n`, 3500);
+    if (r.ok) {
+      const j = await r.json();
+      const out = (j.hits || []).filter(p => p.product_name && p.nutriments).map(offToFood);
+      if (out.length) return rankResults(out, q);
+    }
   } catch {}
-  const r2 = await fetchT(`https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(q)}&search_simple=1&action=process&json=1&page_size=15&sort_by=unique_scans_n`);
+  const r2 = await fetchT(`https://world.openfoodfacts.org/api/v2/search?search_terms=${encodeURIComponent(q)}&page_size=15&sort_by=unique_scans_n&fields=product_name,brands,nutriments,code`);
   if (!r2.ok) throw new Error("search failed");
   const j2 = await r2.json();
   return rankResults((j2.products || []).filter(p => p.product_name && p.nutriments).map(offToFood), q);
 }
 /* USDA FoodData Central — generic whole foods (banana, chicken breast…) that the
-   barcode database is weak on. DEMO_KEY is rate-limited but fine at family scale;
-   failures are silently ignored so it can only ever ADD results. */
+   barcode database is weak on, and (right now) the only text-search source that
+   actually works reliably. DEMO_KEY is a single key SHARED by every anonymous app on
+   the internet, so it gets rate-limited (HTTP 429) almost immediately under any real
+   traffic — confirmed happening on 3 back-to-back requests in testing. Get your own
+   free key in 30 seconds (no approval wait) at https://fdc.nal.usda.gov/api-key-signup
+   and set VITE_USDA_API_KEY in a .env file to fix this properly; DEMO_KEY is only the
+   fallback so the feature still limps along without any setup. */
 async function usdaSearch(q) {
-  const r = await fetchT(`https://api.nal.usda.gov/fdc/v1/foods/search?api_key=DEMO_KEY&query=${encodeURIComponent(q)}&pageSize=8&dataType=Foundation,SR%20Legacy`);
+  const key = (import.meta.env?.VITE_USDA_API_KEY || "DEMO_KEY").trim() || "DEMO_KEY";
+  const r = await fetchT(`https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${encodeURIComponent(key)}&query=${encodeURIComponent(q)}&pageSize=10&dataType=Foundation,SR%20Legacy,Branded`);
+  if (r.status === 429) throw new Error("usda rate-limited");
   if (!r.ok) throw new Error("usda failed");
   const j = await r.json();
   const get = (f, id) => num(f.foodNutrients?.find(n => n.nutrientId === id)?.value);
@@ -49,7 +66,9 @@ async function usdaSearch(q) {
   })).filter(f => f.per100.kcal > 0);
 }
 
-/* both databases at once — whichever answers contributes; only fails if BOTH fail */
+/* both databases at once — whichever answers contributes; only fails if BOTH fail.
+   USDA is queried FIRST/alone-weighted since it's the reliable one right now; Open Food
+   Facts results (when they come through) still merge in for branded/packaged items. */
 async function searchAll(q) {
   const [usda, off] = await Promise.allSettled([usdaSearch(q), offSearch(q)]);
   // junk filter: no zero-calorie ghosts, no essay-length names, name must actually
@@ -57,8 +76,11 @@ async function searchAll(q) {
   const s = q.toLowerCase();
   const clean = (list) => (list || []).filter(f =>
     f.per100.kcal >= 5 && f.name.length <= 60 && f.name.toLowerCase().includes(s.split(" ")[0]));
-  const list = [...clean(usda.value), ...clean(off.value).slice(0, 6)];
-  if (!list.length && usda.status === "rejected" && off.status === "rejected") throw new Error("all failed");
+  const list = [...clean(usda.value), ...clean(off.value).slice(0, 8)];
+  if (!list.length && usda.status === "rejected" && off.status === "rejected") {
+    const usdaRateLimited = String(usda.reason?.message || "").includes("rate-limited");
+    throw new Error(usdaRateLimited ? "rate-limited" : "all failed");
+  }
   const seen = new Set();
   return rankResults(list.filter(f => { const k = f.name.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; }), q);
 }
@@ -80,7 +102,7 @@ function rankResults(list, q) {
   return [...list].sort((a, b) => score(a) - score(b));
 }
 async function offBarcode(code) {
-  const r = await fetch(`https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(code)}.json`);
+  const r = await fetchT(`https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(code)}.json`);
   if (!r.ok) throw new Error("lookup failed");
   const j = await r.json();
   if (j.status !== 1 || !j.product) return null;
@@ -264,12 +286,16 @@ function AddFoodModal({ meal, date, data, setData, onSave, onClose }) {
     setBusy(true);
     const id = ++reqId.current;
     const t = setTimeout(async () => {
-      let r = null;
+      let r = null, lastErr = null;
       try { r = await searchAll(s); }
-      catch { try { r = await searchAll(s); } catch {} } // auto-retry once
+      catch (e1) { try { r = await searchAll(s); } catch (e2) { lastErr = e2 || e1; } } // auto-retry once
       if (reqId.current !== id) return; // user kept typing — this answer is stale
       if (r) { setResults(r); setErr(""); }
-      else setErr("Couldn't reach the food databases — still trying as you type.");
+      else setErr(
+        String(lastErr?.message || "").includes("rate-limited")
+          ? "The food database is busy right now — try again in a moment, or use Manual entry."
+          : "Couldn't reach the food databases — still trying as you type."
+      );
       setBusy(false);
     }, 150);
     return () => clearTimeout(t);
@@ -278,7 +304,8 @@ function AddFoodModal({ meal, date, data, setData, onSave, onClose }) {
   const lookupBarcode = async (code) => {
     setBusy(true); setScanErr("");
     try {
-      const f = await offBarcode(code);
+      let f = null;
+      try { f = await offBarcode(code); } catch { f = await offBarcode(code); } // auto-retry once
       if (!f) setScanErr("No product found for that barcode — try Search instead.");
       else setPicked(f);
     } catch { setScanErr("Lookup failed — check your connection."); }
@@ -289,8 +316,22 @@ function AddFoodModal({ meal, date, data, setData, onSave, onClose }) {
     setScanErr("");
     let Detector = window.BarcodeDetector;
     if (!Detector) {
-      // iOS Safari (and some others) have no built-in scanner — load the polyfill on demand
-      try { Detector = (await import("barcode-detector/ponyfill")).BarcodeDetector; }
+      // iOS Safari (and most others) have no built-in scanner — load the WASM-backed
+      // polyfill on demand. That polyfill (zxing-wasm) fetches its own .wasm binary at
+      // runtime from wherever its JS thinks it's running — which after a production
+      // Vite build is a hashed /assets/ path that never actually contains the .wasm file
+      // (Vite doesn't know to copy it, since it's loaded by a dynamic string, not a
+      // static import). The result: every scan silently failed forever with the camera
+      // just sitting there — confirmed by checking the built dist/ output has no .wasm
+      // file at all. Point it at the jsDelivr copy of the SAME pinned zxing-wasm version
+      // instead, which does exist and serves proper CORS + wasm content-type.
+      try {
+        const mod = await import("barcode-detector/ponyfill");
+        mod.setZXingModuleOverrides({
+          locateFile: (path) => `https://fastly.jsdelivr.net/npm/zxing-wasm@3.1.1/dist/reader/${path}`,
+        });
+        Detector = mod.BarcodeDetector;
+      }
       catch { setScanErr("Couldn't load the scanner — check your connection, or use Search instead."); return; }
     }
     try {
@@ -310,16 +351,28 @@ function AddFoodModal({ meal, date, data, setData, onSave, onClose }) {
         await v.play().catch(() => {});
       }
       const detector = new Detector({ formats: ["ean_13", "ean_8", "upc_a", "upc_e"] });
+      // If the wasm module never loaded (bad network, blocked CDN, etc.) EVERY detect()
+      // call throws — previously that failed silently forever with no feedback at all.
+      // A run of consecutive failures now surfaces a real error instead of a dead camera.
+      let failStreak = 0;
       const tick = async () => {
         if (!streamRef.current) return;
         try {
           const codes = await detector.detect(videoRef.current);
+          failStreak = 0;
           if (codes.length) { stopScan(); lookupBarcode(codes[0].rawValue); return; }
-        } catch {}
+        } catch {
+          failStreak++;
+          if (failStreak >= 40) { stopScan(); setScanErr("Scanner couldn't start — check your connection, or use Search instead."); return; }
+        }
         if (streamRef.current) requestAnimationFrame(tick);
       };
       requestAnimationFrame(tick);
-    } catch { setScanErr("Couldn't access the camera — check permissions, or use Search instead."); }
+    } catch (e) {
+      setScanErr(e?.name === "NotAllowedError" ? "Camera permission denied — allow camera access in your browser settings, or use Search instead."
+        : e?.name === "NotFoundError" ? "No camera found on this device — use Search instead."
+        : "Couldn't access the camera — check permissions, or use Search instead.");
+    }
   };
   const stopScan = () => {
     streamRef.current?.getTracks()?.forEach(t => t.stop());
