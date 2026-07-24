@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef, lazy, Suspense, Fragment, createContext, useContext } from "react";
+import { createPortal } from "react-dom";
 import { supabase, loadUserState, saveUserState, listMyGroups, listMembers, createGroup, joinGroup, leaveGroup, listReactions, addReaction, removeReaction, setSecurityQuestion, getSecurityQuestion, lastActiveFor, setGroupEmoji, resetInviteCode, listCloudBackups, getCloudBackup, getStepToken, stepsFor, lastStepSync, createDuel, listDuels, deleteDuel, acceptDuel, declineDuel, forfeitDuel, requestDuelCancel, clearDuelCancel, setGroupRecordLifts, listProUserIds } from "./lib/storage.js";
 import { SECURITY_QUESTIONS } from "./AuthScreen.jsx";
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
@@ -1608,8 +1609,22 @@ function LiftHeaderPicker({ value, options, onPick, onRemove }) {
     return () => { document.removeEventListener("pointerdown", onDown); window.removeEventListener("resize", close); window.removeEventListener("scroll", close, true); };
   }, [open]);
   const toggle = () => { if (!open && btnRef.current) setRect(btnRef.current.getBoundingClientRect()); setOpen(o => !o); };
+  // Menu geometry, clamped to the viewport. Rendered through a portal on <body> so a
+  // transformed/overflow ancestor can't offset or clip it (that was the "flies to the
+  // side / invisible on phone" bug — position:fixed was resolving against a transformed parent).
   const vw = typeof window !== "undefined" ? window.innerWidth : 360;
-  const left = rect ? Math.min(Math.max(rect.left + rect.width / 2, 112), vw - 112) : 0;
+  const vh = typeof window !== "undefined" ? window.innerHeight : 640;
+  const W = Math.min(230, vw - 16);
+  let menuStyle = null;
+  if (rect) {
+    const left = Math.min(Math.max(rect.left + rect.width / 2 - W / 2, 8), vw - W - 8);
+    const spaceBelow = vh - rect.bottom;
+    const openUp = spaceBelow < 220 && rect.top > spaceBelow;
+    const maxH = Math.max(140, (openUp ? rect.top - 12 : spaceBelow - 12));
+    menuStyle = openUp
+      ? { position: "fixed", bottom: vh - rect.top + 6, left, width: W, maxHeight: Math.min(320, maxH) }
+      : { position: "fixed", top: rect.bottom + 6, left, width: W, maxHeight: Math.min(320, maxH) };
+  }
   return (
     <>
       <button ref={btnRef} onClick={toggle} title={value} style={{
@@ -1622,26 +1637,26 @@ function LiftHeaderPicker({ value, options, onPick, onRemove }) {
         <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{liftShort(value)}</span>
         <span style={{ fontSize: 8, color: open ? "var(--accent)" : T.sub }}>▼</span>
       </button>
-      {open && rect && (
+      {open && menuStyle && createPortal(
         <div data-lift-menu style={{
-          position: "fixed", top: rect.bottom + 6, left, transform: "translateX(-50%)", zIndex: 80,
-          background: T.card, border: `1px solid ${T.line}`, borderRadius: 12, boxShadow: "0 18px 44px -12px rgba(0,0,0,.65)",
-          padding: 6, width: 214, maxHeight: 300, overflowY: "auto", textAlign: "left",
+          ...menuStyle, zIndex: 3000, overflowY: "auto", textAlign: "left",
+          background: T.card, border: `1px solid ${T.line}`, borderRadius: 12, boxShadow: "0 18px 44px -12px rgba(0,0,0,.65)", padding: 6,
         }}>
           <div className="eyebrow" style={{ fontSize: 9, color: T.sub, padding: "4px 8px 6px" }}>Track this column</div>
           {options.map(o => (
             <button key={o} onClick={() => { onPick(o); setOpen(false); }} style={{
               width: "100%", textAlign: "left", background: o === value ? "rgba(var(--accent-rgb),.14)" : "none", border: "none",
               color: o === value ? T.green : T.ink, fontFamily: "inherit", fontSize: 13, fontWeight: o === value ? 800 : 600,
-              padding: "9px 10px", borderRadius: 8, cursor: "pointer", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+              padding: "10px 11px", borderRadius: 8, cursor: "pointer", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
             }}>{o === value ? "✓ " : ""}{o}</button>
           ))}
           <div style={{ height: 1, background: T.line, margin: "5px 6px" }} />
           <button onClick={() => { onRemove(); setOpen(false); }} style={{
             width: "100%", textAlign: "left", background: "none", border: "none", color: T.danger,
-            fontFamily: "inherit", fontSize: 13, fontWeight: 700, padding: "9px 10px", borderRadius: 8, cursor: "pointer",
+            fontFamily: "inherit", fontSize: 13, fontWeight: 700, padding: "10px 11px", borderRadius: 8, cursor: "pointer",
           }}>✕ Remove this column</button>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );
