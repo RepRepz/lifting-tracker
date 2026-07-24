@@ -1660,7 +1660,7 @@ function LiftHeaderPicker({ value, options, onPick, onRemove }) {
               <span style={{ fontSize: 13, color: T.sub }}>🔍</span>
               <input ref={inputRef} value={query} onChange={e => setQuery(e.target.value)} placeholder="Search exercises…"
                 onKeyDown={e => { if (e.key === "Enter" && filtered[0]) { onPick(filtered[0]); setOpen(false); } else if (e.key === "Escape") setOpen(false); }}
-                style={{ flex: 1, minWidth: 0, background: "none", border: "none", outline: "none", color: T.ink, fontFamily: "inherit", fontSize: 13, fontWeight: 600, padding: "9px 0" }} />
+                style={{ flex: 1, minWidth: 0, background: "none", border: "none", outline: "none", boxShadow: "none", color: T.ink, fontFamily: "inherit", fontSize: 13, fontWeight: 600, padding: "9px 0" }} />
               {query && <button onClick={() => { setQuery(""); inputRef.current?.focus(); }} style={{ background: "none", border: "none", color: T.sub, fontSize: 14, cursor: "pointer", padding: "2px 2px" }}>✕</button>}
             </div>
           </div>
