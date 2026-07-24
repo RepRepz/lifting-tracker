@@ -1591,6 +1591,62 @@ function ConfirmX({ onConfirm, label }) {
   );
 }
 
+/* A high-tech column-header picker for the group strength table. Shows a compact,
+   app-font label; clicking opens a fixed-position menu (so the table's horizontal
+   scroll can't clip it) to swap the tracked exercise or remove the column. */
+function LiftHeaderPicker({ value, options, onPick, onRemove }) {
+  const [open, setOpen] = useState(false);
+  const [rect, setRect] = useState(null);
+  const btnRef = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(false);
+    const onDown = (e) => { if (btnRef.current && !btnRef.current.contains(e.target) && !e.target.closest?.("[data-lift-menu]")) setOpen(false); };
+    document.addEventListener("pointerdown", onDown);
+    window.addEventListener("resize", close);
+    window.addEventListener("scroll", close, true);
+    return () => { document.removeEventListener("pointerdown", onDown); window.removeEventListener("resize", close); window.removeEventListener("scroll", close, true); };
+  }, [open]);
+  const toggle = () => { if (!open && btnRef.current) setRect(btnRef.current.getBoundingClientRect()); setOpen(o => !o); };
+  const vw = typeof window !== "undefined" ? window.innerWidth : 360;
+  const left = rect ? Math.min(Math.max(rect.left + rect.width / 2, 112), vw - 112) : 0;
+  return (
+    <>
+      <button ref={btnRef} onClick={toggle} title={value} style={{
+        display: "inline-flex", alignItems: "center", gap: 6, justifyContent: "center",
+        background: open ? "rgba(var(--accent-rgb),.14)" : T.input,
+        border: `1px solid ${open ? "var(--accent)" : T.line}`, borderRadius: 9,
+        color: T.ink, fontFamily: "inherit", fontSize: 11, fontWeight: 800, letterSpacing: ".5px", textTransform: "uppercase",
+        padding: "7px 10px", cursor: "pointer", maxWidth: 120, whiteSpace: "nowrap",
+      }}>
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{liftShort(value)}</span>
+        <span style={{ fontSize: 8, color: open ? "var(--accent)" : T.sub }}>▼</span>
+      </button>
+      {open && rect && (
+        <div data-lift-menu style={{
+          position: "fixed", top: rect.bottom + 6, left, transform: "translateX(-50%)", zIndex: 80,
+          background: T.card, border: `1px solid ${T.line}`, borderRadius: 12, boxShadow: "0 18px 44px -12px rgba(0,0,0,.65)",
+          padding: 6, width: 214, maxHeight: 300, overflowY: "auto", textAlign: "left",
+        }}>
+          <div className="eyebrow" style={{ fontSize: 9, color: T.sub, padding: "4px 8px 6px" }}>Track this column</div>
+          {options.map(o => (
+            <button key={o} onClick={() => { onPick(o); setOpen(false); }} style={{
+              width: "100%", textAlign: "left", background: o === value ? "rgba(var(--accent-rgb),.14)" : "none", border: "none",
+              color: o === value ? T.green : T.ink, fontFamily: "inherit", fontSize: 13, fontWeight: o === value ? 800 : 600,
+              padding: "9px 10px", borderRadius: 8, cursor: "pointer", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+            }}>{o === value ? "✓ " : ""}{o}</button>
+          ))}
+          <div style={{ height: 1, background: T.line, margin: "5px 6px" }} />
+          <button onClick={() => { onRemove(); setOpen(false); }} style={{
+            width: "100%", textAlign: "left", background: "none", border: "none", color: T.danger,
+            fontFamily: "inherit", fontSize: 13, fontWeight: 700, padding: "9px 10px", borderRadius: 8, cursor: "pointer",
+          }}>✕ Remove this column</button>
+        </div>
+      )}
+    </>
+  );
+}
+
 /* ---------- drag-to-reorder (pointer events: works on mouse AND touch) ---------- */
 function useReorder(storageKey, defaultIds) {
   const [saved, setSaved] = useState(() => {
@@ -6450,15 +6506,10 @@ function FriendsTab({ user, nutritionOn, streaksOn, isPro, openPro }) {
             <table><thead><tr>
               <th>Member</th>
               {recordLifts.map((l,i)=>(
-                <th key={i} style={{textAlign:"center", minWidth: isOwner?104:undefined}}>
-                  {isOwner ? (
-                    <select value={l} onChange={e=>swapLift(i, e.target.value)} title={l}
-                      style={{background:T.input, color:T.ink, border:`1px solid ${T.line}`, borderRadius:8, padding:"5px 6px", fontSize:12, fontWeight:700, maxWidth:120, cursor:"pointer"}}>
-                      {!liftOptions.includes(l) && <option value={l}>{l}</option>}
-                      {liftOptions.map(o=><option key={o} value={o}>{o}</option>)}
-                      <option value="__remove__">✕ Remove column</option>
-                    </select>
-                  ) : liftShort(l)}
+                <th key={i} style={{textAlign:"center", minWidth: isOwner?110:undefined}}>
+                  {isOwner
+                    ? <LiftHeaderPicker value={l} options={liftOptions} onPick={ex=>swapLift(i, ex)} onRemove={()=>swapLift(i, "__remove__")} />
+                    : liftShort(l)}
                 </th>
               ))}
               {isOwner && recordLifts.length < 8 && (
