@@ -1578,12 +1578,14 @@ function ConfirmX({ onConfirm, label }) {
     return () => clearTimeout(t);
   }, [armed]);
   if (armed) return (
-    <button onClick={onConfirm} style={{ background:T.down, color:"#000", fontSize:11.5, fontWeight:700, padding:"3px 10px", whiteSpace:"nowrap" }}>
-      Sure?
+    <button onClick={onConfirm} style={{ background:T.danger, color:"#fff", fontSize:12, fontWeight:800, padding:"6px 14px", borderRadius:99, whiteSpace:"nowrap", boxShadow:"0 6px 16px -6px rgba(255,70,70,.55)" }}>
+      ✓ Confirm
     </button>
   );
   return (
-    <button onClick={()=>setArmed(true)} style={{ background:"none", color:label?T.sub:T.danger, fontSize:label?12.5:13, textDecoration:label?"underline":"none" }}>
+    <button onClick={()=>setArmed(true)} style={ label
+      ? { background:"none", border:`1px solid ${T.line}`, color:T.sub, fontSize:12, fontWeight:700, padding:"5px 13px", borderRadius:99, whiteSpace:"nowrap" }
+      : { background:"none", border:"none", color:T.sub, fontSize:15, lineHeight:1, padding:"2px 5px" } }>
       {label || "✕"}
     </button>
   );
@@ -3048,7 +3050,10 @@ function DuelsCard({ user, all, nameOf, myId, myName, proIds = [] }) {
             </div>
             {!forfeited && [["You", mySum, true],[oName, oppSum, false]].map(([nm,val,me])=>(
               <div key={nm+String(me)} style={{display:"flex", alignItems:"center", gap:8, marginBottom:5}}>
-                <span style={{width:66, fontSize:12.5, fontWeight: me?800:600, color: (me||oIsPro(oId))?T.green:T.ink, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{nm}{!me && oIsPro(oId) && <ProBadge small />}</span>
+                <span style={{width:80, flexShrink:0, display:"flex", alignItems:"center", gap:3, fontSize:12.5, fontWeight: me?800:600, color: (me||oIsPro(oId))?T.green:T.ink}}>
+                  <span style={{minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{nm}</span>
+                  {!me && oIsPro(oId) && <span style={{flexShrink:0, display:"inline-flex"}}><ProBadge small /></span>}
+                </span>
                 <span style={{flex:1, height:8, background:T.input, borderRadius:99, overflow:"hidden"}}>
                   <span style={{display:"block", width:`${val/mx*100}%`, height:"100%", background: me?T.green:"rgba(var(--accent-rgb),.5)", borderRadius:99, transition:"width .5s ease"}} />
                 </span>
@@ -3122,7 +3127,10 @@ function StepsTab({ user, data, setData }) {
   const Row = ({ r, i, value }) => (
     <button onClick={()=>setView({ id:r.id, name:r.name })} style={{width:"100%", textAlign:"left", background:"none", display:"flex", alignItems:"center", gap:10, padding:"9px 2px", borderTop: i===0?"none":`1px solid ${T.creamLine}`}}>
       <span style={{width:24, textAlign:"center", fontWeight:800, color: i===0?T.green:T.sub, fontSize:14}}>{i===0?"👑":i+1}</span>
-      <span style={{flex:1, fontWeight: r.me?800:600, color: (r.me||proIds.includes(r.id))?T.green:T.ink, fontSize:14, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{r.name}{r.me?" (you)":""}{!r.me && proIds.includes(r.id) && <ProBadge small />}</span>
+      <span style={{flex:1, minWidth:0, display:"flex", alignItems:"center", gap:3, fontWeight: r.me?800:600, color: (r.me||proIds.includes(r.id))?T.green:T.ink, fontSize:14}}>
+        <span style={{minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{r.name}{r.me?" (you)":""}</span>
+        {!r.me && proIds.includes(r.id) && <span style={{flexShrink:0, display:"inline-flex"}}><ProBadge small /></span>}
+      </span>
       <span style={{fontSize:14, fontWeight:800, color:T.ink, fontVariantNumeric:"tabular-nums"}}>{value.toLocaleString()}</span>
       <span style={{color:T.sub, fontSize:15}}>›</span>
     </button>
@@ -5693,9 +5701,12 @@ function FriendsTab({ user, nutritionOn, streaksOn, isPro, openPro }) {
   // EVERYWHERE a friend's name shows, so Pro status is unmistakable and aspirational.
   const nameEl = (uid, name, { you = false, weight, size } = {}) => {
     const pro = isProUser(uid);
+    // inline-flex so a long name ellipsizes on its own, while "(you)" + the Pro badge
+    // stay pinned (flex-shrink:0) and never get clipped or pushed under the bar
     return (
-      <span style={{ color: (pro || you) ? T.green : "inherit", fontWeight: weight ?? (you ? 800 : 600), fontSize: size }}>
-        {name}{you ? " (you)" : ""}{pro ? <ProBadge small /> : null}
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 4, minWidth: 0, maxWidth: "100%", verticalAlign: "bottom" }}>
+        <span style={{ color: (pro || you) ? T.green : "inherit", fontWeight: weight ?? (you ? 800 : 600), fontSize: size, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}{you ? " (you)" : ""}</span>
+        {pro && <span style={{ flexShrink: 0, display: "inline-flex" }}><ProBadge small /></span>}
       </span>
     );
   };
@@ -5729,6 +5740,7 @@ function FriendsTab({ user, nutritionOn, streaksOn, isPro, openPro }) {
   const recordLifts = (Array.isArray(active?.record_lifts) && active.record_lifts.length) ? active.record_lifts : BIG_LIFTS;
   const [editLifts, setEditLifts] = useState(false);
   const [draftLifts, setDraftLifts] = useState([]);
+  const [openLift, setOpenLift] = useState(null);   // which lift's PR breakdown is expanded
   const liftOptions = useMemo(() => {
     const s = new Set(BIG_LIFTS);
     for (const m of (members || [])) for (const e of (states[m.user_id]?.log || [])) if (e.exercise) s.add(e.exercise);
@@ -6237,7 +6249,7 @@ function FriendsTab({ user, nutritionOn, streaksOn, isPro, openPro }) {
             : (() => {
                 const mg = mergeSteps(profileSteps, pdata.cardio);
                 return Object.keys(mg.map).length
-                  ? <StepRingChart map={mg.map} goal={10000} meta={mg.meta} />
+                  ? <StepRingChart map={mg.map} goal={(pdata.profile?.stepGoal) || 10000} meta={mg.meta} />
                   : <div className="card" style={{textAlign:"center", color:T.sub, padding:"26px 16px"}}><div style={{fontSize:34, marginBottom:8}}>👟</div>{profile.username} hasn't logged any steps yet.</div>;
               })()}
           </>)}
@@ -6416,9 +6428,9 @@ function FriendsTab({ user, nutritionOn, streaksOn, isPro, openPro }) {
             return (
               <button key={r.uid} onClick={()=>setFacts({ uid:r.uid, name:r.user })} title={`${r.avg.toLocaleString()} steps/day average`}
                 style={{width:"100%", textAlign:"left", background:"none", display:"flex", alignItems:"center", gap:9, padding:"9px 2px", borderTop: i===0?"none":`1px solid ${T.creamLine}`}}>
-                <span style={{width:20, textAlign:"center", fontWeight:800, fontSize:13, color: i===0?T.green:T.sub}}>{i===0?"👑":i+1}</span>
-                <span style={{width:82, flexShrink:0, fontSize:13.5, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{nameEl(r.uid, r.user, { you: isMe })}</span>
-                <span style={{flex:1, height:8, background:T.input, borderRadius:99, overflow:"hidden"}}>
+                <span style={{width:20, flexShrink:0, textAlign:"center", fontWeight:800, fontSize:13, color: i===0?T.green:T.sub}}>{i===0?"👑":i+1}</span>
+                <span style={{flex:"0 1 auto", minWidth:40, maxWidth:150, display:"flex", fontSize:13.5}}>{nameEl(r.uid, r.user, { you: isMe })}</span>
+                <span style={{flex:1, minWidth:36, height:8, background:T.input, borderRadius:99, overflow:"hidden"}}>
                   <span style={{display:"block", width:`${r.total/top*100}%`, height:"100%", background:T.green, borderRadius:99, transition:"width .5s ease"}} />
                 </span>
                 <span style={{textAlign:"right", flexShrink:0, minWidth:64}}>
@@ -6442,7 +6454,7 @@ function FriendsTab({ user, nutritionOn, streaksOn, isPro, openPro }) {
               <button onClick={openLiftEditor} title="Choose which lifts this group tracks" style={{flexShrink:0, background:T.input, border:`1px solid ${T.line}`, color:T.ink, fontSize:12, fontWeight:700, padding:"5px 11px", borderRadius:99}}>✎ Lifts</button>
             )}
           </div>
-          <div style={{fontSize:12, color:T.sub, marginBottom:8}}>Green = group best.{isOwner && !editLifts ? " Owner picks which lifts show." : ""}</div>
+          <div style={{fontSize:12, color:T.sub, marginBottom:8}}>Tap a lift to see everyone's best estimated 1RM.{isOwner && !editLifts ? " Owner picks which lifts show." : ""}</div>
 
           {editLifts ? (
             <div style={{background:T.input, border:`1px solid ${T.line}`, borderRadius:12, padding:12}}>
@@ -6466,18 +6478,43 @@ function FriendsTab({ user, nutritionOn, streaksOn, isPro, openPro }) {
               </div>
             </div>
           ) : (
-            <div style={{overflowX:"auto"}}>
-              <table><thead><tr><th>Member</th>{recordLifts.map(l=><th key={l} style={{textAlign:"center"}}>{liftShort(l)}</th>)}</tr></thead>
-                <tbody>{strength.rows.map(r=>(
-                  <tr key={r.uid}>
-                    <td>{nameEl(r.uid, r.user, { you: r.uid===user.id, weight: r.uid===user.id?700:400 })}</td>
-                    {recordLifts.map(l=>(
-                      <td key={l} style={{ textAlign:"center", color: r.lifts[l] && r.lifts[l]===strength.best[l] ? T.green : T.ink, fontWeight: r.lifts[l] && r.lifts[l]===strength.best[l] ? 700 : 400 }}>
-                        {r.lifts[l] == null ? "—" : dispW(r.lifts[l], units)}
-                      </td>
-                    ))}
-                  </tr>
-                ))}</tbody></table>
+            <div>
+              {recordLifts.map(l => {
+                const ranked = strength.rows.map(r => ({ uid:r.uid, user:r.user, val:r.lifts[l] })).filter(x => x.val != null).sort((a,b)=>b.val-a.val);
+                const best = strength.best[l] || 0;
+                const leader = ranked[0];
+                const isOpen = openLift === l;
+                return (
+                  <div key={l} style={{borderTop:`1px solid ${T.creamLine}`}}>
+                    <button onClick={()=>setOpenLift(isOpen?null:l)} style={{width:"100%", background:"none", display:"flex", alignItems:"center", gap:10, padding:"12px 2px", textAlign:"left"}}>
+                      <span style={{flex:1, minWidth:0, fontSize:14, fontWeight:700, color:T.ink, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{l}</span>
+                      {best>0 ? (
+                        <span style={{display:"flex", alignItems:"center", gap:6, minWidth:0}}>
+                          <span style={{fontSize:12, color:T.sub, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", maxWidth:96}}>👑 {leader?.user}{leader?.uid===user.id?" (you)":""}</span>
+                          <span style={{fontSize:13.5, fontWeight:800, color:T.green, fontVariantNumeric:"tabular-nums", flexShrink:0}}>{dispW(best,units)}{uLabel(units)}</span>
+                        </span>
+                      ) : <span style={{fontSize:12.5, color:T.sub}}>no data</span>}
+                      <span style={{flexShrink:0, color:T.sub, fontSize:11, transform:isOpen?"rotate(180deg)":"none", transition:"transform .2s"}}>▼</span>
+                    </button>
+                    {isOpen && (
+                      <div style={{padding:"0 2px 12px"}}>
+                        {ranked.length === 0 ? (
+                          <div style={{fontSize:12.5, color:T.sub, padding:"2px 0 6px"}}>No one's logged {l} yet.</div>
+                        ) : ranked.map((x,i)=>(
+                          <div key={x.uid} style={{display:"flex", alignItems:"center", gap:9, padding:"7px 0"}}>
+                            <span style={{width:20, flexShrink:0, textAlign:"center", fontWeight:800, fontSize:13, color:i===0?T.green:T.sub}}>{i===0?"👑":i+1}</span>
+                            <span style={{flex:"0 1 auto", minWidth:40, maxWidth:150, display:"flex", fontSize:13.5}}>{nameEl(x.uid, x.user, { you: x.uid===user.id })}</span>
+                            <span style={{flex:1, minWidth:36, height:7, background:T.input, borderRadius:99, overflow:"hidden"}}>
+                              <span style={{display:"block", width:`${x.val/best*100}%`, height:"100%", background:i===0?T.green:"rgba(var(--accent-rgb),.5)", borderRadius:99, transition:"width .5s ease"}} />
+                            </span>
+                            <b style={{fontSize:13, flexShrink:0, minWidth:54, textAlign:"right", color:T.ink, fontVariantNumeric:"tabular-nums"}}>{dispW(x.val,units)}{uLabel(units)}</b>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
