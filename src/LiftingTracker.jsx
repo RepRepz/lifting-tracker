@@ -1638,9 +1638,20 @@ function DropdownPicker({ renderButton, items, onPick, footer, placeholder = "Se
   const inputRef = useRef(null);
   useEffect(() => {
     if (!open) return;
+    // The search box autofocuses ~40ms after opening, and mobile browsers respond by
+    // auto-scrolling the page to keep it visible above the keyboard — that's a real
+    // "scroll" event fired on `document`/`window` (no `.closest`, so the old check always
+    // treated it as an outside scroll and slammed the menu shut the instant you tapped
+    // search). Ignore scroll-close for a short grace window right after opening so that
+    // nudge can't self-close the very picker whose input was just focused.
+    const openedAt = Date.now();
     const onDown = (e) => { if (btnRef.current && !btnRef.current.contains(e.target) && !e.target.closest?.("[data-lift-menu]")) setOpen(false); };
     // Close when the PAGE scrolls, but NOT when the menu's own list is scrolled.
-    const onScroll = (e) => { if (e.target?.closest?.("[data-lift-menu]")) return; setOpen(false); };
+    const onScroll = (e) => {
+      if (Date.now() - openedAt < 500) return;
+      if (e.target instanceof Element && e.target.closest("[data-lift-menu]")) return;
+      setOpen(false);
+    };
     // Only close on a real resize (orientation) — NOT the phone keyboard opening on autofocus.
     const w0 = window.innerWidth;
     const onResize = () => { if (window.innerWidth !== w0) setOpen(false); };
@@ -6554,7 +6565,7 @@ function FriendsTab({ user, exMap = {}, nutritionOn, streaksOn, isPro, openPro }
                   <span style={{flex:1, height:6, background:T.input, borderRadius:99, overflow:"hidden"}}>
                     <span style={{display:"block", width:`${Math.min(r.workouts,7)/7*100}%`, height:"100%", background:T.green, borderRadius:99}} />
                   </span>
-                  <b style={{color: r.workouts>0?T.green:T.sub, fontSize:13, width:34, textAlign:"right", fontVariantNumeric:"tabular-nums"}}>{r.workouts}/7</b>
+                  <b style={{color: r.workouts>0?T.green:T.sub, fontSize:13, width:40, textAlign:"right", fontVariantNumeric:"tabular-nums"}}>{r.workouts}/7<span style={{fontSize:10, color:T.sub, fontWeight:600}}>d</span></b>
                 </span>
                 {streaksOn && (
                   <span title="Week streak" style={{width:46, textAlign:"center", fontSize:12.5, fontWeight:700, color: r.streak>0?T.ink:T.sub, flexShrink:0}}>

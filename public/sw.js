@@ -1,7 +1,7 @@
 /* Offline support: network-first for same-origin files, falling back to
    the last cached copy when there's no signal. Supabase API calls are
    never intercepted. */
-const CACHE = "the-lab-v124";
+const CACHE = "the-lab-v125";
 
 self.addEventListener("install", () => self.skipWaiting());
 
