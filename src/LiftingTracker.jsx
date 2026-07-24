@@ -25,7 +25,9 @@ const SEED_EXERCISES = [
   ["Bench Press",["Chest"],["Triceps"]],["Incline Bench Press",["Chest"],["Shoulders","Triceps"]],
   ["Incline Dumbbell Press",["Chest"],["Shoulders","Triceps"]],["Dumbbell Bench Press",["Chest"],["Triceps"]],
   ["Machine Chest Press",["Chest"],["Triceps"]],
+  ["Smith Machine Bench Press",["Chest"],["Triceps"]],["Smith Machine Incline Bench Press",["Chest"],["Shoulders","Triceps"]],
   ["Chest Fly",["Chest"]],["Cable Crossover",["Chest"]],
+  ["High To Low Cable Chest Fly",["Chest"]],["Low To High Cable Chest Fly",["Chest"]],["Middle Cable Chest Fly",["Chest"]],
   ["Dips",["Chest","Triceps"],["Shoulders"]],
   // push-up family
   ["Push-Up",["Chest","Triceps"],["Shoulders"]],["Wide Push-Up",["Chest"],["Triceps","Shoulders"]],
@@ -38,39 +40,46 @@ const SEED_EXERCISES = [
   ["Close-Grip Bench Press",["Triceps"],["Chest"]],["Triceps Dip",["Triceps"],["Chest"]],
   // shoulders
   ["Overhead Press",["Shoulders"],["Triceps"]],["Dumbbell Shoulder Press",["Shoulders"],["Triceps"]],
+  ["Smith Machine Shoulder Press",["Shoulders"],["Triceps"]],
   ["Arnold Press",["Shoulders"],["Triceps"]],["Lateral Raise",["Shoulders"]],["Single-Arm Cable Side Raise",["Shoulders"]],["Rear Delt Fly",["Shoulders"]],
   ["Face Pull",["Shoulders"],["Back"]],["Upright Row",["Shoulders"],["Back"]],
   // back
   ["Deadlift",["Back","Legs"]],["Sumo Deadlift",["Legs"],["Back"]],
-  ["Barbell Row",["Back"],["Biceps"]],["Pull-Up",["Back"],["Biceps"]],["Chin-Up",["Back","Biceps"]],
+  ["Barbell Row",["Back"],["Biceps"]],
+  ["Pull-Up",["Back"],["Biceps"]],["Chin-Up",["Back","Biceps"]],["Wide-Grip Pull-Up",["Back"],["Biceps"]],
+  ["Neutral-Grip Pull-Up",["Back"],["Biceps"]],["Assisted Pull-Up",["Back"],["Biceps"]],
   ["Lat Pulldown",["Back"],["Biceps"]],["Seated Cable Row",["Back"],["Biceps"]],["Dumbbell Row",["Back"],["Biceps"]],
-  ["T-Bar Row",["Back"],["Biceps"]],["Inverted Row",["Back"],["Biceps"]],
-  ["Barbell Shrug",["Back"]],["Dumbbell Shrug",["Back"]],["Back Extension",["Back"],["Legs"]],
+  ["T-Bar Row",["Back"],["Biceps"]],["Inverted Row",["Back"],["Biceps"]],["Seated Single-Arm Cross-Body Cable Row",["Back"],["Biceps"]],
+  ["Barbell Shrug",["Back"]],["Dumbbell Shrug",["Back"]],["Back Extension",["Back"],["Legs"]],["Superman",["Back"]],
   // biceps
   ["Barbell Curl",["Biceps"]],["Dumbbell Curl",["Biceps"]],["Incline Dumbbell Curl",["Biceps"]],["Hammer Curl",["Biceps"]],
   ["Preacher Curl",["Biceps"]],["Cable Curl",["Biceps"]],["Concentration Curl",["Biceps"]],
   // legs
   ["Back Squat",["Legs"]],["Front Squat",["Legs"]],["Machine Squat",["Legs"]],["Hack Squat",["Legs"]],
-  ["Goblet Squat",["Legs"]],["Bodyweight Squat",["Legs"]],["Leg Press",["Legs"]],["Leg Extension",["Legs"]],
+  ["Smith Machine Squat",["Legs"]],
+  ["Goblet Squat",["Legs"]],["Bodyweight Squat",["Legs"]],["Jump Squat",["Legs"]],["Leg Press",["Legs"]],["Leg Extension",["Legs"]],
   ["Lying Leg Curl",["Legs"]],["Seated Leg Curl",["Legs"]],["Romanian Deadlift",["Legs"],["Back"]],
-  ["Good Morning",["Legs"],["Back"]],["Bulgarian Split Squat",["Legs"]],["Walking Lunge",["Legs"]],
-  ["Step-Up",["Legs"]],["Hip Thrust",["Legs"]],["Glute Bridge",["Legs"]],["Hip Abduction Machine",["Legs"]],
+  ["Good Morning",["Legs"],["Back"]],["Bulgarian Split Squat",["Legs"]],["Walking Lunge",["Legs"]],["Bodyweight Lunge",["Legs"]],
+  ["Step-Up",["Legs"]],["Box Jump",["Legs"]],["Wall Sit",["Legs"]],["Hip Thrust",["Legs"]],["Glute Bridge",["Legs"]],["Hip Abduction Machine",["Legs"]],
   ["Kettlebell Swing",["Legs"],["Back"]],["Standing Calf Raise",["Legs"]],["Seated Calf Raise",["Legs"]],
   // abs / full body
-  ["Plank",["Abs"]],["Hanging Leg Raise",["Abs"]],["Vertical Knee Raise",["Abs"]],["Cable Crunch",["Abs"]],["Ab Wheel",["Abs"]],
-  ["Sit-Up",["Abs"]],["Crunch",["Abs"]],["Decline Ab Crunch",["Abs"]],["Russian Twist",["Abs"]],["Mountain Climber",["Abs"]],
+  ["Plank",["Abs"]],["Side Plank",["Abs"]],["Hanging Leg Raise",["Abs"]],["Vertical Knee Raise",["Abs"]],["Cable Crunch",["Abs"]],["Ab Wheel",["Abs"]],
+  ["Sit-Up",["Abs"]],["Crunch",["Abs"]],["Bicycle Crunch",["Abs"]],["Decline Ab Crunch",["Abs"]],["Russian Twist",["Abs"]],["Mountain Climber",["Abs"]],
+  ["Burpee",["Legs"],["Chest"]],
   ["Farmer's Carry",["Back"],["Abs"]],
 ];
 const BW_SET = new Set([
-  "Pull-Up","Chin-Up","Dips","Triceps Dip","Inverted Row","Back Extension","Bodyweight Squat","Glute Bridge",
+  "Pull-Up","Chin-Up","Wide-Grip Pull-Up","Neutral-Grip Pull-Up","Assisted Pull-Up",
+  "Dips","Triceps Dip","Inverted Row","Back Extension","Superman","Bodyweight Squat","Jump Squat","Bodyweight Lunge","Box Jump","Wall Sit","Glute Bridge",
   "Push-Up","Wide Push-Up","Diamond Push-Up","Incline Push-Up","Decline Push-Up","Pike Push-Up","Archer Push-Up","Clap Push-Up","One-Arm Push-Up",
-  "Plank","Hanging Leg Raise","Ab Wheel","Sit-Up","Crunch","Decline Ab Crunch","Russian Twist","Mountain Climber",
+  "Plank","Side Plank","Hanging Leg Raise","Ab Wheel","Sit-Up","Crunch","Bicycle Crunch","Decline Ab Crunch","Russian Twist","Mountain Climber","Burpee",
 ]);
 /* Which seed moves load plates on a straight bar — drives the plate calculator. */
 const BARBELL_SEED = new Set([
   "Bench Press","Incline Bench Press","Close-Grip Bench Press","Overhead Press",
   "Deadlift","Sumo Deadlift","Barbell Row","T-Bar Row","Barbell Curl","Back Squat","Front Squat",
   "Romanian Deadlift","Hip Thrust","Barbell Shrug","Upright Row","Good Morning",
+  "Smith Machine Bench Press","Smith Machine Incline Bench Press","Smith Machine Shoulder Press","Smith Machine Squat",
 ]);
 /* Primary muscle groups an exercise hits (old saved data may only have a single `muscle`). */
 const musclesOf = (ex) => !ex ? []
@@ -187,7 +196,7 @@ const defaultData = {
   journal: {}, // { "YYYY-MM-DD": { mood, sleep, text } } — daily notes
   profile: {}, // heightIn (inches) lives here once set
   pins: [],    // pinned dashboard charts (exercise names)
-  libraryV: 9, // bumped when the seed library changes, so existing users get the update once
+  libraryV: 10, // bumped when the seed library changes, so existing users get the update once
 };
 
 /* One-time upgrade of previously saved data: pull in newly added seed exercises and
@@ -214,8 +223,12 @@ function migrateData(d, uname) {
   // "Single-Arm Cable Side Raise" — rename its log entries and drop the old library entry.
   const norm = (s) => (s || "").toLowerCase().replace(/-/g, " ").replace(/\s+/g, " ").trim();
   const isOldSideRaise = (name) => { const n = norm(name); return n.includes("low to high") && n.includes("side raise"); };
-  let log = (d.log || []).map(e => isOldSideRaise(e.exercise) ? { ...e, exercise: "Single-Arm Cable Side Raise" } : e);
-  const cleanedExercises = exercises.filter(x => !isOldSideRaise(x.name));
+  // fold pal's custom "Incline Smith Press" into the new official "Smith Machine Incline
+  // Bench Press" seed move, now that Smith machine exercises have their own entries.
+  const isOldInclineSmith = (name) => norm(name) === "incline smith press";
+  let log = (d.log || []).map(e => isOldSideRaise(e.exercise) ? { ...e, exercise: "Single-Arm Cable Side Raise" }
+    : isOldInclineSmith(e.exercise) ? { ...e, exercise: "Smith Machine Incline Bench Press" } : e);
+  const cleanedExercises = exercises.filter(x => !isOldSideRaise(x.name) && !isOldInclineSmith(x.name));
   // one-off: dimi's 7/20 decline ab session, logged for him by request (runs once — the
   // libraryV gate above plus this duplicate check keep it from ever doubling up)
   if (uname === "dimi" && !log.some(e => e.exercise === "Decline Ab Crunch" && e.date === "2026-07-20")) {
@@ -1079,8 +1092,11 @@ function LogTab({ data, exMap, setData, routinesOn }) {
     const cleanDrops = drops
       .map(dr => ({ weight: toLb(parseFloat(dr.weight), units), reps: parseInt(dr.reps) }))
       .filter(dr => dr.weight > 0 && dr.reps > 0);
+    // Bodyweight moves: weight is an OPTIONAL extra load (belt/vest/dumbbell between the
+    // feet) — leaving it blank logs a plain bodyweight set. Either way the move still
+    // counts by reps everywhere (leaderboards, graphs, PRs), since those all key off type.
     const entry = { id: Date.now(), date, exercise: exName, set: setNum,
-      weight: isBW ? null : toLb(parseFloat(weight), units), reps: parseInt(reps), effort, notes,
+      weight: isBW ? (weight ? toLb(parseFloat(weight), units) : null) : toLb(parseFloat(weight), units), reps: parseInt(reps), effort, notes,
       ...(cleanDrops.length ? { drops: cleanDrops } : {}) };
     const pr = checkPR(entry);
     setData(d => ({ ...d, log: [...d.log, entry] }));
@@ -1159,7 +1175,7 @@ function LogTab({ data, exMap, setData, routinesOn }) {
     if (!editValid) return;
     setData(d => ({ ...d, log: d.log.map(x => x.id === edit.id ? {
       ...x, date: edit.date > todayStr() ? todayStr() : edit.date, exercise: edit.exercise, set: parseInt(edit.set) || 1,
-      weight: editIsBW ? null : toLb(parseFloat(edit.weight), units), reps: parseInt(edit.reps),
+      weight: editIsBW ? (edit.weight !== "" ? toLb(parseFloat(edit.weight), units) : null) : toLb(parseFloat(edit.weight), units), reps: parseInt(edit.reps),
       effort: edit.effort, notes: edit.notes,
     } : x) }));
     setEdit(null);
@@ -1232,7 +1248,7 @@ function LogTab({ data, exMap, setData, routinesOn }) {
             ? <b>First time logging this!</b>
             : <>Last time: <b>{lastTime.text}</b> <span style={{color:T.sub}}>({fmtDate(lastTime.date)})</span> — beat it.
               {beaten && <span className="chip" style={{background:T.mint, color:T.green, marginLeft:8}}>🔥 Beating last time!</span>}</>}
-          {isBW && <div style={{fontSize:12, color:T.sub, marginTop:2}}>Bodyweight move — tracked by reps, no weight needed.</div>}
+          {isBW && <div style={{fontSize:12, color:T.sub, marginTop:2}}>Bodyweight move — tracked by reps. Add weight below if you used a belt/vest; it still counts as bodyweight everywhere.</div>}
           {sparkPts && sparkPts.length >= 2 && (
             <div style={{display:"flex", alignItems:"center", gap:10, marginTop:8}}>
               <Spark pts={sparkPts} w={110} h={28} />
@@ -1242,8 +1258,9 @@ function LogTab({ data, exMap, setData, routinesOn }) {
         </div>
       )}
 
-      <div style={{display:"grid", gridTemplateColumns: isBW ? "1fr" : "1fr 1fr", gap:10, marginBottom:10}}>
-        {!isBW && <label style={lbl}>Weight ({uLabel(units)})<input type="number" inputMode="decimal" value={weight} onChange={e=>setWeight(e.target.value)} /></label>}
+      <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:10}}>
+        <label style={lbl}>{isBW ? `+ Added weight (optional, ${uLabel(units)})` : `Weight (${uLabel(units)})`}
+          <input type="number" inputMode="decimal" value={weight} onChange={e=>setWeight(e.target.value)} placeholder={isBW ? "e.g. belt/vest" : ""} /></label>
         <label style={lbl}>Reps<input type="number" inputMode="numeric" value={reps} onChange={e=>setReps(e.target.value)} /></label>
       </div>
       {!isBW && exName && (
@@ -1403,8 +1420,8 @@ function LogTab({ data, exMap, setData, routinesOn }) {
                       ))}
                     </select>
                   </label>
-                  <div style={{display:"grid", gridTemplateColumns: editIsBW ? "1fr" : "1fr 1fr", gap:8, marginBottom:8}}>
-                    {!editIsBW && <label style={lbl}>Weight ({uLabel(units)})<input type="number" inputMode="decimal" value={edit.weight} onChange={ev=>setEdit(s=>({...s, weight:ev.target.value}))} /></label>}
+                  <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:8}}>
+                    <label style={lbl}>{editIsBW ? "+ Added weight (optional)" : `Weight (${uLabel(units)})`}<input type="number" inputMode="decimal" value={edit.weight} onChange={ev=>setEdit(s=>({...s, weight:ev.target.value}))} /></label>
                     <label style={lbl}>Reps<input type="number" inputMode="numeric" value={edit.reps} onChange={ev=>setEdit(s=>({...s, reps:ev.target.value}))} /></label>
                   </div>
                   <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:10}}>
@@ -1633,12 +1650,22 @@ function DropdownPicker({ renderButton, items, onPick, footer, placeholder = "Se
     return () => { document.removeEventListener("pointerdown", onDown); window.removeEventListener("resize", onResize); window.removeEventListener("scroll", onScroll, true); };
   }, [open]);
   useEffect(() => { if (!open) return; setQuery(""); const t = setTimeout(() => inputRef.current?.focus(), 40); return () => clearTimeout(t); }, [open]);
+  // Re-measure when the on-screen keyboard opens/closes (mobile shrinks the visual
+  // viewport without firing a normal `resize`) so the menu doesn't render taller than
+  // the space actually visible above the keyboard.
+  const [, forceTick] = useState(0);
+  useEffect(() => {
+    if (!open || typeof window === "undefined" || !window.visualViewport) return;
+    const onVV = () => forceTick(t => t + 1);
+    window.visualViewport.addEventListener("resize", onVV);
+    return () => window.visualViewport.removeEventListener("resize", onVV);
+  }, [open]);
   const toggle = () => { if (!open && btnRef.current) setRect(btnRef.current.getBoundingClientRect()); setOpen(o => !o); };
   const q = query.trim().toLowerCase();
   const filtered = q ? items.filter(it => it.label.toLowerCase().includes(q) || (it.sub || "").toLowerCase().includes(q)) : items;
   const pick = (it) => { onPick(it.value); setOpen(false); };
   const vw = typeof window !== "undefined" ? window.innerWidth : 360;
-  const vh = typeof window !== "undefined" ? window.innerHeight : 640;
+  const vh = typeof window !== "undefined" && window.visualViewport ? window.visualViewport.height : (typeof window !== "undefined" ? window.innerHeight : 640);
   const W = matchWidth && rect ? Math.min(Math.max(rect.width, 220), vw - 16) : Math.min(desiredWidth, vw - 16);
   let menuStyle = null;
   if (rect) {
@@ -1666,7 +1693,7 @@ function DropdownPicker({ renderButton, items, onPick, footer, placeholder = "Se
               <input ref={inputRef} value={query} onChange={e => setQuery(e.target.value)} placeholder={placeholder}
                 autoCapitalize="none" autoCorrect="off" spellCheck={false}
                 onKeyDown={e => { if (e.key === "Enter" && filtered[0]) pick(filtered[0]); else if (e.key === "Escape") setOpen(false); }}
-                style={{ flex: 1, minWidth: 0, background: "none", border: "none", outline: "none", boxShadow: "none", color: T.ink, fontFamily: "inherit", fontSize: 13, fontWeight: 600, padding: "9px 0" }} />
+                style={{ flex: 1, minWidth: 0, background: "none", border: "none", outline: "none", boxShadow: "none", color: T.ink, fontFamily: "inherit", fontSize: 16, fontWeight: 600, padding: "9px 0" }} />
               {query && <button onClick={() => { setQuery(""); inputRef.current?.focus(); }} style={{ background: "none", border: "none", color: T.sub, fontSize: 14, cursor: "pointer", padding: "2px 2px" }}>✕</button>}
             </div>
           </div>
@@ -6516,20 +6543,24 @@ function FriendsTab({ user, exMap = {}, nutritionOn, streaksOn, isPro, openPro }
 
         <div className="card">
           <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:2}}>🏁 This week</div>
-          <div style={{fontSize:12, color:T.sub, marginBottom:6}}>Workouts Mon–Sun{streaksOn ? " · 🔥 = week streak" : ""}.</div>
+          <div style={{fontSize:12, color:T.sub, marginBottom:6}}>How many days each of you has trained, Mon–Sun.</div>
           {consistency.map((r,i)=>{
             const isMe = r.uid===user.id;
             return (
               <div key={r.uid} style={{display:"flex", alignItems:"center", gap:9, padding:"10px 2px", borderTop: i===0?"none":`1px solid ${T.creamLine}`}}>
                 <span style={{width:22, textAlign:"center", fontWeight:800, fontSize:14, color: i===0&&r.workouts>0?T.green:T.sub}}>{i===0&&r.workouts>0?"👑":i+1}</span>
                 <span style={{flex:1, minWidth:0, fontSize:14, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{nameEl(r.uid, r.user, { you: isMe })}</span>
-                <span style={{width:70, display:"flex", alignItems:"center", gap:6, flexShrink:0}}>
+                <span style={{width:88, display:"flex", alignItems:"center", gap:6, flexShrink:0}}>
                   <span style={{flex:1, height:6, background:T.input, borderRadius:99, overflow:"hidden"}}>
                     <span style={{display:"block", width:`${Math.min(r.workouts,7)/7*100}%`, height:"100%", background:T.green, borderRadius:99}} />
                   </span>
-                  <b style={{color: r.workouts>0?T.green:T.sub, fontSize:13, width:12, textAlign:"right"}}>{r.workouts}</b>
+                  <b style={{color: r.workouts>0?T.green:T.sub, fontSize:13, width:34, textAlign:"right", fontVariantNumeric:"tabular-nums"}}>{r.workouts}/7</b>
                 </span>
-                {streaksOn && <span style={{width:38, textAlign:"center", fontSize:13, fontWeight:700, color: r.streak>0?T.ink:T.sub, flexShrink:0}}>{r.streak>0?`🔥${r.streak}`:"—"}</span>}
+                {streaksOn && (
+                  <span title="Week streak" style={{width:46, textAlign:"center", fontSize:12.5, fontWeight:700, color: r.streak>0?T.ink:T.sub, flexShrink:0}}>
+                    {r.streak>0 ? <>🔥{r.streak}<span style={{fontSize:10, color:T.sub, fontWeight:600}}>wk</span></> : "—"}
+                  </span>
+                )}
                 <button onClick={()=>setProfile(members.find(m=>m.user_id===r.uid))} style={{background:"none", color:T.green, fontSize:12.5, fontWeight:700, padding:"4px 4px", whiteSpace:"nowrap", flexShrink:0}}>View ›</button>
               </div>
             );
