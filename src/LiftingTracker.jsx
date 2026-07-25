@@ -214,7 +214,6 @@ const defaultData = {
   // `muscle` (primary) is kept alongside `muscles`/`muscles2` so older cached app versions still work
   exercises: SEED_EXERCISES.map(([name, muscles, muscles2 = []]) => ({ name, muscle: muscles[0], muscles, muscles2, type: BW_SET.has(name) ? "Bodyweight" : "Weighted", barbell: BARBELL_SEED.has(name), machine: MACHINE_SEED.has(name) })),
   gyms: [], // [{ id, name }] — only used once multi-gym tracking is turned on in Settings
-  manualSets: [], // [{ id, date, muscle, count }] — quick tally for sets done outside the Log tab
   log: [], bodyweight: [], cardio: [], cardioActivities: SEED_CARDIO,
   routines: [], // optional workout templates (feature toggled in Settings)
   foods: [], nutritionGoals: {}, // optional macro tracking (feature toggled in Settings)
@@ -1128,7 +1127,7 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
 
   const lastTime = useMemo(() => {
     if (!exName) return null;
-    const prior = sorted.filter(e => e.exercise===exName && e.date < date && sameGym(e));
+    const prior = sorted.filter(e => e.exercise===exName && e.date < date && !e.quick && sameGym(e));
     if (!prior.length) return { first:true };
     const lastDate = prior[prior.length-1].date;
     const sess = prior.filter(e => e.date===lastDate);
@@ -1150,7 +1149,7 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
     if (!exName) return null;
     const byDate = {};
     for (const e of sorted) {
-      if (e.exercise !== exName || e.date >= date || e.effort === "Warm-up" || !sameGym(e)) continue;
+      if (e.exercise !== exName || e.date >= date || e.effort === "Warm-up" || e.quick || !sameGym(e)) continue;
       const v = isBW ? e.reps : e1rm(e.weight || 0, e.reps);
       byDate[e.date] = Math.max(byDate[e.date] || 0, v);
     }
@@ -1158,7 +1157,7 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
   }, [exName, date, sorted, isBW, isMachine, gymId]);
 
   const checkPR = (entry) => {
-    const prior = data.log.filter(e => e.exercise===entry.exercise && e.date < entry.date && sameGym(e));
+    const prior = data.log.filter(e => e.exercise===entry.exercise && e.date < entry.date && !e.quick && sameGym(e));
     if (!prior.length) return false;
     if (isBW) return entry.reps > Math.max(...prior.map(p=>p.reps));
     return e1rm(entry.weight, entry.reps) > Math.max(...prior.map(p=>e1rm(p.weight||0,p.reps)));
@@ -1485,8 +1484,8 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
           <tbody>{recent.map(e => { const isToday = e.date === todayStr(); return (<Fragment key={e.id}>
             <tr style={isToday ? {background:"rgba(var(--accent-rgb),.05)"} : undefined}>
               <td>{isToday ? <span style={{color:"#00A804", fontWeight:800}}>Today</span> : fmtDate(e.date)}</td><td>{e.exercise}</td><td style={{textAlign:"center"}}>{e.set}</td>
-              <td style={{textAlign:"center"}}>{e.weight==null ? "BW" : dispW(e.weight, units)}{e.drops?.length ? <span style={{color:T.sub}}>{" ↘ "}{e.drops.map(dr=>dispW(dr.weight, units)).join(" ↘ ")}</span> : null}</td>
-              <td style={{textAlign:"center"}}>{e.reps}{e.drops?.length ? <span style={{color:T.sub}}>{" / "}{e.drops.map(dr=>dr.reps).join(" / ")}</span> : null}</td>
+              <td style={{textAlign:"center"}}>{e.quick ? "—" : e.weight==null ? "BW" : dispW(e.weight, units)}{e.drops?.length ? <span style={{color:T.sub}}>{" ↘ "}{e.drops.map(dr=>dispW(dr.weight, units)).join(" ↘ ")}</span> : null}</td>
+              <td style={{textAlign:"center"}}>{e.quick ? <span title="Added as a quick tally — no reps tracked" style={{color:T.sub}}>🧮 quick</span> : <>{e.reps}{e.drops?.length ? <span style={{color:T.sub}}>{" / "}{e.drops.map(dr=>dr.reps).join(" / ")}</span> : null}</>}</td>
               <td style={{color:T.sub}}>{e.effort||""}</td>
               <td style={{whiteSpace:"nowrap"}}>
                 {String(e.notes||"").trim() && (
@@ -1584,17 +1583,30 @@ function Spark({ pts, w = 88, h = 26 }) {
 }
 
 /* Horizontal progress bar with a highlighted target zone (weekly sets). */
-/* Tiny "type a number, tap add" row — for tallying sets done outside the Log tab. */
-function ManualSetAdd({ muscle, onAdd }) {
-  const [n, setN] = useState("");
-  const commit = () => { const v = parseInt(n); if (v > 0) onAdd(v); setN(""); };
+/* Dropdown-only "quick add sets" — pick the exercise, pick how many, tap Add. No typing,
+   no separate flow: it writes real log entries (flagged `quick`) so it automatically
+   shows up everywhere the Log tab's sets do — the calendar, 30-day chart, streaks, this
+   week's target — without any extra wiring. Kept out of weight/PR-based views on purpose
+   (bestEst1RM, "last time", the Dashboard trend chart) since there's no real weight/reps
+   behind it, just a count. */
+function QuickAddSets({ exercises, onAdd }) {
+  const [ex, setEx] = useState("");
+  const [n, setN] = useState("3");
+  const add = () => { if (!ex) return; onAdd(ex, parseInt(n)); setEx(""); };
   return (
-    <div style={{display:"flex", alignItems:"center", gap:8}}>
-      <span style={{fontSize:12.5, width:70, flexShrink:0}}>{muscle}</span>
-      <input type="number" inputMode="numeric" min="1" value={n} onChange={e=>setN(e.target.value)} placeholder="0"
-        onKeyDown={e=>{ if (e.key==="Enter") commit(); }}
-        style={{width:54, minHeight:30, padding:"4px 8px", fontSize:12.5}} />
-      <button onClick={commit} disabled={!n} style={{background:T.green, color:"#000", fontWeight:700, fontSize:12, padding:"5px 12px", borderRadius:8, opacity:n?1:0.45}}>+ Add</button>
+    <div style={{display:"flex", gap:8, flexWrap:"wrap", alignItems:"center"}}>
+      <select value={ex} onChange={e=>setEx(e.target.value)} style={{flex:"3 1 170px", minWidth:150}}>
+        <option value="">— pick an exercise —</option>
+        {MUSCLES.map(m => (
+          <optgroup key={m} label={m}>
+            {exercises.filter(x=>muscleOf(x)===m).map(x=><option key={x.name}>{x.name}</option>)}
+          </optgroup>
+        ))}
+      </select>
+      <select value={n} onChange={e=>setN(e.target.value)} style={{flex:"1 1 84px", minWidth:80}}>
+        {Array.from({length:10}, (_,i)=>i+1).map(v => <option key={v} value={v}>{v} set{v>1?"s":""}</option>)}
+      </select>
+      <button onClick={add} disabled={!ex} style={{background:T.green, color:"#000", fontWeight:700, fontSize:13, padding:"9px 16px", borderRadius:9, opacity:ex?1:0.45, flexShrink:0}}>+ Add</button>
     </div>
   );
 }
@@ -2302,7 +2314,7 @@ function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled
     const isMachineEx = multiGymOn && machineOf(ex);
     const effGym = isMachineEx ? (gymFilter[exName] ?? mostUsedGym(exName)) : "";
     const showingAll = isMachineEx && effGym === "ALL";
-    let entries = data.log.filter(e => e.exercise===exName && !(e.effort==="Warm-up"));
+    let entries = data.log.filter(e => e.exercise===exName && !(e.effort==="Warm-up") && !e.quick);
     if (isMachineEx && effGym && !showingAll) entries = entries.filter(e => e.gym === effGym);
     if (!entries.length) return [];
     const isBWex = ex.type==="Bodyweight";
@@ -2362,13 +2374,8 @@ function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled
       if (weekStart(e.date)!==wkStart) continue;
       for (const [m,w] of muscleCredits(exMap[e.exercise])) if (m in c) c[m]+=w;
     }
-    // manual tally — for sets done outside the app (or a friend who doesn't log)
-    for (const e of (data.manualSets || [])) {
-      if (weekStart(e.date)!==wkStart) continue;
-      if (e.muscle in c) c[e.muscle] += e.count;
-    }
     return c;
-  }, [data.log, data.manualSets, exMap, wkStart]);
+  }, [data.log, exMap, wkStart]);
 
   /* 30-day pie */
   const pieData = useMemo(() => {
@@ -2504,7 +2511,23 @@ function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled
       const rest = { ...(d.profile?.setTargets || {}) }; delete rest[m];
       return { ...d, profile: { ...(d.profile || {}), setTargets: rest } };
     });
-    const addManualSets = (m, n) => { if (!n) return; setData(d => ({ ...d, manualSets: [...(d.manualSets||[]), { id: Date.now(), date: todayStr(), muscle: m, count: n }] })); };
+    // Writes REAL log entries (flagged `quick`) instead of a separate shadow tally, so this
+    // automatically shows up everywhere normal logged sets do — the workout calendar, the
+    // 30-day muscle chart, streaks, this week's target — with zero extra wiring needed.
+    // Kept out of weight/PR-based views (bestEst1RM, "last time", the trend chart) since
+    // there's no real weight/reps behind a quick add, just a headcount.
+    const addQuickSets = (exerciseName, count) => {
+      if (!exerciseName || !count) return;
+      const today = todayStr();
+      const already = (data.log || []).filter(e => e.date === today && e.exercise === exerciseName).length;
+      const base = Date.now();
+      const rows = Array.from({ length: count }, (_, i) => ({
+        id: base + i, date: today, exercise: exerciseName, set: already + i + 1,
+        weight: null, reps: null, effort: "", notes: "", quick: true,
+      }));
+      setData(d => ({ ...d, log: [...d.log, ...rows] }));
+    };
+    const dropdownSummary = { fontSize:12.5, color:T.green, fontWeight:700, cursor:"pointer", listStyle:"none", display:"inline-flex", alignItems:"center", gap:6, background:T.input, border:`1px solid ${T.line}`, borderRadius:99, padding:"6px 13px" };
     widgets.target = (
       <div className="card">
         <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:2}}>Weekly set target</div>
@@ -2527,35 +2550,35 @@ function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled
             </div>
           );
         })}
-        <div style={{display:"flex", gap:14, marginTop:6, flexWrap:"wrap"}}>
-          <details style={{flex:1, minWidth:140}}>
-            <summary style={{fontSize:12, color:T.green, fontWeight:700, cursor:"pointer", listStyle:"none"}}>🎯 Set your own goals</summary>
-            <div style={{marginTop:10, display:"flex", flexDirection:"column", gap:8}}>
+        <div style={{display:"flex", gap:10, marginTop:6, flexWrap:"wrap"}}>
+          <details>
+            <summary style={dropdownSummary}>🎯 Set your own goals <span style={{fontSize:9}}>▾</span></summary>
+            <div style={{marginTop:10, display:"flex", flexDirection:"column", gap:8, padding:"10px 12px", background:T.input, borderRadius:10}}>
               {MUSCLES.map(m => {
                 const isCustom = (data.profile?.setTargets || {})[m] != null;
                 return (
                   <div key={m} style={{display:"flex", alignItems:"center", gap:8}}>
                     <span style={{fontSize:12.5, width:70, flexShrink:0}}>{m}</span>
-                    <button onClick={()=>bumpDashTarget(m,-1)} style={{width:26, height:26, borderRadius:7, background:T.input, border:`1px solid ${T.line}`, color:T.ink, fontSize:15, lineHeight:1, padding:0}}>−</button>
+                    <button onClick={()=>bumpDashTarget(m,-1)} style={{width:26, height:26, borderRadius:7, background:T.card, border:`1px solid ${T.line}`, color:T.ink, fontSize:15, lineHeight:1, padding:0}}>−</button>
                     <span style={{fontSize:13, fontWeight:700, width:20, textAlign:"center"}}>{targets[m]}</span>
-                    <button onClick={()=>bumpDashTarget(m,1)} style={{width:26, height:26, borderRadius:7, background:T.input, border:`1px solid ${T.line}`, color:T.ink, fontSize:15, lineHeight:1, padding:0}}>+</button>
+                    <button onClick={()=>bumpDashTarget(m,1)} style={{width:26, height:26, borderRadius:7, background:T.card, border:`1px solid ${T.line}`, color:T.ink, fontSize:15, lineHeight:1, padding:0}}>+</button>
                     {isCustom && <button onClick={()=>resetDashTarget(m)} title="Reset to the recommended default" style={{background:"none", color:T.sub, fontSize:10.5, textDecoration:"underline"}}>reset</button>}
                   </div>
                 );
               })}
             </div>
           </details>
-          <details style={{flex:1, minWidth:140}}>
-            <summary style={{fontSize:12, color:T.green, fontWeight:700, cursor:"pointer", listStyle:"none"}}>🧮 Add sets manually</summary>
-            <div style={{marginTop:10, display:"flex", flexDirection:"column", gap:8}}>
-              <div style={{fontSize:11, color:T.sub, marginBottom:2}}>For sets done outside the Log tab (or if you're not tracking every workout) — adds to this week's count only.</div>
-              {MUSCLES.map(m => <ManualSetAdd key={m} muscle={m} onAdd={n=>addManualSets(m,n)} />)}
+          <details>
+            <summary style={dropdownSummary}>🧮 Add sets manually <span style={{fontSize:9}}>▾</span></summary>
+            <div style={{marginTop:10, padding:"10px 12px", background:T.input, borderRadius:10}}>
+              <div style={{fontSize:11, color:T.sub, marginBottom:8}}>For a workout not tracked set-by-set in the Log tab — pick the move and how many sets, it counts toward this week just like normal logging.</div>
+              <QuickAddSets exercises={data.exercises} onAdd={addQuickSets} />
             </div>
           </details>
         </div>
         <details style={{marginTop:10}}>
-          <summary style={{fontSize:12, color:T.sub, fontWeight:700, cursor:"pointer", listStyle:"none"}}>🔬 Why these numbers?</summary>
-          <div style={{marginTop:8, display:"flex", flexDirection:"column", gap:6}}>
+          <summary style={{...dropdownSummary, color:T.sub}}>🔬 Why these numbers? <span style={{fontSize:9}}>▾</span></summary>
+          <div style={{marginTop:8, display:"flex", flexDirection:"column", gap:6, padding:"10px 12px", background:T.input, borderRadius:10}}>
             {MUSCLES.map(m => (
               <div key={m} style={{fontSize:11.5, color:T.sub, lineHeight:1.5}}>
                 <b style={{color:T.ink}}>{m} ({REC_SETS[m]}):</b> {SET_RESEARCH[m]}
@@ -5379,7 +5402,7 @@ const REP_CAP = (exercise) => (BIG_LIFT_SET.has(exercise) ? 12 : 15);
 const bestEst1RM = (exercise, entries) => {
   const cap = REP_CAP(exercise);
   const vals = (entries || [])
-    .filter(e => e.weight != null && (e.reps || 0) >= 1 && (e.reps || 0) <= cap)
+    .filter(e => !e.quick && e.weight != null && (e.reps || 0) >= 1 && (e.reps || 0) <= cap)
     .map(e => e1rm(e.weight, e.reps));
   return vals.length ? Math.max(...vals) : null;
 };
@@ -5435,7 +5458,7 @@ const REC_SETS = { Chest: 14, Back: 16, Shoulders: 16, Biceps: 14, Triceps: 12, 
    (Schoenfeld et al. 2017 meta-analysis; Israetel/RP volume landmarks) shown on the
    Dashboard's Weekly set target card so the defaults don't feel arbitrary. */
 const SET_RESEARCH = {
-  Chest: "14 sets/wk sits mid-landmark (MEV~10 → MRV~20) — chest recovers fast, tolerates high volume well.",
+  Chest: "14 sets/wk sits mid-range between about 10 sets (the Minimum Effective Volume — the least that still grows muscle) and 20 sets (the Maximum Recoverable Volume — the most your body can actually recover from) — chest recovers fast and tolerates high volume well.",
   Back: "16 — it's a big muscle group worked from many angles (rows, pulldowns, pulls), so more sets keep paying off before diminishing returns.",
   Shoulders: "16 — 3 heads (front/side/rear) rarely all get hit by the same movement, so effective volume per head is usually lower than it looks.",
   Biceps: "14 — small muscle, but gets extra indirect volume from every back/pulling exercise, so direct work stacks on top of that.",
@@ -6554,7 +6577,7 @@ function FriendsTab({ user, exMap = {}, nutritionOn, streaksOn, isPro, openPro }
       const st = states[m.user_id] || {};
       const lifts = {};
       for (const lift of recordLifts) {
-        const entries = (st.log || []).filter(e => e.exercise === lift);
+        const entries = (st.log || []).filter(e => e.exercise === lift && !e.quick);
         if (bw[lift]) {
           const reps = entries.map(e => e.reps || 0).filter(r => r > 0);
           lifts[lift] = reps.length ? Math.max(...reps) : null;   // best single-set reps
