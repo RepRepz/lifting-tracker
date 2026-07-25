@@ -1631,19 +1631,23 @@ function QuickAddSets({ exercises, onAdd }) {
 }
 
 function TargetBar({ muscle, count, color, goal = 12, max = 20 }) {
-  const [showDetail, setShowDetail] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const [pinned, setPinned] = useState(false);
   const pct = Math.min(count, max) / max * 100;
   const status = count < goal ? `${goal-count} under` : count === goal ? "goal hit" : `${count-goal} over`;
+  const reached = count >= goal;
+  const showDetail = hovered || pinned;
+  const tipPct = Math.max(18, Math.min(82, pct));
   return (
-    <div style={{position:"relative", minWidth:0}}>
-      <button type="button" onClick={()=>setShowDetail(v=>!v)} aria-expanded={showDetail} title={`${muscle}: ${count} of ${goal} sets — ${status}`} style={{display:"block", width:"100%", height:28, padding:0, background:"none", border:0, overflow:"visible", cursor:"pointer", position:"relative"}}>
-        <span style={{position:"absolute", left:0, right:0, top:12, height:10, background:T.input, borderRadius:99, overflow:"hidden"}}>
+    <div style={{position:"relative", minWidth:0, zIndex:showDetail?5:1}}>
+      <button type="button" onClick={()=>setPinned(v=>!v)} onMouseEnter={()=>setHovered(true)} onMouseLeave={()=>setHovered(false)} onFocus={()=>setHovered(true)} onBlur={()=>setHovered(false)} aria-expanded={showDetail} aria-label={`${muscle}: ${count} of ${goal} sets — ${status}. Tap for details.`} style={{display:"block", width:"100%", height:28, padding:0, background:"none", border:0, overflow:"visible", cursor:"pointer", position:"relative"}}>
+        <span style={{position:"absolute", left:0, right:0, top:12, height:10, background:T.input, borderRadius:99, overflow:"hidden", boxShadow:"0 1px 0 rgba(255,255,255,.04) inset"}}>
           <span style={{display:"block", width:`${pct}%`, height:"100%", background:color, borderRadius:99, transition:"width .6s ease"}} />
         </span>
-        <span title={`Goal: ${goal} sets`} aria-label={`Goal: ${goal} sets`} style={{position:"absolute", zIndex:1, left:`calc(${Math.min(goal, max) / max * 100}% - 1px)`, top:10, height:14, width:2, background:T.ink, boxShadow:`0 0 0 1px ${T.card}`}} />
-        <span aria-hidden="true" style={{position:"absolute", zIndex:2, left:`calc(${pct}% - 11px)`, top:0, minWidth:22, height:22, padding:"0 4px", borderRadius:99, display:"flex", alignItems:"center", justifyContent:"center", boxSizing:"border-box", background:color, color:"#07110D", fontSize:11, fontWeight:900, fontVariantNumeric:"tabular-nums", boxShadow:`0 0 0 2px ${T.card}`, transition:"left .6s ease"}}>{count}</span>
+        <span title={`Goal: ${goal} sets`} aria-hidden="true" style={{position:"absolute", zIndex:1, left:`calc(${Math.min(goal, max) / max * 100}% - 5px)`, top:12, width:8, height:8, background:T.card, border:`2px solid ${T.ink}`, borderRadius:2, transform:"rotate(45deg)", boxShadow:`0 0 0 1px ${T.card}`}} />
+        <span aria-hidden="true" style={{position:"absolute", zIndex:2, left:`calc(${pct}% - 11px)`, top:0, minWidth:22, height:22, padding:"0 4px", borderRadius:99, display:"flex", alignItems:"center", justifyContent:"center", boxSizing:"border-box", background:reached?T.green:T.card, color:reached?"#07110D":T.ink, border:`1px solid ${reached?T.green:color}`, fontSize:11, fontWeight:900, fontVariantNumeric:"tabular-nums", boxShadow:`0 0 0 2px ${T.card}, 0 4px 12px rgba(0,0,0,.28)`, transition:"left .6s ease, background .2s ease"}}>{count}</span>
       </button>
-      {showDetail && <div role="status" style={{marginTop:4, padding:"5px 8px", background:T.input, border:`1px solid ${T.line}`, borderRadius:7, color:T.sub, fontSize:11.5, lineHeight:1.3, whiteSpace:"nowrap"}}><b style={{color:T.ink}}>{count} / {goal} sets</b> · {status} <span style={{color:T.sub}}>— tap to close</span></div>}
+      {showDetail && <div role="status" style={{position:"absolute", left:`${tipPct}%`, bottom:31, transform:"translateX(-50%)", zIndex:10, padding:"7px 10px", background:T.card, border:`1px solid ${reached?T.green:T.line}`, borderRadius:9, color:reached?T.green:T.ink, boxShadow:"0 10px 28px rgba(0,0,0,.38)", fontSize:11.5, fontWeight:700, lineHeight:1.25, whiteSpace:"nowrap", pointerEvents:"none"}}><span style={{color:T.sub, fontWeight:600}}>{muscle}</span> · {count} / {goal} sets · {status}</div>}
     </div>
   );
 }
@@ -2259,6 +2263,8 @@ function StatTile({ icon, value, label, hero }) {
 
 function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled, stepsEnabled, nutritionOn, multiGymOn, openSettings, setTab }) {
   const units = useUnit();
+  const [researchMode, setResearchMode] = useState(() => goalModeOf(data));
+  useEffect(() => { setResearchMode(goalModeOf(data)); }, [data.profile?.setGoalMode]);
   // range sticks forever (remembered on this device)
   const [range, setRange] = useState(() => {
     const r = localStorage.getItem("lt-range");
@@ -2532,6 +2538,7 @@ function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled
     const goalMode = goalModeOf(data);
     const goalModeInfo = GOAL_MODES[goalMode];
     const targets = setTargetsOf(data);
+    const customTargets = customSetTargetsOf(data);
     const bumpDashTarget = (m, delta) => setData(d => {
       const cur = setTargetsOf(d);
       const key = targetOverrideKeyOf(d);
@@ -2541,6 +2548,10 @@ function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled
       const key = targetOverrideKeyOf(d);
       const rest = { ...(d.profile?.[key] || {}) }; delete rest[m];
       return { ...d, profile: { ...(d.profile || {}), [key]: rest } };
+    });
+    const resetAllDashTargets = () => setData(d => {
+      const key = targetOverrideKeyOf(d);
+      return { ...d, profile: { ...(d.profile || {}), [key]: {} } };
     });
     const setGoalMode = (mode) => setData(d => ({ ...d, profile: { ...(d.profile || {}), setGoalMode: mode } }));
     const dropdownSummary = { fontSize:12.5, color:T.green, fontWeight:700, cursor:"pointer", listStyle:"none", display:"inline-flex", alignItems:"center", gap:6, background:T.input, border:`1px solid ${T.line}`, borderRadius:99, padding:"6px 13px" };
@@ -2558,30 +2569,37 @@ function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled
           const goal = targets[m];
           const n = weekSets[m];
           const status = n < goal ? `${goal-n} under` : n === goal ? "✓ goal hit" : `${n-goal} over`;
-          const sColor = n < goal ? T.sub : n === goal ? T.green : T.down;
+          const sColor = n < goal ? T.ink : T.green;
           return (
             <div key={m} style={{display:"grid", gridTemplateColumns:"78px 1fr 96px", gap:10, alignItems:"center", marginBottom:9}}>
               <span style={{fontSize:13, fontWeight:600}}>{m}</span>
               <TargetBar muscle={m} count={n} color={MUSCLE_COLORS[i]} goal={goal} max={Math.max(20, goal+4, n)} />
-              <span style={{fontSize:12, textAlign:"right", whiteSpace:"nowrap"}}>
-                <b style={{color:T.ink, fontSize:13}}>{n}</b> <span style={{color:sColor, fontWeight:600}}>{status}</span>
+              <span style={{fontSize:11.5, textAlign:"right", whiteSpace:"nowrap", lineHeight:1.25}}>
+                <span style={{display:"block", color:T.sub}}><b style={{color:T.ink, fontSize:13}}>{n}</b> / {goal}</span>
+                <span style={{display:"block", color:sColor, fontWeight:700}}>{status}</span>
               </span>
             </div>
           );
         })}
         <div style={{display:"flex", gap:10, marginTop:6, flexWrap:"wrap"}}>
-          <details>
-            <summary style={dropdownSummary}>🎯 Set your own {goalModeInfo.label.toLowerCase()} goals <span style={{fontSize:9}}>▾</span></summary>
-            <div style={{marginTop:10, display:"flex", flexDirection:"column", gap:8, padding:"10px 12px", background:T.input, borderRadius:10}}>
+          <details style={{width:"100%"}}>
+            <summary style={{...dropdownSummary, color:T.green}}>🎛 Modify your own {goalModeInfo.label.toLowerCase()} goals <span style={{fontSize:9}}>▾</span></summary>
+            <div style={{marginTop:10, padding:"13px", background:`linear-gradient(145deg, ${T.input}, ${T.card})`, border:`1px solid ${T.line}`, borderRadius:13, boxShadow:"0 10px 28px rgba(0,0,0,.14)"}}>
+              <div style={{display:"flex", alignItems:"center", justifyContent:"space-between", gap:10, marginBottom:9}}>
+                <div><div style={{fontSize:13, color:T.ink, fontWeight:800}}>{goalModeInfo.label} targets</div><div style={{fontSize:10.5, color:T.sub, marginTop:2}}>Your changes are saved separately for each goal type.</div></div>
+                {Object.keys(customTargets).length>0 && <button type="button" onClick={resetAllDashTargets} style={{background:T.card, color:T.sub, border:`1px solid ${T.line}`, padding:"6px 9px", fontSize:10.5, fontWeight:700, whiteSpace:"nowrap"}}>Reset all</button>}
+              </div>
               {MUSCLES.map(m => {
-                const isCustom = customSetTargetsOf(data)[m] != null;
+                const isCustom = customTargets[m] != null;
                 return (
-                  <div key={m} style={{display:"flex", alignItems:"center", gap:8}}>
-                    <span style={{fontSize:12.5, width:70, flexShrink:0}}>{m}</span>
-                    <button onClick={()=>bumpDashTarget(m,-1)} style={{width:26, height:26, borderRadius:7, background:T.card, border:`1px solid ${T.line}`, color:T.ink, fontSize:15, lineHeight:1, padding:0}}>−</button>
-                    <span style={{fontSize:13, fontWeight:700, width:20, textAlign:"center"}}>{targets[m]}</span>
-                    <button onClick={()=>bumpDashTarget(m,1)} style={{width:26, height:26, borderRadius:7, background:T.card, border:`1px solid ${T.line}`, color:T.ink, fontSize:15, lineHeight:1, padding:0}}>+</button>
-                    {isCustom && <button onClick={()=>resetDashTarget(m)} title="Reset to the recommended default" style={{background:"none", color:T.sub, fontSize:10.5, textDecoration:"underline"}}>reset</button>}
+                  <div key={m} style={{display:"grid", gridTemplateColumns:"minmax(78px,1fr) auto", alignItems:"center", gap:10, padding:"9px 0", borderTop:`1px solid ${T.line}`}}>
+                    <div><span style={{fontSize:12.5, fontWeight:750, color:T.ink}}>{m}</span><span style={{display:"block", fontSize:9.5, color:isCustom?T.green:T.sub, marginTop:1}}>{isCustom ? `Custom · research default ${goalModeInfo.targets[m]}` : `Research default ${goalModeInfo.targets[m]}`}</span></div>
+                    <div style={{display:"flex", alignItems:"center", gap:6}}>
+                      <button onClick={()=>bumpDashTarget(m,-1)} aria-label={`Lower ${m} goal`} style={{width:30, height:30, borderRadius:8, background:T.card, border:`1px solid ${T.line}`, color:T.ink, fontSize:17, lineHeight:1, padding:0}}>−</button>
+                      <span style={{fontSize:15, fontWeight:850, minWidth:28, textAlign:"center", color:isCustom?T.green:T.ink, fontVariantNumeric:"tabular-nums"}}>{targets[m]}</span>
+                      <button onClick={()=>bumpDashTarget(m,1)} aria-label={`Raise ${m} goal`} style={{width:30, height:30, borderRadius:8, background:T.card, border:`1px solid ${T.line}`, color:T.ink, fontSize:17, lineHeight:1, padding:0}}>+</button>
+                      {isCustom && <button onClick={()=>resetDashTarget(m)} title="Reset this muscle" aria-label={`Reset ${m} goal`} style={{width:30, height:30, background:T.mint, color:T.green, border:`1px solid ${T.green}`, borderRadius:8, fontSize:13, fontWeight:800, padding:0}}>↺</button>}
+                    </div>
                   </div>
                 );
               })}
@@ -2590,12 +2608,18 @@ function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled
         </div>
         <details style={{marginTop:10}}>
           <summary style={{...dropdownSummary, color:T.sub}}>🔬 Why these numbers? <span style={{fontSize:9}}>▾</span></summary>
-          <div style={{marginTop:8, display:"flex", flexDirection:"column", gap:6, padding:"10px 12px", background:T.input, borderRadius:10}}>
+          <div style={{marginTop:8, padding:"12px", background:T.input, border:`1px solid ${T.line}`, borderRadius:12}}>
+            <div style={{display:"flex", gap:5, marginBottom:11, padding:3, background:T.card, borderRadius:10}}>
+              {Object.entries(GOAL_MODES).map(([mode, info]) => <button key={mode} type="button" onClick={()=>setResearchMode(mode)} aria-pressed={researchMode===mode} style={{flex:1, background:researchMode===mode?T.mint:"transparent", color:researchMode===mode?T.green:T.sub, border:`1px solid ${researchMode===mode?T.green:"transparent"}`, borderRadius:8, padding:"7px 8px", fontSize:11.5, fontWeight:800}}>{info.label}</button>)}
+            </div>
+            <div style={{display:"flex", flexDirection:"column", gap:7}}>
             {MUSCLES.map(m => (
               <div key={m} style={{fontSize:11.5, color:T.sub, lineHeight:1.5}}>
-                <b style={{color:T.ink}}>{m} ({goalModeInfo.targets[m]}):</b> {GOAL_RESEARCH[goalMode][m]}
+                <b style={{color:T.ink}}>{m} · research default {GOAL_MODES[researchMode].targets[m]}:</b> {GOAL_RESEARCH[researchMode][m]}
+                {researchMode===goalMode && customTargets[m]!=null && <span style={{display:"inline-block", marginLeft:5, color:T.green, fontWeight:700}}>Your saved target is {targets[m]}.</span>}
               </div>
             ))}
+            </div>
             <div style={{fontSize:11, color:T.sub, marginTop:4, fontStyle:"italic"}}>
               Evidence reviewed: Schoenfeld, Ogborn & Krieger (2017, doi:10.1080/02640414.2016.1210197); Baz-Valle et al. (2022, doi:10.2478/hukin-2022-0017); Currier et al. (2023, doi:10.1136/bjsports-2023-106807); Lopez et al. (2021, doi:10.1249/MSS.0000000000002585); Ralston et al. (2017, doi:10.1007/s40279-017-0762-7); and Pelland et al. (2026, doi:10.1007/s40279-025-02344-w). These guide a starting point; change goals based on progress and recovery.
             </div>
