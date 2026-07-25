@@ -2473,26 +2473,64 @@ function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled
     })}
   </>);
 
-  widgets.target = (
-    <div className="card">
-      <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:2}}>Weekly set target</div>
-      <div style={{fontSize:12, color:T.sub, marginBottom:12}}>Aim for 12–16 hard sets per muscle — the brighter zone on each bar. Main muscles count a full set; secondary ones (like triceps on bench) count half.</div>
-      {MUSCLES.map((m,i)=>{
-        const n = weekSets[m];
-        const status = n<12 ? "under" : n<=16 ? "✓ on target" : "over";
-        const sColor = n<12 ? T.sub : n<=16 ? T.green : T.down;
-        return (
-          <div key={m} style={{display:"grid", gridTemplateColumns:"78px 1fr 92px", gap:10, alignItems:"center", marginBottom:9}}>
-            <span style={{fontSize:13, fontWeight:600}}>{m}</span>
-            <TargetBar count={n} color={MUSCLE_COLORS[i]} />
-            <span style={{fontSize:12, textAlign:"right", whiteSpace:"nowrap"}}>
-              <b style={{color:T.ink, fontSize:13}}>{n}</b> <span style={{color:sColor, fontWeight:600}}>{status}</span>
-            </span>
+  {
+    const targets = setTargetsOf(data);
+    const bumpDashTarget = (m, delta) => setData(d => {
+      const cur = setTargetsOf(d);
+      return { ...d, profile: { ...(d.profile || {}), setTargets: { ...(d.profile?.setTargets || {}), [m]: Math.max(0, Math.min(40, (cur[m] || 0) + delta)) } } };
+    });
+    const resetDashTarget = (m) => setData(d => {
+      const rest = { ...(d.profile?.setTargets || {}) }; delete rest[m];
+      return { ...d, profile: { ...(d.profile || {}), setTargets: rest } };
+    });
+    widgets.target = (
+      <div className="card">
+        <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:2}}>Weekly set target</div>
+        <div style={{fontSize:12, color:T.sub, marginBottom:12}}>
+          Your goal per muscle, hard sets this week (Mon–Sun). Main muscles count a full set; secondary ones (like triceps on bench) count half.
+          Defaults are science-based (below) — tap −/+ to make them your own.
+        </div>
+        {MUSCLES.map((m,i)=>{
+          const goal = targets[m];
+          const n = weekSets[m];
+          const isCustom = (data.profile?.setTargets || {})[m] != null;
+          const under = Math.max(0, goal - 2), over = goal + 2;
+          const status = n<under ? `${under-n} under` : n<=over ? "✓ on target" : `${n-over} over`;
+          const sColor = n<under ? T.sub : n<=over ? T.green : T.down;
+          return (
+            <div key={m} style={{marginBottom:14}}>
+              <div style={{display:"flex", alignItems:"baseline", justifyContent:"space-between", marginBottom:5}}>
+                <span style={{fontSize:13, fontWeight:600}}>{m}</span>
+                <span style={{fontSize:11.5, color:sColor, fontWeight:700}}>{n} sets · {status}</span>
+              </div>
+              <div style={{display:"grid", gridTemplateColumns:"1fr auto", gap:10, alignItems:"center"}}>
+                <TargetBar count={n} color={MUSCLE_COLORS[i]} lo={under} hi={over} max={Math.max(20, over+4)} />
+                <div style={{display:"flex", alignItems:"center", gap:4}}>
+                  <button onClick={()=>bumpDashTarget(m,-1)} style={{width:24, height:24, borderRadius:7, background:T.input, border:`1px solid ${T.line}`, color:T.ink, fontSize:14, lineHeight:1, padding:0}}>−</button>
+                  <span style={{fontSize:12.5, fontWeight:700, width:20, textAlign:"center"}}>{goal}</span>
+                  <button onClick={()=>bumpDashTarget(m,1)} style={{width:24, height:24, borderRadius:7, background:T.input, border:`1px solid ${T.line}`, color:T.ink, fontSize:14, lineHeight:1, padding:0}}>+</button>
+                  {isCustom && <button onClick={()=>resetDashTarget(m)} title="Reset to the recommended default" style={{background:"none", color:T.sub, fontSize:10.5, marginLeft:2, textDecoration:"underline"}}>reset</button>}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+        <details style={{marginTop:4}}>
+          <summary style={{fontSize:12, color:T.green, fontWeight:700, cursor:"pointer", listStyle:"none"}}>🔬 Why these numbers?</summary>
+          <div style={{marginTop:8, display:"flex", flexDirection:"column", gap:6}}>
+            {MUSCLES.map(m => (
+              <div key={m} style={{fontSize:11.5, color:T.sub, lineHeight:1.5}}>
+                <b style={{color:T.ink}}>{m} ({REC_SETS[m]}):</b> {SET_RESEARCH[m]}
+              </div>
+            ))}
+            <div style={{fontSize:11, color:T.sub, marginTop:4, fontStyle:"italic"}}>
+              General guidance from hypertrophy dose-response research (Schoenfeld et al. 2017 meta-analysis) and Renaissance Periodization's volume landmarks — individual response varies, so treat these as a starting point, not a hard rule.
+            </div>
           </div>
-        );
-      })}
-    </div>
-  );
+        </details>
+      </div>
+    );
+  }
 
   widgets.streak = (
     <div style={{display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginBottom:14}}>
@@ -5355,6 +5393,18 @@ const ARNOLD_NAME = { cb: "chest & back", sa: "shoulders & arms", legs: "legs" }
    per muscle per week as the growth sweet spot; these defaults sit mid-range and
    are fully editable per user (data.profile.setTargets). */
 const REC_SETS = { Chest: 14, Back: 16, Shoulders: 16, Biceps: 14, Triceps: 12, Legs: 16, Abs: 10 };
+/* One-line "why this number" per muscle — general hypertrophy dose-response research
+   (Schoenfeld et al. 2017 meta-analysis; Israetel/RP volume landmarks) shown on the
+   Dashboard's Weekly set target card so the defaults don't feel arbitrary. */
+const SET_RESEARCH = {
+  Chest: "14 sets/wk sits mid-landmark (MEV~10 → MRV~20) — chest recovers fast, tolerates high volume well.",
+  Back: "16 — it's a big muscle group worked from many angles (rows, pulldowns, pulls), so more sets keep paying off before diminishing returns.",
+  Shoulders: "16 — 3 heads (front/side/rear) rarely all get hit by the same movement, so effective volume per head is usually lower than it looks.",
+  Biceps: "14 — small muscle, but gets extra indirect volume from every back/pulling exercise, so direct work stacks on top of that.",
+  Triceps: "12 — same logic as biceps: heavy indirect volume from pressing, so direct isolation needs less to reach the same total stimulus.",
+  Legs: "16 — quads/hams/glutes are large and recover well; research on quads specifically shows gains still climbing past 12 sets for many lifters.",
+  Abs: "10 — a smaller muscle that's also worked isometrically in squats/deadlifts/carries, so it needs less direct volume to keep progressing.",
+};
 /* Which muscles a push/pull/legs (and Arnold) day actually targets — used to keep
    the coach's insights relevant to the day it's pointing you at. */
 const GROUP_MUSCLES = { push: ["Chest", "Shoulders", "Triceps"], pull: ["Back", "Biceps"], legs: ["Legs"] };
