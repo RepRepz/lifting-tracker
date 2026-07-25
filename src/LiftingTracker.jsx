@@ -1183,6 +1183,19 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
     setSetNum(n => n + 1); setNotes(""); setEffort(""); setDrops([]);
     if (effort !== "Warm-up") startRest(); // auto-start rest between working sets (no-op when Off)
   };
+  // A quick tally intentionally creates real log rows, so it appears everywhere normal
+  // sets do (calendar, 30-day chart, streaks, and weekly targets) without affecting PRs.
+  const addQuickSets = (exerciseName, count) => {
+    if (!exerciseName || !count) return;
+    const today = todayStr();
+    const already = (data.log || []).filter(e => e.date === today && e.exercise === exerciseName).length;
+    const base = Date.now();
+    const rows = Array.from({ length: count }, (_, i) => ({
+      id: base + i, date: today, exercise: exerciseName, set: already + i + 1,
+      weight: null, reps: null, effort: "", notes: "", quick: true,
+    }));
+    setData(d => ({ ...d, log: [...d.log, ...rows] }));
+  };
   const sameAgain = () => {
     if (!justSaved) return;
     setReps(String(justSaved.reps));
@@ -1476,6 +1489,12 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
     </div>
 
     <div className="card">
+      <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:4}}>Add sets manually</div>
+      <div style={{fontSize:12, color:T.sub, marginBottom:10}}>For work you did without logging weight and reps. These sets count in your calendar, charts, streak, and weekly targets.</div>
+      <QuickAddSets exercises={data.exercises} onAdd={addQuickSets} />
+    </div>
+
+    <div className="card">
       <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:8}}>Set history</div>
       <input value={histQ} onChange={e=>{setHistQ(e.target.value); setHistLimit(50);}} placeholder="🔍 Filter by exercise…"
         autoCapitalize="none" autoCorrect="off" spellCheck={false} style={{marginBottom:10}} />
@@ -1594,8 +1613,8 @@ function QuickAddSets({ exercises, onAdd }) {
   const [n, setN] = useState("3");
   const add = () => { if (!ex) return; onAdd(ex, parseInt(n)); setEx(""); };
   return (
-    <div style={{display:"flex", gap:8, flexWrap:"wrap", alignItems:"center"}}>
-      <select value={ex} onChange={e=>setEx(e.target.value)} style={{flex:"3 1 170px", minWidth:150}}>
+    <div style={{display:"flex", gap:8, flexWrap:"wrap", alignItems:"center", width:"100%"}}>
+      <select value={ex} onChange={e=>setEx(e.target.value)} aria-label="Exercise to add sets for" style={{flex:"1 1 190px", minWidth:0, width:"100%", maxWidth:"100%", overflow:"hidden", textOverflow:"ellipsis"}}>
         <option value="">— pick an exercise —</option>
         {MUSCLES.map(m => (
           <optgroup key={m} label={m}>
@@ -1603,7 +1622,7 @@ function QuickAddSets({ exercises, onAdd }) {
           </optgroup>
         ))}
       </select>
-      <select value={n} onChange={e=>setN(e.target.value)} style={{flex:"1 1 84px", minWidth:80}}>
+      <select value={n} onChange={e=>setN(e.target.value)} aria-label="Number of sets" style={{flex:"0 0 92px", minWidth:92, width:92, textAlign:"center"}}>
         {Array.from({length:10}, (_,i)=>i+1).map(v => <option key={v} value={v}>{v} set{v>1?"s":""}</option>)}
       </select>
       <button onClick={add} disabled={!ex} style={{background:T.green, color:"#000", fontWeight:700, fontSize:13, padding:"9px 16px", borderRadius:9, opacity:ex?1:0.45, flexShrink:0}}>+ Add</button>
@@ -1611,12 +1630,12 @@ function QuickAddSets({ exercises, onAdd }) {
   );
 }
 
-function TargetBar({ count, color, lo = 12, hi = 16, max = 20 }) {
+function TargetBar({ count, color, goal = 12, max = 20 }) {
   const pct = Math.min(count, max) / max * 100;
   return (
     <div style={{ position: "relative", height: 10, background: T.input, borderRadius: 99, overflow: "hidden" }}>
-      <div style={{ position: "absolute", left: `${lo / max * 100}%`, width: `${(hi - lo) / max * 100}%`, top: 0, bottom: 0, background: "rgba(255,255,255,.10)" }} />
       <div style={{ width: `${pct}%`, height: "100%", background: color, borderRadius: 99, transition: "width .6s ease" }} />
+      <div title={`Goal: ${goal} sets`} aria-label={`Goal: ${goal} sets`} style={{ position:"absolute", zIndex:1, left:`calc(${Math.min(goal, max) / max * 100}% - 1px)`, top:-2, bottom:-2, width:2, background:T.ink, boxShadow:`0 0 0 1px ${T.card}` }} />
     </div>
   );
 }
@@ -2511,39 +2530,22 @@ function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled
       const rest = { ...(d.profile?.setTargets || {}) }; delete rest[m];
       return { ...d, profile: { ...(d.profile || {}), setTargets: rest } };
     });
-    // Writes REAL log entries (flagged `quick`) instead of a separate shadow tally, so this
-    // automatically shows up everywhere normal logged sets do — the workout calendar, the
-    // 30-day muscle chart, streaks, this week's target — with zero extra wiring needed.
-    // Kept out of weight/PR-based views (bestEst1RM, "last time", the trend chart) since
-    // there's no real weight/reps behind a quick add, just a headcount.
-    const addQuickSets = (exerciseName, count) => {
-      if (!exerciseName || !count) return;
-      const today = todayStr();
-      const already = (data.log || []).filter(e => e.date === today && e.exercise === exerciseName).length;
-      const base = Date.now();
-      const rows = Array.from({ length: count }, (_, i) => ({
-        id: base + i, date: today, exercise: exerciseName, set: already + i + 1,
-        weight: null, reps: null, effort: "", notes: "", quick: true,
-      }));
-      setData(d => ({ ...d, log: [...d.log, ...rows] }));
-    };
     const dropdownSummary = { fontSize:12.5, color:T.green, fontWeight:700, cursor:"pointer", listStyle:"none", display:"inline-flex", alignItems:"center", gap:6, background:T.input, border:`1px solid ${T.line}`, borderRadius:99, padding:"6px 13px" };
     widgets.target = (
       <div className="card">
         <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:2}}>Weekly set target</div>
         <div style={{fontSize:12, color:T.sub, marginBottom:12}}>
-          Recommended hard sets per muscle this week (Mon–Sun) — main muscles count a full set, secondary ones (like triceps on bench) count half.
+          Your editable weekly hard-set goal (Mon–Sun). Main muscles count as a full set; secondary muscles (like triceps on bench) count as half.
         </div>
         {MUSCLES.map((m,i)=>{
           const goal = targets[m];
           const n = weekSets[m];
-          const under = Math.max(0, goal - 2), over = goal + 2;
-          const status = n<under ? `${under-n} under` : n<=over ? "✓ on target" : `${n-over} over`;
-          const sColor = n<under ? T.sub : n<=over ? T.green : T.down;
+          const status = n < goal ? `${goal-n} under` : n === goal ? "✓ goal hit" : `${n-goal} over`;
+          const sColor = n < goal ? T.sub : n === goal ? T.green : T.down;
           return (
             <div key={m} style={{display:"grid", gridTemplateColumns:"78px 1fr 96px", gap:10, alignItems:"center", marginBottom:9}}>
               <span style={{fontSize:13, fontWeight:600}}>{m}</span>
-              <TargetBar count={n} color={MUSCLE_COLORS[i]} lo={under} hi={over} max={Math.max(20, over+4)} />
+              <TargetBar count={n} color={MUSCLE_COLORS[i]} goal={goal} max={Math.max(20, goal+4, n)} />
               <span style={{fontSize:12, textAlign:"right", whiteSpace:"nowrap"}}>
                 <b style={{color:T.ink, fontSize:13}}>{n}</b> <span style={{color:sColor, fontWeight:600}}>{status}</span>
               </span>
@@ -2568,13 +2570,6 @@ function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled
               })}
             </div>
           </details>
-          <details>
-            <summary style={dropdownSummary}>🧮 Add sets manually <span style={{fontSize:9}}>▾</span></summary>
-            <div style={{marginTop:10, padding:"10px 12px", background:T.input, borderRadius:10}}>
-              <div style={{fontSize:11, color:T.sub, marginBottom:8}}>For a workout not tracked set-by-set in the Log tab — pick the move and how many sets, it counts toward this week just like normal logging.</div>
-              <QuickAddSets exercises={data.exercises} onAdd={addQuickSets} />
-            </div>
-          </details>
         </div>
         <details style={{marginTop:10}}>
           <summary style={{...dropdownSummary, color:T.sub}}>🔬 Why these numbers? <span style={{fontSize:9}}>▾</span></summary>
@@ -2585,7 +2580,7 @@ function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled
               </div>
             ))}
             <div style={{fontSize:11, color:T.sub, marginTop:4, fontStyle:"italic"}}>
-              General guidance from hypertrophy dose-response research (Schoenfeld et al. 2017 meta-analysis) and Renaissance Periodization's volume landmarks — individual response varies, so treat these as a starting point, not a hard rule.
+              Evidence checked: Schoenfeld, Ogborn & Krieger (2017, doi:10.1080/02640414.2016.1210197); Baz-Valle et al. (2022, doi:10.2478/hukin-2022-0017); and the 2025 dose-response meta-regression (PMID 41343037). These support a starting range, not one guaranteed best number—change goals based on progress and recovery.
             </div>
           </div>
         </details>
@@ -5449,22 +5444,22 @@ const ARNOLD_DAY = (m) => {
 };
 const ARNOLD_NAME = { cb: "chest & back", sa: "shoulders & arms", legs: "legs" };
 
-/* Recommended weekly hard-set targets per muscle for maximum hypertrophy.
-   Research (Schoenfeld / Israetel volume landmarks) points to ~10–20 hard sets
-   per muscle per week as the growth sweet spot; these defaults sit mid-range and
-   are fully editable per user (data.profile.setTargets). */
-const REC_SETS = { Chest: 14, Back: 16, Shoulders: 16, Biceps: 14, Triceps: 12, Legs: 16, Abs: 10 };
-/* One-line "why this number" per muscle — general hypertrophy dose-response research
-   (Schoenfeld et al. 2017 meta-analysis; Israetel/RP volume landmarks) shown on the
-   Dashboard's Weekly set target card so the defaults don't feel arbitrary. */
+/* Editable, hypertrophy-focused weekly hard-set starting targets. There is no validated
+   single "best" number for every individual muscle: the strongest reviews support a
+   broad 12–20-set range for trained adults, with individual recovery determining where
+   someone should sit in that range. */
+const REC_SETS = { Chest: 14, Back: 16, Shoulders: 14, Biceps: 12, Triceps: 12, Legs: 16, Abs: 10 };
+/* These are deliberately practical defaults, not claims that one precise number maximizes
+   every person's growth. The app counts secondary work as half a set, consistent with the
+   fractional-set approach used in the current dose-response meta-regression. */
 const SET_RESEARCH = {
-  Chest: "14 sets/wk sits mid-range between about 10 sets (the Minimum Effective Volume — the least that still grows muscle) and 20 sets (the Maximum Recoverable Volume — the most your body can actually recover from) — chest recovers fast and tolerates high volume well.",
-  Back: "16 — it's a big muscle group worked from many angles (rows, pulldowns, pulls), so more sets keep paying off before diminishing returns.",
-  Shoulders: "16 — 3 heads (front/side/rear) rarely all get hit by the same movement, so effective volume per head is usually lower than it looks.",
-  Biceps: "14 — small muscle, but gets extra indirect volume from every back/pulling exercise, so direct work stacks on top of that.",
-  Triceps: "12 — same logic as biceps: heavy indirect volume from pressing, so direct isolation needs less to reach the same total stimulus.",
-  Legs: "16 — quads/hams/glutes are large and recover well; research on quads specifically shows gains still climbing past 12 sets for many lifters.",
-  Abs: "10 — a smaller muscle that's also worked isometrically in squats/deadlifts/carries, so it needs less direct volume to keep progressing.",
+  Chest: "14 is a middle-of-the-evidence target: volume generally helps, while the best trained-lifter review places the practical range around 12–20 hard sets per muscle each week.",
+  Back: "16 gives room for both vertical and horizontal pulling. It is a practical higher-midrange target, not proof that back needs more sets than every other muscle.",
+  Shoulders: "14 recognizes that different movements emphasize front, side, and rear delts. Pressing contributes only a half set here, so add direct work if a head is lagging.",
+  Biceps: "12 is a moderate target because rows and pulldowns already contribute half sets. If recovery and progress are good, you can move the editable goal higher.",
+  Triceps: "12 is a moderate target because presses contribute half sets. Research does not establish one unique triceps optimum, so adjust it using progress and recovery.",
+  Legs: "16 is a practical higher-midrange total for the app’s combined leg group. Track quad, hamstring, glute, and calf exercise choices too—one total cannot guarantee each gets enough work.",
+  Abs: "10 is a conservative direct-work starting target. Evidence is much thinner for a precise ab-set optimum, and bracing in compound lifts is not counted as equivalent direct ab training.",
 };
 /* Which muscles a push/pull/legs (and Arnold) day actually targets — used to keep
    the coach's insights relevant to the day it's pointing you at. */
