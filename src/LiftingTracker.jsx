@@ -1630,12 +1630,20 @@ function QuickAddSets({ exercises, onAdd }) {
   );
 }
 
-function TargetBar({ count, color, goal = 12, max = 20 }) {
+function TargetBar({ muscle, count, color, goal = 12, max = 20 }) {
+  const [showDetail, setShowDetail] = useState(false);
   const pct = Math.min(count, max) / max * 100;
+  const status = count < goal ? `${goal-count} under` : count === goal ? "goal hit" : `${count-goal} over`;
   return (
-    <div style={{ position: "relative", height: 10, background: T.input, borderRadius: 99, overflow: "hidden" }}>
-      <div style={{ width: `${pct}%`, height: "100%", background: color, borderRadius: 99, transition: "width .6s ease" }} />
-      <div title={`Goal: ${goal} sets`} aria-label={`Goal: ${goal} sets`} style={{ position:"absolute", zIndex:1, left:`calc(${Math.min(goal, max) / max * 100}% - 1px)`, top:-2, bottom:-2, width:2, background:T.ink, boxShadow:`0 0 0 1px ${T.card}` }} />
+    <div style={{position:"relative", minWidth:0}}>
+      <button type="button" onClick={()=>setShowDetail(v=>!v)} aria-expanded={showDetail} title={`${muscle}: ${count} of ${goal} sets — ${status}`} style={{display:"block", width:"100%", height:28, padding:0, background:"none", border:0, overflow:"visible", cursor:"pointer", position:"relative"}}>
+        <span style={{position:"absolute", left:0, right:0, top:12, height:10, background:T.input, borderRadius:99, overflow:"hidden"}}>
+          <span style={{display:"block", width:`${pct}%`, height:"100%", background:color, borderRadius:99, transition:"width .6s ease"}} />
+        </span>
+        <span title={`Goal: ${goal} sets`} aria-label={`Goal: ${goal} sets`} style={{position:"absolute", zIndex:1, left:`calc(${Math.min(goal, max) / max * 100}% - 1px)`, top:10, height:14, width:2, background:T.ink, boxShadow:`0 0 0 1px ${T.card}`}} />
+        <span aria-hidden="true" style={{position:"absolute", zIndex:2, left:`calc(${pct}% - 11px)`, top:0, minWidth:22, height:22, padding:"0 4px", borderRadius:99, display:"flex", alignItems:"center", justifyContent:"center", boxSizing:"border-box", background:color, color:"#07110D", fontSize:11, fontWeight:900, fontVariantNumeric:"tabular-nums", boxShadow:`0 0 0 2px ${T.card}`, transition:"left .6s ease"}}>{count}</span>
+      </button>
+      {showDetail && <div role="status" style={{marginTop:4, padding:"5px 8px", background:T.input, border:`1px solid ${T.line}`, borderRadius:7, color:T.sub, fontSize:11.5, lineHeight:1.3, whiteSpace:"nowrap"}}><b style={{color:T.ink}}>{count} / {goal} sets</b> · {status} <span style={{color:T.sub}}>— tap to close</span></div>}
     </div>
   );
 }
@@ -2521,21 +2529,30 @@ function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled
   </>);
 
   {
+    const goalMode = goalModeOf(data);
+    const goalModeInfo = GOAL_MODES[goalMode];
     const targets = setTargetsOf(data);
     const bumpDashTarget = (m, delta) => setData(d => {
       const cur = setTargetsOf(d);
-      return { ...d, profile: { ...(d.profile || {}), setTargets: { ...(d.profile?.setTargets || {}), [m]: Math.max(0, Math.min(40, (cur[m] || 0) + delta)) } } };
+      const key = targetOverrideKeyOf(d);
+      return { ...d, profile: { ...(d.profile || {}), [key]: { ...(d.profile?.[key] || {}), [m]: Math.max(0, Math.min(40, (cur[m] || 0) + delta)) } } };
     });
     const resetDashTarget = (m) => setData(d => {
-      const rest = { ...(d.profile?.setTargets || {}) }; delete rest[m];
-      return { ...d, profile: { ...(d.profile || {}), setTargets: rest } };
+      const key = targetOverrideKeyOf(d);
+      const rest = { ...(d.profile?.[key] || {}) }; delete rest[m];
+      return { ...d, profile: { ...(d.profile || {}), [key]: rest } };
     });
+    const setGoalMode = (mode) => setData(d => ({ ...d, profile: { ...(d.profile || {}), setGoalMode: mode } }));
     const dropdownSummary = { fontSize:12.5, color:T.green, fontWeight:700, cursor:"pointer", listStyle:"none", display:"inline-flex", alignItems:"center", gap:6, background:T.input, border:`1px solid ${T.line}`, borderRadius:99, padding:"6px 13px" };
     widgets.target = (
       <div className="card">
         <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:2}}>Weekly set target</div>
+        <div style={{display:"flex", alignItems:"center", gap:6, margin:"8px 0 7px", flexWrap:"wrap"}}>
+          <span style={{fontSize:11.5, color:T.sub, marginRight:2}}>Goal type</span>
+          {Object.entries(GOAL_MODES).map(([mode, info]) => <button key={mode} type="button" onClick={()=>setGoalMode(mode)} aria-pressed={goalMode===mode} style={{background:goalMode===mode ? T.mint : T.input, color:goalMode===mode ? T.green : T.sub, border:`1px solid ${goalMode===mode ? T.green : T.line}`, borderRadius:99, padding:"5px 10px", fontSize:11.5, fontWeight:800}}>{info.label}</button>)}
+        </div>
         <div style={{fontSize:12, color:T.sub, marginBottom:12}}>
-          Your editable weekly hard-set goal (Mon–Sun). Main muscles count as a full set; secondary muscles (like triceps on bench) count as half.
+          {goalModeInfo.short} goal, Mon–Sun. Main muscles count as a full set; secondary muscles (like triceps on bench) count as half. Tap a bar to see its exact count.
         </div>
         {MUSCLES.map((m,i)=>{
           const goal = targets[m];
@@ -2545,7 +2562,7 @@ function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled
           return (
             <div key={m} style={{display:"grid", gridTemplateColumns:"78px 1fr 96px", gap:10, alignItems:"center", marginBottom:9}}>
               <span style={{fontSize:13, fontWeight:600}}>{m}</span>
-              <TargetBar count={n} color={MUSCLE_COLORS[i]} goal={goal} max={Math.max(20, goal+4, n)} />
+              <TargetBar muscle={m} count={n} color={MUSCLE_COLORS[i]} goal={goal} max={Math.max(20, goal+4, n)} />
               <span style={{fontSize:12, textAlign:"right", whiteSpace:"nowrap"}}>
                 <b style={{color:T.ink, fontSize:13}}>{n}</b> <span style={{color:sColor, fontWeight:600}}>{status}</span>
               </span>
@@ -2554,10 +2571,10 @@ function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled
         })}
         <div style={{display:"flex", gap:10, marginTop:6, flexWrap:"wrap"}}>
           <details>
-            <summary style={dropdownSummary}>🎯 Set your own goals <span style={{fontSize:9}}>▾</span></summary>
+            <summary style={dropdownSummary}>🎯 Set your own {goalModeInfo.label.toLowerCase()} goals <span style={{fontSize:9}}>▾</span></summary>
             <div style={{marginTop:10, display:"flex", flexDirection:"column", gap:8, padding:"10px 12px", background:T.input, borderRadius:10}}>
               {MUSCLES.map(m => {
-                const isCustom = (data.profile?.setTargets || {})[m] != null;
+                const isCustom = customSetTargetsOf(data)[m] != null;
                 return (
                   <div key={m} style={{display:"flex", alignItems:"center", gap:8}}>
                     <span style={{fontSize:12.5, width:70, flexShrink:0}}>{m}</span>
@@ -2576,11 +2593,11 @@ function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled
           <div style={{marginTop:8, display:"flex", flexDirection:"column", gap:6, padding:"10px 12px", background:T.input, borderRadius:10}}>
             {MUSCLES.map(m => (
               <div key={m} style={{fontSize:11.5, color:T.sub, lineHeight:1.5}}>
-                <b style={{color:T.ink}}>{m} ({REC_SETS[m]}):</b> {SET_RESEARCH[m]}
+                <b style={{color:T.ink}}>{m} ({goalModeInfo.targets[m]}):</b> {GOAL_RESEARCH[goalMode][m]}
               </div>
             ))}
             <div style={{fontSize:11, color:T.sub, marginTop:4, fontStyle:"italic"}}>
-              Evidence checked: Schoenfeld, Ogborn & Krieger (2017, doi:10.1080/02640414.2016.1210197); Baz-Valle et al. (2022, doi:10.2478/hukin-2022-0017); and the 2025 dose-response meta-regression (PMID 41343037). These support a starting range, not one guaranteed best number—change goals based on progress and recovery.
+              Evidence reviewed: Schoenfeld, Ogborn & Krieger (2017, doi:10.1080/02640414.2016.1210197); Baz-Valle et al. (2022, doi:10.2478/hukin-2022-0017); Currier et al. (2023, doi:10.1136/bjsports-2023-106807); Lopez et al. (2021, doi:10.1249/MSS.0000000000002585); Ralston et al. (2017, doi:10.1007/s40279-017-0762-7); and Pelland et al. (2026, doi:10.1007/s40279-025-02344-w). These guide a starting point; change goals based on progress and recovery.
             </div>
           </div>
         </details>
@@ -5444,15 +5461,15 @@ const ARNOLD_DAY = (m) => {
 };
 const ARNOLD_NAME = { cb: "chest & back", sa: "shoulders & arms", legs: "legs" };
 
-/* Editable, hypertrophy-focused weekly hard-set starting targets. There is no validated
-   single "best" number for every individual muscle: the strongest reviews support a
-   broad 12–20-set range for trained adults, with individual recovery determining where
-   someone should sit in that range. */
-const REC_SETS = { Chest: 14, Back: 16, Shoulders: 14, Biceps: 12, Triceps: 12, Legs: 16, Abs: 10 };
-/* These are deliberately practical defaults, not claims that one precise number maximizes
-   every person's growth. The app counts secondary work as half a set, consistent with the
-   fractional-set approach used in the current dose-response meta-regression. */
-const SET_RESEARCH = {
+/* These are editable starting points, not one-size-fits-all prescriptions. The evidence
+   supports fractional accounting for secondary muscles and shows different volume curves
+   for hypertrophy versus strength. */
+const GOAL_MODES = {
+  hypertrophy: { label:"Hypertrophy", short:"Muscle growth", targets:{ Chest:14, Back:16, Shoulders:14, Biceps:12, Triceps:12, Legs:16, Abs:10 } },
+  strength: { label:"Strength", short:"Strength & heavier work", targets:{ Chest:8, Back:10, Shoulders:8, Biceps:6, Triceps:6, Legs:10, Abs:6 } },
+};
+const GOAL_RESEARCH = {
+  hypertrophy: {
   Chest: "14 is a middle-of-the-evidence target: volume generally helps, while the best trained-lifter review places the practical range around 12–20 hard sets per muscle each week.",
   Back: "16 gives room for both vertical and horizontal pulling. It is a practical higher-midrange target, not proof that back needs more sets than every other muscle.",
   Shoulders: "14 recognizes that different movements emphasize front, side, and rear delts. Pressing contributes only a half set here, so add direct work if a head is lagging.",
@@ -5460,13 +5477,26 @@ const SET_RESEARCH = {
   Triceps: "12 is a moderate target because presses contribute half sets. Research does not establish one unique triceps optimum, so adjust it using progress and recovery.",
   Legs: "16 is a practical higher-midrange total for the app’s combined leg group. Track quad, hamstring, glute, and calf exercise choices too—one total cannot guarantee each gets enough work.",
   Abs: "10 is a conservative direct-work starting target. Evidence is much thinner for a precise ab-set optimum, and bracing in compound lifts is not counted as equivalent direct ab training.",
+  },
+  strength: {
+    Chest: "8 keeps enough pressing practice while leaving recovery room for heavier bench work. Strength is more specific to the lifts you practice than to a muscle-only set total.",
+    Back: "10 supports rows and pulls that build a stable base for pressing and pulling strength without using hypertrophy-level volume by default.",
+    Shoulders: "8 includes pressing plus some direct shoulder work. Keep the main strength movement heavy and technically consistent.",
+    Biceps: "6 is accessory volume; it supports pulling strength but does not replace practicing your main pulling lift.",
+    Triceps: "6 is accessory volume; pressing strength responds especially to heavy, specific press practice, not just more isolation sets.",
+    Legs: "10 supports squat and hinge work while managing fatigue. Strength programs should distribute these sets across the exact lifts you want to improve.",
+    Abs: "6 is a conservative accessory target. Bracing and trunk work help support heavy compound lifting, but are not a direct measure of squat or deadlift strength.",
+  },
 };
 /* Which muscles a push/pull/legs (and Arnold) day actually targets — used to keep
    the coach's insights relevant to the day it's pointing you at. */
 const GROUP_MUSCLES = { push: ["Chest", "Shoulders", "Triceps"], pull: ["Back", "Biceps"], legs: ["Legs"] };
 const ARNOLD_MUSCLES = { cb: ["Chest", "Back"], sa: ["Shoulders", "Biceps", "Triceps"], legs: ["Legs"] };
 const ALL_UPPER = ["Chest", "Back", "Shoulders", "Biceps", "Triceps"];
-const setTargetsOf = (data) => ({ ...REC_SETS, ...(data.profile?.setTargets || {}) });
+const goalModeOf = (data) => data.profile?.setGoalMode === "strength" ? "strength" : "hypertrophy";
+const targetOverrideKeyOf = (data) => goalModeOf(data) === "strength" ? "strengthSetTargets" : "setTargets";
+const customSetTargetsOf = (data) => data.profile?.[targetOverrideKeyOf(data)] || {};
+const setTargetsOf = (data) => ({ ...GOAL_MODES[goalModeOf(data)].targets, ...customSetTargetsOf(data) });
 /* A custom-split day can be a rest day; label it accordingly. */
 const dayTitle = (day) => day?.rest ? "Rest day" : dayLabel(day?.muscles);
 /* Muscle groups actually logged on a given date. */
@@ -5748,9 +5778,11 @@ function CoachCard({ data, exMap, user, setData }) {
   // position is read from your logs (same logic the coach uses), so the builder agrees with the tips
   const { cycle, idx: cyPos } = customCyclePosition(data, data.log || [], exMap);
   const todayDayId = cyPos >= 0 ? cycle[cyPos].id : null;
-  // editable weekly set targets per muscle (science-based defaults)
+  // editable weekly set targets per muscle; mirrors the Dashboard's selected goal type
+  const goalMode = goalModeOf(data);
+  const goalModeInfo = GOAL_MODES[goalMode];
   const targets = setTargetsOf(data);
-  const bumpTarget = (m, delta) => setData(d => { const cur = setTargetsOf(d); return { ...d, profile: { ...(d.profile || {}), setTargets: { ...(d.profile?.setTargets || {}), [m]: Math.max(0, Math.min(40, (cur[m] || 0) + delta)) } } }; });
+  const bumpTarget = (m, delta) => setData(d => { const cur = setTargetsOf(d); const key = targetOverrideKeyOf(d); return { ...d, profile: { ...(d.profile || {}), [key]: { ...(d.profile?.[key] || {}), [m]: Math.max(0, Math.min(40, (cur[m] || 0) + delta)) } } }; });
   const [showTargets, setShowTargets] = useState(false);
   // the split setup collapses once you've chosen one; expands again via the ✎ chip
   const [editing, setEditing] = useState(!split);
@@ -5920,7 +5952,7 @@ function CoachCard({ data, exMap, user, setData }) {
               </button>
               {showTargets && (
                 <div style={{ marginTop: 9 }}>
-                  <div style={{ fontSize: 11.5, color: T.sub, lineHeight: 1.55, marginBottom: 10 }}>Research points to <b style={{ color: T.ink }}>~10–20 hard sets per muscle per week</b> for maximum growth. These are set to a proven default — nudge them to fit you. The coach checks your logged sets against these each week.</div>
+                  <div style={{ fontSize: 11.5, color: T.sub, lineHeight: 1.55, marginBottom: 10 }}><b style={{ color: T.ink }}>{goalModeInfo.label} mode</b> is active. These are the same editable weekly goals shown on your Dashboard; change the goal type there to switch between hypertrophy and strength guidance.</div>
                   {MUSCLES.map(m => (
                     <div key={m} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 2px", borderTop: `1px solid ${T.creamLine}` }}>
                       <span style={{ flex: 1, fontSize: 13.5, fontWeight: 700, color: T.ink }}>{m}</span>
