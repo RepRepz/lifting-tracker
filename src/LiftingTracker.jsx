@@ -214,6 +214,7 @@ const defaultData = {
   // `muscle` (primary) is kept alongside `muscles`/`muscles2` so older cached app versions still work
   exercises: SEED_EXERCISES.map(([name, muscles, muscles2 = []]) => ({ name, muscle: muscles[0], muscles, muscles2, type: BW_SET.has(name) ? "Bodyweight" : "Weighted", barbell: BARBELL_SEED.has(name), machine: MACHINE_SEED.has(name) })),
   gyms: [], // [{ id, name }] — only used once multi-gym tracking is turned on in Settings
+  manualSets: [], // [{ id, date, muscle, count }] — quick tally for sets done outside the Log tab
   log: [], bodyweight: [], cardio: [], cardioActivities: SEED_CARDIO,
   routines: [], // optional workout templates (feature toggled in Settings)
   foods: [], nutritionGoals: {}, // optional macro tracking (feature toggled in Settings)
@@ -1583,6 +1584,21 @@ function Spark({ pts, w = 88, h = 26 }) {
 }
 
 /* Horizontal progress bar with a highlighted target zone (weekly sets). */
+/* Tiny "type a number, tap add" row — for tallying sets done outside the Log tab. */
+function ManualSetAdd({ muscle, onAdd }) {
+  const [n, setN] = useState("");
+  const commit = () => { const v = parseInt(n); if (v > 0) onAdd(v); setN(""); };
+  return (
+    <div style={{display:"flex", alignItems:"center", gap:8}}>
+      <span style={{fontSize:12.5, width:70, flexShrink:0}}>{muscle}</span>
+      <input type="number" inputMode="numeric" min="1" value={n} onChange={e=>setN(e.target.value)} placeholder="0"
+        onKeyDown={e=>{ if (e.key==="Enter") commit(); }}
+        style={{width:54, minHeight:30, padding:"4px 8px", fontSize:12.5}} />
+      <button onClick={commit} disabled={!n} style={{background:T.green, color:"#000", fontWeight:700, fontSize:12, padding:"5px 12px", borderRadius:8, opacity:n?1:0.45}}>+ Add</button>
+    </div>
+  );
+}
+
 function TargetBar({ count, color, lo = 12, hi = 16, max = 20 }) {
   const pct = Math.min(count, max) / max * 100;
   return (
@@ -2346,8 +2362,13 @@ function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled
       if (weekStart(e.date)!==wkStart) continue;
       for (const [m,w] of muscleCredits(exMap[e.exercise])) if (m in c) c[m]+=w;
     }
+    // manual tally — for sets done outside the app (or a friend who doesn't log)
+    for (const e of (data.manualSets || [])) {
+      if (weekStart(e.date)!==wkStart) continue;
+      if (e.muscle in c) c[e.muscle] += e.count;
+    }
     return c;
-  }, [data.log, exMap, wkStart]);
+  }, [data.log, data.manualSets, exMap, wkStart]);
 
   /* 30-day pie */
   const pieData = useMemo(() => {
@@ -2483,40 +2504,57 @@ function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled
       const rest = { ...(d.profile?.setTargets || {}) }; delete rest[m];
       return { ...d, profile: { ...(d.profile || {}), setTargets: rest } };
     });
+    const addManualSets = (m, n) => { if (!n) return; setData(d => ({ ...d, manualSets: [...(d.manualSets||[]), { id: Date.now(), date: todayStr(), muscle: m, count: n }] })); };
     widgets.target = (
       <div className="card">
         <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:2}}>Weekly set target</div>
         <div style={{fontSize:12, color:T.sub, marginBottom:12}}>
-          Your goal per muscle, hard sets this week (Mon–Sun). Main muscles count a full set; secondary ones (like triceps on bench) count half.
-          Defaults are science-based (below) — tap −/+ to make them your own.
+          Recommended hard sets per muscle this week (Mon–Sun) — main muscles count a full set, secondary ones (like triceps on bench) count half.
         </div>
         {MUSCLES.map((m,i)=>{
           const goal = targets[m];
           const n = weekSets[m];
-          const isCustom = (data.profile?.setTargets || {})[m] != null;
           const under = Math.max(0, goal - 2), over = goal + 2;
           const status = n<under ? `${under-n} under` : n<=over ? "✓ on target" : `${n-over} over`;
           const sColor = n<under ? T.sub : n<=over ? T.green : T.down;
           return (
-            <div key={m} style={{marginBottom:14}}>
-              <div style={{display:"flex", alignItems:"baseline", justifyContent:"space-between", marginBottom:5}}>
-                <span style={{fontSize:13, fontWeight:600}}>{m}</span>
-                <span style={{fontSize:11.5, color:sColor, fontWeight:700}}>{n} sets · {status}</span>
-              </div>
-              <div style={{display:"grid", gridTemplateColumns:"1fr auto", gap:10, alignItems:"center"}}>
-                <TargetBar count={n} color={MUSCLE_COLORS[i]} lo={under} hi={over} max={Math.max(20, over+4)} />
-                <div style={{display:"flex", alignItems:"center", gap:4}}>
-                  <button onClick={()=>bumpDashTarget(m,-1)} style={{width:24, height:24, borderRadius:7, background:T.input, border:`1px solid ${T.line}`, color:T.ink, fontSize:14, lineHeight:1, padding:0}}>−</button>
-                  <span style={{fontSize:12.5, fontWeight:700, width:20, textAlign:"center"}}>{goal}</span>
-                  <button onClick={()=>bumpDashTarget(m,1)} style={{width:24, height:24, borderRadius:7, background:T.input, border:`1px solid ${T.line}`, color:T.ink, fontSize:14, lineHeight:1, padding:0}}>+</button>
-                  {isCustom && <button onClick={()=>resetDashTarget(m)} title="Reset to the recommended default" style={{background:"none", color:T.sub, fontSize:10.5, marginLeft:2, textDecoration:"underline"}}>reset</button>}
-                </div>
-              </div>
+            <div key={m} style={{display:"grid", gridTemplateColumns:"78px 1fr 96px", gap:10, alignItems:"center", marginBottom:9}}>
+              <span style={{fontSize:13, fontWeight:600}}>{m}</span>
+              <TargetBar count={n} color={MUSCLE_COLORS[i]} lo={under} hi={over} max={Math.max(20, over+4)} />
+              <span style={{fontSize:12, textAlign:"right", whiteSpace:"nowrap"}}>
+                <b style={{color:T.ink, fontSize:13}}>{n}</b> <span style={{color:sColor, fontWeight:600}}>{status}</span>
+              </span>
             </div>
           );
         })}
-        <details style={{marginTop:4}}>
-          <summary style={{fontSize:12, color:T.green, fontWeight:700, cursor:"pointer", listStyle:"none"}}>🔬 Why these numbers?</summary>
+        <div style={{display:"flex", gap:14, marginTop:6, flexWrap:"wrap"}}>
+          <details style={{flex:1, minWidth:140}}>
+            <summary style={{fontSize:12, color:T.green, fontWeight:700, cursor:"pointer", listStyle:"none"}}>🎯 Set your own goals</summary>
+            <div style={{marginTop:10, display:"flex", flexDirection:"column", gap:8}}>
+              {MUSCLES.map(m => {
+                const isCustom = (data.profile?.setTargets || {})[m] != null;
+                return (
+                  <div key={m} style={{display:"flex", alignItems:"center", gap:8}}>
+                    <span style={{fontSize:12.5, width:70, flexShrink:0}}>{m}</span>
+                    <button onClick={()=>bumpDashTarget(m,-1)} style={{width:26, height:26, borderRadius:7, background:T.input, border:`1px solid ${T.line}`, color:T.ink, fontSize:15, lineHeight:1, padding:0}}>−</button>
+                    <span style={{fontSize:13, fontWeight:700, width:20, textAlign:"center"}}>{targets[m]}</span>
+                    <button onClick={()=>bumpDashTarget(m,1)} style={{width:26, height:26, borderRadius:7, background:T.input, border:`1px solid ${T.line}`, color:T.ink, fontSize:15, lineHeight:1, padding:0}}>+</button>
+                    {isCustom && <button onClick={()=>resetDashTarget(m)} title="Reset to the recommended default" style={{background:"none", color:T.sub, fontSize:10.5, textDecoration:"underline"}}>reset</button>}
+                  </div>
+                );
+              })}
+            </div>
+          </details>
+          <details style={{flex:1, minWidth:140}}>
+            <summary style={{fontSize:12, color:T.green, fontWeight:700, cursor:"pointer", listStyle:"none"}}>🧮 Add sets manually</summary>
+            <div style={{marginTop:10, display:"flex", flexDirection:"column", gap:8}}>
+              <div style={{fontSize:11, color:T.sub, marginBottom:2}}>For sets done outside the Log tab (or if you're not tracking every workout) — adds to this week's count only.</div>
+              {MUSCLES.map(m => <ManualSetAdd key={m} muscle={m} onAdd={n=>addManualSets(m,n)} />)}
+            </div>
+          </details>
+        </div>
+        <details style={{marginTop:10}}>
+          <summary style={{fontSize:12, color:T.sub, fontWeight:700, cursor:"pointer", listStyle:"none"}}>🔬 Why these numbers?</summary>
           <div style={{marginTop:8, display:"flex", flexDirection:"column", gap:6}}>
             {MUSCLES.map(m => (
               <div key={m} style={{fontSize:11.5, color:T.sub, lineHeight:1.5}}>
