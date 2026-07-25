@@ -1630,24 +1630,39 @@ function QuickAddSets({ exercises, onAdd }) {
   );
 }
 
-function TargetBar({ muscle, count, color, goal = 12, max = 20 }) {
-  const [hovered, setHovered] = useState(false);
-  const [pinned, setPinned] = useState(false);
+function TargetBar({ muscle, count, color, goal = 12, max = 20, open, onHover, onLeave, onToggle }) {
   const pct = Math.min(count, max) / max * 100;
   const status = count < goal ? `${goal-count} under` : count === goal ? "goal hit" : `${count-goal} over`;
   const reached = count >= goal;
-  const showDetail = hovered || pinned;
-  const tipPct = Math.max(18, Math.min(82, pct));
   return (
-    <div style={{position:"relative", minWidth:0, zIndex:showDetail?5:1}}>
-      <button type="button" onClick={()=>setPinned(v=>!v)} onMouseEnter={()=>setHovered(true)} onMouseLeave={()=>setHovered(false)} onFocus={()=>setHovered(true)} onBlur={()=>setHovered(false)} aria-expanded={showDetail} aria-label={`${muscle}: ${count} of ${goal} sets — ${status}. Tap for details.`} style={{display:"block", width:"100%", height:28, padding:0, background:"none", border:0, overflow:"visible", cursor:"pointer", position:"relative"}}>
+    <div style={{position:"relative", minWidth:0}}>
+      <button type="button" onClick={onToggle} onMouseEnter={onHover} onMouseLeave={onLeave} onFocus={onHover} onBlur={onLeave} aria-expanded={open} aria-label={`${muscle}: ${count} of ${goal} sets — ${status}. Tap for exercise breakdown.`} style={{display:"block", width:"100%", height:28, padding:0, background:"none", border:0, overflow:"visible", cursor:"pointer", position:"relative"}}>
         <span style={{position:"absolute", left:0, right:0, top:12, height:10, background:T.input, borderRadius:99, overflow:"hidden", boxShadow:"0 1px 0 rgba(255,255,255,.04) inset"}}>
           <span style={{display:"block", width:`${pct}%`, height:"100%", background:color, borderRadius:99, transition:"width .6s ease"}} />
         </span>
         <span title={`Goal: ${goal} sets`} aria-hidden="true" style={{position:"absolute", zIndex:1, left:`calc(${Math.min(goal, max) / max * 100}% - 5px)`, top:12, width:8, height:8, background:T.card, border:`2px solid ${T.ink}`, borderRadius:2, transform:"rotate(45deg)", boxShadow:`0 0 0 1px ${T.card}`}} />
-        <span aria-hidden="true" style={{position:"absolute", zIndex:2, left:`calc(${pct}% - 11px)`, top:0, minWidth:22, height:22, padding:"0 4px", borderRadius:99, display:"flex", alignItems:"center", justifyContent:"center", boxSizing:"border-box", background:reached?T.green:T.card, color:reached?"#07110D":T.ink, border:`1px solid ${reached?T.green:color}`, fontSize:11, fontWeight:900, fontVariantNumeric:"tabular-nums", boxShadow:`0 0 0 2px ${T.card}, 0 4px 12px rgba(0,0,0,.28)`, transition:"left .6s ease, background .2s ease"}}>{count}</span>
+        <span aria-hidden="true" style={{position:"absolute", zIndex:2, left:`calc(${pct}% - 11px)`, top:0, minWidth:22, height:22, padding:"0 4px", borderRadius:99, display:"flex", alignItems:"center", justifyContent:"center", boxSizing:"border-box", background:reached?T.green:T.card, color:reached?"#07110D":T.ink, border:`1px solid ${open?T.green:(reached?T.green:color)}`, fontSize:11, fontWeight:900, fontVariantNumeric:"tabular-nums", boxShadow:open?`0 0 0 3px ${T.mint}, 0 5px 16px rgba(0,0,0,.34)`:`0 0 0 2px ${T.card}, 0 4px 12px rgba(0,0,0,.28)`, transition:"left .6s ease, background .2s ease, box-shadow .2s ease"}}>{count}</span>
       </button>
-      {showDetail && <div role="status" style={{position:"absolute", left:`${tipPct}%`, bottom:31, transform:"translateX(-50%)", zIndex:10, padding:"7px 10px", background:T.card, border:`1px solid ${reached?T.green:T.line}`, borderRadius:9, color:reached?T.green:T.ink, boxShadow:"0 10px 28px rgba(0,0,0,.38)", fontSize:11.5, fontWeight:700, lineHeight:1.25, whiteSpace:"nowrap", pointerEvents:"none"}}><span style={{color:T.sub, fontWeight:600}}>{muscle}</span> · {count} / {goal} sets · {status}</div>}
+    </div>
+  );
+}
+
+const fmtSets = (n) => Number.isInteger(n) ? String(n) : n.toFixed(1).replace(/\.0$/, "");
+function TargetBreakdown({ muscle, rows, count, goal, color }) {
+  const status = count < goal ? `${fmtSets(goal-count)} under` : count === goal ? "Goal hit" : `${fmtSets(count-goal)} over`;
+  return (
+    <div style={{margin:"5px 0 12px", padding:"11px 12px", background:`linear-gradient(145deg, ${T.input}, ${T.card})`, border:`1px solid ${count>=goal?T.green:T.line}`, borderRadius:12, boxShadow:"0 10px 26px rgba(0,0,0,.16)"}}>
+      <div style={{display:"flex", alignItems:"center", gap:8, marginBottom:rows.length?9:0}}>
+        <span style={{width:9, height:9, borderRadius:99, background:color, flexShrink:0}} />
+        <b style={{fontSize:13, color:T.ink}}>{muscle}</b>
+        <span style={{marginLeft:"auto", fontSize:12, fontWeight:800, color:count>=goal?T.green:T.ink}}>{fmtSets(count)} / {goal} sets · {status}</span>
+      </div>
+      {rows.length ? <div style={{display:"flex", flexDirection:"column", gap:0, maxHeight:190, overflowY:"auto"}}>
+        {rows.map(row => <div key={`${row.exercise}-${row.credit}`} style={{display:"grid", gridTemplateColumns:"minmax(0,1fr) auto", gap:10, alignItems:"center", padding:"7px 0", borderTop:`1px solid ${T.line}`}}>
+          <div style={{minWidth:0}}><div style={{fontSize:12, color:T.ink, fontWeight:700, lineHeight:1.25, overflowWrap:"anywhere"}}>{row.exercise}</div><div style={{fontSize:10, color:T.sub, marginTop:2}}>{row.credit===0.5?"Secondary muscle · ½ set credit each":"Main muscle · full set credit each"}</div></div>
+          <div style={{textAlign:"right", whiteSpace:"nowrap"}}><b style={{fontSize:12.5, color:T.ink}}>{fmtSets(row.total)}</b><div style={{fontSize:9.5, color:T.sub}}>{row.logged} logged × {row.credit===0.5?"½":"1"}</div></div>
+        </div>)}
+      </div> : <div style={{fontSize:11.5, color:T.sub}}>No working sets for {muscle.toLowerCase()} have been logged this week.</div>}
     </div>
   );
 }
@@ -2241,7 +2256,7 @@ function YearRecap({ data }) {
 }
 
 /* ================= DASHBOARD ================= */
-const DASH_WIDGETS = ["calendar","streak","charts","target","muscle","recap"];
+const DASH_WIDGETS = ["calendar","target","streak","charts","muscle","recap"];
 /* Hero stat tile for the dashboard — big gradient number, icon, label. `hero`
    gives the primary tile an accent-tinted glow so the eye lands on it first. */
 function StatTile({ icon, value, label, hero }) {
@@ -2264,7 +2279,15 @@ function StatTile({ icon, value, label, hero }) {
 function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled, stepsEnabled, nutritionOn, multiGymOn, openSettings, setTab }) {
   const units = useUnit();
   const [researchMode, setResearchMode] = useState(() => goalModeOf(data));
+  const [targetDetail, setTargetDetail] = useState(null); // { muscle, pinned }
+  const targetCardRef = useRef(null);
   useEffect(() => { setResearchMode(goalModeOf(data)); }, [data.profile?.setGoalMode]);
+  useEffect(() => {
+    if (!targetDetail) return;
+    const closeOutside = (e) => { if (targetCardRef.current && !targetCardRef.current.contains(e.target)) setTargetDetail(null); };
+    document.addEventListener("pointerdown", closeOutside);
+    return () => document.removeEventListener("pointerdown", closeOutside);
+  }, [targetDetail]);
   // range sticks forever (remembered on this device)
   const [range, setRange] = useState(() => {
     const r = localStorage.getItem("lt-range");
@@ -2275,7 +2298,7 @@ function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled
   const [bwMode, setBwMode] = useState({});
   /* draggable dashboard widget order (remembered on this device) */
   const [arrange, setArrange] = useState(false);
-  const [wOrder, setWOrder] = useReorder("lt-dash-order-v2", DASH_WIDGETS);
+  const [wOrder, setWOrder] = useReorder("lt-dash-order-v3", DASH_WIDGETS);
   /* Pinned charts live in account data (data.pins) so they sync across devices and
      friends' profiles show THEIR pins. Local state first, then persisted when it's your own. */
   const [pins, setPins] = useState(() => Array.isArray(data.pins) ? data.pins : []);
@@ -2408,6 +2431,19 @@ function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled
       for (const [m,w] of muscleCredits(exMap[e.exercise])) if (m in c) c[m]+=w;
     }
     return c;
+  }, [data.log, exMap, wkStart]);
+  const weekSetBreakdown = useMemo(() => {
+    const grouped = Object.fromEntries(MUSCLES.map(m=>[m,{}]));
+    for (const e of data.log) {
+      if (e.effort==="Warm-up" || weekStart(e.date)!==wkStart) continue;
+      for (const [m, credit] of muscleCredits(exMap[e.exercise])) {
+        if (!(m in grouped)) continue;
+        const key = `${e.exercise}|${credit}`;
+        const row = grouped[m][key] || { exercise:e.exercise, credit, logged:0, total:0 };
+        row.logged += 1; row.total += credit; grouped[m][key] = row;
+      }
+    }
+    return Object.fromEntries(MUSCLES.map(m=>[m,Object.values(grouped[m]).sort((a,b)=>b.total-a.total || a.exercise.localeCompare(b.exercise))]));
   }, [data.log, exMap, wkStart]);
 
   /* 30-day pie */
@@ -2554,9 +2590,13 @@ function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled
       return { ...d, profile: { ...(d.profile || {}), [key]: {} } };
     });
     const setGoalMode = (mode) => setData(d => ({ ...d, profile: { ...(d.profile || {}), setGoalMode: mode } }));
+    const toggleTargetDetail = (muscle) => setTargetDetail(cur => cur?.muscle===muscle && cur.pinned ? null : {muscle, pinned:true});
+    const previewTargetDetail = (muscle) => setTargetDetail(cur => cur?.pinned ? cur : {muscle, pinned:false});
+    const leaveTargetDetail = (muscle) => setTargetDetail(cur => cur?.muscle===muscle && !cur.pinned ? null : cur);
+    const activeTargetMuscle = targetDetail?.muscle;
     const dropdownSummary = { fontSize:12.5, color:T.green, fontWeight:700, cursor:"pointer", listStyle:"none", display:"inline-flex", alignItems:"center", gap:6, background:T.input, border:`1px solid ${T.line}`, borderRadius:99, padding:"6px 13px" };
     widgets.target = (
-      <div className="card">
+      <div className="card" ref={targetCardRef}>
         <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:2}}>Weekly set target</div>
         <div style={{display:"flex", alignItems:"center", gap:6, margin:"8px 0 7px", flexWrap:"wrap"}}>
           <span style={{fontSize:11.5, color:T.sub, marginRight:2}}>Goal type</span>
@@ -2572,15 +2612,16 @@ function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled
           const sColor = n < goal ? T.ink : T.green;
           return (
             <div key={m} style={{display:"grid", gridTemplateColumns:"78px 1fr 96px", gap:10, alignItems:"center", marginBottom:9}}>
-              <span style={{fontSize:13, fontWeight:600}}>{m}</span>
-              <TargetBar muscle={m} count={n} color={MUSCLE_COLORS[i]} goal={goal} max={Math.max(20, goal+4, n)} />
-              <span style={{fontSize:11.5, textAlign:"right", whiteSpace:"nowrap", lineHeight:1.25}}>
+              <button type="button" onClick={()=>toggleTargetDetail(m)} style={{padding:0, background:"none", color:T.ink, textAlign:"left", fontSize:13, fontWeight:600}}>{m}</button>
+              <TargetBar muscle={m} count={n} color={MUSCLE_COLORS[i]} goal={goal} max={Math.max(20, goal+4, n)} open={activeTargetMuscle===m} onHover={()=>previewTargetDetail(m)} onLeave={()=>leaveTargetDetail(m)} onToggle={()=>toggleTargetDetail(m)} />
+              <button type="button" onClick={()=>toggleTargetDetail(m)} aria-expanded={activeTargetMuscle===m} style={{padding:0, background:"none", fontSize:11.5, textAlign:"right", whiteSpace:"nowrap", lineHeight:1.25}}>
                 <span style={{display:"block", color:T.sub}}><b style={{color:T.ink, fontSize:13}}>{n}</b> / {goal}</span>
                 <span style={{display:"block", color:sColor, fontWeight:700}}>{status}</span>
-              </span>
+              </button>
             </div>
           );
         })}
+        {activeTargetMuscle && <TargetBreakdown muscle={activeTargetMuscle} rows={weekSetBreakdown[activeTargetMuscle] || []} count={weekSets[activeTargetMuscle]} goal={targets[activeTargetMuscle]} color={MUSCLE_COLORS[MUSCLES.indexOf(activeTargetMuscle)]} />}
         <div style={{display:"flex", gap:10, marginTop:6, flexWrap:"wrap"}}>
           <details style={{width:"100%"}}>
             <summary style={{...dropdownSummary, color:T.green}}>🎛 Modify your own {goalModeInfo.label.toLowerCase()} goals <span style={{fontSize:9}}>▾</span></summary>
