@@ -5609,27 +5609,50 @@ const nextTrainingDay = (cycle, startIdx) => {
   return null;
 };
 
+const naturalList = (items) => {
+  const a = [...new Set((items || []).filter(Boolean))];
+  if (a.length < 2) return a[0] || "your planned muscles";
+  if (a.length === 2) return `${a[0]} and ${a[1]}`;
+  return `${a.slice(0,-1).join(", ")}, and ${a[a.length-1]}`;
+};
+const coachMuscleList = (muscles) => naturalList((muscles || []).map(m=>m.toLowerCase()));
+const effortAllowsLoad = (effort) => effort === "Could've done more" || effort === "Right amount";
+
 function coachTips(data, exMap, units) {
   const log = Array.isArray(data.log) ? data.log : [];
   const cardio = Array.isArray(data.cardio) ? data.cardio : [];
   const tips = [];
   const today = todayStr();
   const wk = weekStart(today);
+  const goalMode = goalModeOf(data);
+  const trainingLevel = data.profile?.trainingLevel || "beginner";
   const inc = units === "kg" ? 2.5 : 5;              // smallest sensible jump
   const byEx = {};
-  for (const e of log) { if (e.weight == null) continue; (byEx[e.exercise] ||= []).push(e); }
+  for (const e of log) {
+    if (e.weight == null || e.quick || e.effort === "Warm-up" || !(e.reps > 0)) continue;
+    (byEx[e.exercise] ||= []).push(e);
+  }
 
-  // ---- PROGRESSION: same top weight for 8+ reps across the last two sessions → go up ----
+  // ---- PROGRESSION: goal-aware double progression, checked across recent sessions ----
   const progressions = [];
   for (const [ex, entries] of Object.entries(byEx)) {
+    if (exMap[ex]?.type === "Bodyweight") continue;
     const byDate = {};
     for (const e of entries) (byDate[e.date] ||= []).push(e);
     const dates = Object.keys(byDate).sort().reverse();
-    if (dates.length < 2 || dayGap(today, dates[0]) > 21) continue;
+    const confirmationSessions = trainingLevel === "advanced" ? 3 : 2;
+    if (dates.length < confirmationSessions || dayGap(today, dates[0]) > 21) continue;
     const topSet = (ds) => byDate[ds].slice().sort((a, b) => (b.weight - a.weight) || ((b.reps || 0) - (a.reps || 0)))[0];
-    const t0 = topSet(dates[0]), t1 = topSet(dates[1]);
-    if (t0.weight === t1.weight && (t0.reps || 0) >= 8)
-      progressions.push({ ex, cur: t0.weight, curReps: t0.reps, next: t0.weight + inc, reps: Math.max(5, (t0.reps || 8) - 2) });
+    const recentTops = dates.slice(0, confirmationSessions).map(topSet);
+    const t0 = recentTops[0], t1 = recentTops[1];
+    if (machineOf(exMap[ex]) && recentTops.some(t=>(t.gym||"") !== (t0.gym||""))) continue;
+    const isMainLift = BIG_LIFT_SET.has(ex);
+    const upper = goalMode === "strength" && isMainLift ? 5 : isMainLift ? 10 : 12;
+    const priorFloor = trainingLevel === "intermediate" ? upper - 1 : upper;
+    if (recentTops.some((t,i)=>t.weight!==t0.weight || t.reps < (i===0?upper:priorFloor))) continue;
+    const nextRepText = goalMode === "strength" && isMainLift ? "3–5 reps" : isMainLift ? "6–8 clean reps" : "8–10 clean reps";
+    progressions.push({ ex, cur:t0.weight, curReps:t0.reps, repsList:recentTops.map(t=>t.reps), next:t0.weight+inc, nextRepText,
+      canAdd:effortAllowsLoad(t0.effort), failed:t0.effort==="To failure", sessions:confirmationSessions });
   }
   // (progressions are pushed later, once we know which muscles today's plan targets)
 
@@ -5654,16 +5677,16 @@ function coachTips(data, exMap, units) {
       const todayEntry = cycle[idx];
       const nextEntry = cycle[(idx + 1) % cycle.length];
       const nextTrain = nextTrainingDay(cycle, (idx + 1) % cycle.length);
-      const nextLabel = nextEntry.rest ? "a rest day 😴" : `your "${dayLabel(nextEntry.muscles)}" day`;
+      const nextLabel = nextEntry.rest ? "a rest day 😴" : coachMuscleList(nextEntry.muscles);
       if (trainedToday) {
         if (nextTrain) focusMuscles = nextTrain.muscles;
-        pushTrain(`done-cust-${today}`, `Nice — logged ${todayList} today. Next up: ${nextLabel}.`, "💪");
+        pushTrain(`done-cust-${today}`, `Session logged: ${naturalList([...todayGroups].map(m=>m.toLowerCase()))}. Next in your rotation: ${nextLabel}.`, "💪");
       } else if (todayEntry.rest) {
         if (nextTrain) focusMuscles = nextTrain.muscles;
-        pushTrain(`rest-cust-${today}`, `Scheduled rest day 😴 — recover, hydrate and eat well. Tomorrow: ${nextLabel}.`, "🛌");
+        pushTrain(`rest-cust-${today}`, `Scheduled rest day 😴 — recover today. Next in your rotation: ${nextLabel}.`, "🛌");
       } else {
         focusMuscles = todayEntry.muscles;
-        pushTrain(`train-cust-${todayEntry.id}-${today}`, `Today's your "${dayLabel(todayEntry.muscles)}" day — go hit ${dayLabel(todayEntry.muscles)}.`);
+        pushTrain(`train-cust-${todayEntry.id}-${today}`, `Today's focus: ${coachMuscleList(todayEntry.muscles)}.`);
       }
     }
   } else if (split && trainedToday) {
@@ -5731,13 +5754,20 @@ function coachTips(data, exMap, units) {
   const progMuscle = (ex) => exMap[ex]?.muscle;
   let progPool = progressions.filter(p => !todayGroups.has(progMuscle(p.ex)));
   if (focusMuscles && focusMuscles.length) {
-    const focused = progPool.filter(p => focusMuscles.includes(progMuscle(p.ex)));
-    if (focused.length) progPool = focused;   // only narrow when we actually have focus-relevant moves
+    progPool = progPool.filter(p => focusMuscles.includes(progMuscle(p.ex)));
   }
   progPool.sort((a, b) => (BIG_LIFT_SET.has(b.ex) - BIG_LIFT_SET.has(a.ex)));
-  for (const p of progPool.slice(0, 2))
-    tips.push({ key: `prog-${p.ex}-${p.cur}-${p.reps}`, icon: "📈", cat: "Progression",
-      text: `You hit ${dispW(p.cur, units)}${uLabel(units)}×${p.curReps} on ${p.ex} twice — try ${dispW(p.next, units)}${uLabel(units)}×${p.reps} next session.` });
+  for (const p of progPool.slice(0, 2)) {
+    const recent = `${dispW(p.cur, units)}${uLabel(units)} for ${p.repsList.map(r=>`${r} reps`).join(", ")} across your last ${p.sessions} sessions`;
+    const action = p.failed
+      ? `Keep ${dispW(p.cur, units)}${uLabel(units)} next time and aim to match it without reaching failure.`
+      : p.canAdd
+        ? `Try ${dispW(p.next, units)}${uLabel(units)} for ${p.nextRepText} next session.`
+        : `If you had about 1–2 clean reps left, try ${dispW(p.next, units)}${uLabel(units)} for ${p.nextRepText}; otherwise keep the load and add a clean rep.`;
+    tips.push({ key: `prog-${p.ex}-${p.cur}-${p.curReps}`, icon: "📈", cat: "Progression",
+      text: `${p.ex}: ${recent}. ${action}`,
+      basis: `${goalMode === "strength" ? "Strength" : "Hypertrophy"} mode · warm-ups excluded · effort ${p.failed || p.canAdd ? "was logged" : "wasn't logged"}` });
+  }
 
   // ---- PR PROJECTION / ETA: a big lift trending up → project the next milestone ----
   for (const ex of BIG_LIFTS) {
@@ -5756,7 +5786,8 @@ function coachTips(data, exMap, units) {
       const weeksTo = Math.ceil((milestone - cur) / slope);
       if (weeksTo >= 1 && weeksTo <= 16) {
         tips.push({ key: `pr-${ex}-${milestone}`, icon: "🚀", cat: "Projection",
-          text: `${LIFT_SHORT[ex] || ex} is trending up — on pace for a ${milestone}${uLabel(units)} estimated 1RM in about ${weeksTo} week${weeksTo === 1 ? "" : "s"}. Keep it up.` });
+          text: `${LIFT_SHORT[ex] || ex} is trending up. If the recent pace holds, your estimated 1RM could reach ${milestone}${uLabel(units)} in about ${weeksTo} week${weeksTo === 1 ? "" : "s"}.`,
+          basis: `${recent.length} weekly bests · estimate, not a guarantee` });
         break;
       }
     }
@@ -5773,46 +5804,73 @@ function coachTips(data, exMap, units) {
     const recent = weeks.slice(-4);
     if (Math.max(...recent.map(w => weekBest[w])) <= weekBest[recent[0]] * 1.005)
       tips.push({ key: `plateau-${ex}-${wk}`, icon: "🧱", cat: "Plateau",
-        text: `${LIFT_SHORT[ex] || ex} hasn't moved in ~4 weeks. Deload a week (−10%) or switch rep range to break the stall.` });
+        text: `${LIFT_SHORT[ex] || ex}'s estimated strength has been flat across four trained weeks. First check technique and effort; if fatigue is high, use a lower-fatigue week instead of forcing a load jump.`,
+        basis: "Four weekly estimated-1RM bests · high-rep sets excluded" });
   }
 
-  // ---- WEEKLY VOLUME per muscle vs your customizable hypertrophy targets ----
-  // Secondaries count as half a set (muscleCredits); target defaults are science-based
-  // (~10–20 hard sets/wk) and editable in the coach (data.profile.setTargets).
+  // ---- WEEKLY VOLUME: exact fractional math, goal-aware wording, no end-week cramming ----
   const targets = setTargetsOf(data);
   const wsets = {};
-  for (const e of log) { if (weekStart(e.date) !== wk) continue; for (const [m, c] of muscleCredits(exMap[e.exercise])) wsets[m] = (wsets[m] || 0) + c; }
+  const creditedToday = new Set();
+  for (const e of log) {
+    if (e.effort === "Warm-up" || weekStart(e.date) !== wk) continue;
+    for (const [m, c] of muscleCredits(exMap[e.exercise])) {
+      wsets[m] = (wsets[m] || 0) + c;
+      if (e.date === today) creditedToday.add(m);
+    }
+  }
   const totalSets = Object.values(wsets).reduce((a, b) => a + b, 0);
   if (totalSets >= 6) {
-    // prefer a muscle you're about to train (focus) that's behind; else the one furthest below.
-    // Skip anything you already trained today — you can't act on it now; it'll resurface later.
-    const behind = (m) => { if (todayGroups.has(m)) return null; const tgt = targets[m]; if (!tgt) return null; const got = wsets[m] || 0; if (got < 1) return null; const deficit = tgt - got; return deficit >= 3 ? { m, got, tgt, deficit } : null; };
+    const behind = (m) => { if (creditedToday.has(m)) return null; const tgt = targets[m]; if (!tgt) return null; const got = wsets[m] || 0; if (got < 1) return null; const deficit = tgt - got; return deficit >= 3 ? { m, got, tgt, deficit } : null; };
     const pickWorst = (pool) => pool.map(behind).filter(Boolean).sort((a, b) => b.deficit - a.deficit)[0] || null;
     const worst = (focusMuscles && focusMuscles.length && pickWorst(focusMuscles)) || pickWorst(MUSCLES);
-    if (worst) tips.push({ key: `vol-${worst.m}-${wk}`, icon: "📊", cat: "Volume",
-      text: `${worst.m} is at ${Math.round(worst.got)} of your ${worst.tgt} weekly-set target — add ${Math.ceil(worst.deficit)} more set${Math.ceil(worst.deficit) === 1 ? "" : "s"} this week to keep growing.` });
+    if (worst) {
+      const mondayIndex = (new Date(today + "T12:00:00").getDay() + 6) % 7;
+      const daysLeft = 6 - mondayIndex;
+      const remaining = fmtSets(worst.deficit);
+      const timing = daysLeft <= 1 && worst.deficit > 4
+        ? `With ${daysLeft === 0 ? "the week ending today" : "one day left"}, don't cram all ${remaining} into one session—use this as a planning signal for next week.`
+        : `${remaining} remain${daysLeft ? ` across ${daysLeft + 1} calendar days` : " today"}; distribute them across normal sessions instead of one marathon workout.`;
+      const modeNote = goalMode === "strength" ? "Keep the main lift work heavy and technically specific." : "Quality hard sets matter more than chasing the number while fatigued.";
+      tips.push({ key: `vol-${worst.m}-${wk}`, icon: "📊", cat: "Volume",
+        text: `${worst.m}: ${fmtSets(worst.got)} / ${worst.tgt} credited sets this week. ${timing} ${modeNote}`,
+        basis: "Main muscle = 1 · secondary muscle = ½ · warm-ups excluded" });
+    }
   }
 
   // ---- BALANCE: push/pull ratio + leg neglect over the last 28 days ----
   const since = dAdd(today, -28);
   const vol = { push: 0, pull: 0, legs: 0, core: 0, other: 0 };
-  for (const e of log) { if (e.date < since) continue; const g = MUSCLE_GROUP(exMap[e.exercise]?.muscle); vol[g]++; }
+  const recentTrainingDates = new Set();
+  for (const e of log) {
+    if (e.date < since || e.effort === "Warm-up") continue;
+    const g = MUSCLE_GROUP(exMap[e.exercise]?.muscle); vol[g]++; recentTrainingDates.add(e.date);
+  }
   if (vol.push + vol.pull >= 8) {
-    if (vol.push >= vol.pull * 2) tips.push({ key: `bal-pp-${wk}`, icon: "⚖️", cat: "Balance", text: `Push ${vol.push} vs pull ${vol.pull} sets this month — add rows/pulldowns to protect your shoulders.` });
-    else if (vol.pull >= vol.push * 2) tips.push({ key: `bal-pp-${wk}`, icon: "⚖️", cat: "Balance", text: `Pull ${vol.pull} vs push ${vol.push} sets this month — add some pressing to even it out.` });
+    if (vol.push >= vol.pull * 1.75 && vol.push-vol.pull >= 6) tips.push({ key: `bal-pp-${wk}`, icon: "⚖️", cat: "Balance", text: `Your last four weeks contain ${vol.push} push-focused sets and ${vol.pull} pull-focused sets. If balanced upper-body development is your goal, give rows or pulldowns more room in the next block.`, basis:"Four-week primary-muscle comparison · warm-ups excluded" });
+    else if (vol.pull >= vol.push * 1.75 && vol.pull-vol.push >= 6) tips.push({ key: `bal-pp-${wk}`, icon: "⚖️", cat: "Balance", text: `Your last four weeks contain ${vol.pull} pull-focused sets and ${vol.push} push-focused sets. If balanced upper-body development is your goal, give pressing more room in the next block.`, basis:"Four-week primary-muscle comparison · warm-ups excluded" });
   }
   const tot = vol.push + vol.pull + vol.legs + vol.core + vol.other;
-  if (tot >= 10 && vol.legs <= tot * 0.15)
-    tips.push({ key: `bal-legs-${wk}`, icon: "🦵", cat: "Balance", text: `Only ${vol.legs} leg sets in 4 weeks (${Math.round(vol.legs / tot * 100)}% of your volume). Don't skip leg day 👀` });
+  const customPlansLegs = split !== "custom" || (data.profile?.customSplit || []).some(d=>d.muscles?.includes("Legs"));
+  if (customPlansLegs && recentTrainingDates.size >= 5 && tot >= 20 && vol.legs <= tot * 0.15)
+    tips.push({ key: `bal-legs-${wk}`, icon: "🦵", cat: "Balance", text: `Across ${recentTrainingDates.size} training days in the last four weeks, ${vol.legs} sets were leg-focused versus ${vol.push + vol.pull} upper-body sets. If balanced development is your goal, schedule the next leg session instead of trying to make it up all at once.`, basis:"Four-week primary-muscle comparison · neutral planning flag" });
 
-  // ---- CONSISTENCY + DELOAD TIMING: many hard weeks in a row → time to recover ----
+  // ---- RECOVERY: only flag a lower-fatigue week when schedule + effort support it ----
   const daysByWeek = {};
-  for (const d of new Set([...log.map(e => e.date), ...cardio.map(c => c.date)])) { const w = weekStart(d); (daysByWeek[w] ||= new Set()).add(d); }
+  for (const e of log) {
+    if (e.effort === "Warm-up") continue;
+    const w = weekStart(e.date); (daysByWeek[w] ||= new Set()).add(e.date);
+  }
   let streakWeeks = 0;
   for (let i = 0; i < 12; i++) { const w = dAdd(wk, -7 * i); const days = daysByWeek[w]; if (days && days.size >= 3) streakWeeks++; else break; }
-  if (streakWeeks >= 6)
+  const fatigueWindow = dAdd(today, -13);
+  const effortSets = log.filter(e=>e.date>=fatigueWindow && e.effort && e.effort!=="Warm-up" && !e.quick);
+  const failureRate = effortSets.length ? effortSets.filter(e=>e.effort==="To failure").length / effortSets.length : 0;
+  const hasPlateau = tips.some(t=>t.cat==="Plateau");
+  if (streakWeeks >= 5 && effortSets.length >= 6 && failureRate >= 0.35 && hasPlateau)
     tips.push({ key: `deload-${wk}`, icon: "🛌", cat: "Recovery",
-      text: `${streakWeeks} hard weeks straight — a deload week (lighter weights & fewer sets) now lets your body recover and come back stronger.` });
+      text: `${streakWeeks} consecutive 3+ day lifting weeks, a recent plateau, and ${Math.round(failureRate*100)}% of effort-rated sets taken to failure point to accumulated fatigue. Consider a lower-fatigue week: fewer sets, stop farther from failure, and keep technique sharp.`,
+      basis:"Schedule + logged effort + performance trend; only appears when all three agree" });
 
   return tips;
 }
@@ -5846,6 +5904,8 @@ function CoachCard({ data, exMap, user, setData }) {
   // editable weekly set targets per muscle; mirrors the Dashboard's selected goal type
   const goalMode = goalModeOf(data);
   const goalModeInfo = GOAL_MODES[goalMode];
+  const trainingLevel = data.profile?.trainingLevel || "beginner";
+  const setTrainingLevel = (level) => setData(d=>({...d, profile:{...(d.profile||{}), trainingLevel:level}}));
   const targets = setTargetsOf(data);
   const bumpTarget = (m, delta) => setData(d => { const cur = setTargetsOf(d); const key = targetOverrideKeyOf(d); return { ...d, profile: { ...(d.profile || {}), [key]: { ...(d.profile?.[key] || {}), [m]: Math.max(0, Math.min(40, (cur[m] || 0) + delta)) } } }; });
   const [showTargets, setShowTargets] = useState(false);
@@ -5863,17 +5923,26 @@ function CoachCard({ data, exMap, user, setData }) {
         const list = [...ids], states = {};
         await Promise.all(list.map(async id => { try { states[id] = await loadUserState(id); } catch { /* no data */ } }));
         const myLog = data.log || [];
+        const latestBw = (st) => {
+          const rows = [...(st?.bodyweight || [])].filter(x=>x.weight>0).sort((a,b)=>a.date.localeCompare(b.date));
+          return rows[rows.length-1]?.weight || null;
+        };
+        const myBw = latestBw(data); if (!myBw) return;
         let worst = null;
         for (const lift of BIG_LIFTS) {
           const mine = bestEst1RM(lift, myLog.filter(e => e.exercise === lift)); if (mine == null) continue;
-          let groupMax = 0;
+          const peers = [];
           for (const id of list) { const st = states[id]; if (!st?.log) continue;
-            const b = bestEst1RM(lift, st.log.filter(e => e.exercise === lift)); if (b != null && b > groupMax) groupMax = b; }
-          if (groupMax > 0) { const ratio = mine / groupMax; if (!worst || ratio < worst.ratio) worst = { lift, ratio, groupMax }; }
+            const bw = latestBw(st); if (!bw) continue;
+            const b = bestEst1RM(lift, st.log.filter(e => e.exercise === lift)); if (b != null) peers.push(b/bw); }
+          if (peers.length < 2) continue;
+          peers.sort((a,b)=>a-b); const mid=Math.floor(peers.length/2); const median=peers.length%2?peers[mid]:(peers[mid-1]+peers[mid])/2;
+          const ratio = (mine/myBw)/median; if (!worst || ratio < worst.ratio) worst = { lift, ratio, peers:peers.length };
         }
-        if (alive && worst && worst.ratio < 0.9)
+        if (alive && worst && worst.ratio < 0.85)
           setGroupTip({ key: `weak-${worst.lift}`, icon: "🎯", cat: "Weak point",
-            text: `Your ${LIFT_SHORT[worst.lift] || worst.lift} is ${Math.round((1 - worst.ratio) * 100)}% behind your group's best (${dispW(worst.groupMax, units)}${uLabel(units)}). Prime lift to attack.` });
+            text: `Relative to bodyweight, your ${LIFT_SHORT[worst.lift] || worst.lift} is ${Math.round((1 - worst.ratio) * 100)}% below your group's median. If that lift matters to you, give it first priority on its training day.`,
+            basis:`Compared with ${worst.peers} group members using estimated 1RM ÷ latest bodyweight` });
       } catch { /* offline / no groups */ }
     })();
     return () => { alive = false; };
@@ -5912,6 +5981,11 @@ function CoachCard({ data, exMap, user, setData }) {
           <button onClick={() => setHideToday(todayStr())} title="Hide the coach until tomorrow" style={{ background: "none", border: "none", color: T.sub, fontSize: 15, lineHeight: 1, padding: "4px 5px", cursor: "pointer" }}>➖</button>
         </div>
       </div>
+      <div style={{display:"flex", alignItems:"center", gap:6, flexWrap:"wrap", margin:"-5px 0 11px", fontSize:10.5, color:T.sub}}>
+        <span style={{padding:"3px 7px", borderRadius:99, background:T.input, border:`1px solid ${T.line}`, color:T.green, fontWeight:800}}>{goalModeInfo.label}</span>
+        <span style={{padding:"3px 7px", borderRadius:99, background:T.input, border:`1px solid ${T.line}`, textTransform:"capitalize", fontWeight:700}}>{trainingLevel}</span>
+        <span>Uses your split, recent sessions, effort, frequency, and fractional set credits.</span>
+      </div>
 
       {/* TODAY'S FOCUS — the headline: what to hit right now */}
       <div style={{ borderRadius: 15, padding: "14px 15px", marginBottom: 13,
@@ -5932,6 +6006,13 @@ function CoachCard({ data, exMap, user, setData }) {
       {/* SPLIT SETUP — collapsible; clickable options, no typing */}
       {editing && (
         <div style={{ marginBottom: 13 }}>
+          <div style={{background:T.input, border:`1px solid ${T.line}`, borderRadius:13, padding:"11px 12px", marginBottom:12}}>
+            <div className="eyebrow" style={{fontSize:9.5, color:T.sub, marginBottom:7}}>Coaching experience</div>
+            <div style={{display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:6}}>
+              {[['beginner','Beginner'],['intermediate','Intermediate'],['advanced','Advanced']].map(([value,label])=><button key={value} type="button" onClick={()=>setTrainingLevel(value)} aria-pressed={trainingLevel===value} style={{padding:"8px 5px", borderRadius:9, background:trainingLevel===value?T.mint:T.card, color:trainingLevel===value?T.green:T.sub, border:`1px solid ${trainingLevel===value?T.green:T.line}`, fontSize:10.5, fontWeight:800}}>{label}</button>)}
+            </div>
+            <div style={{fontSize:10.5, color:T.sub, lineHeight:1.4, marginTop:7}}>{trainingLevel==="beginner"?"More conservative load jumps and simpler next actions.":trainingLevel==="intermediate"?"Balances progression speed with repeatable performance.":"Requires stronger confirmation before recommending advanced progression changes."}</div>
+          </div>
           <div className="eyebrow" style={{ fontSize: 9.5, color: T.sub, marginBottom: 9 }}>Choose your split</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(102px, 1fr))", gap: 7, marginBottom: split === "custom" ? 12 : (split ? 12 : 0) }}>
             {Object.entries(SPLITS).map(([k, v]) => {
@@ -6049,12 +6130,22 @@ function CoachCard({ data, exMap, user, setData }) {
               <div style={{ minWidth: 0, flex: 1 }}>
                 <span style={{ fontSize: 9.5, fontWeight: 800, color: CAT_COLOR[t.cat] || T.sub, textTransform: "uppercase", letterSpacing: .5 }}>{t.cat}</span>
                 <div style={{ fontSize: 13.5, color: T.ink, lineHeight: 1.5 }}>{t.text}</div>
+                {t.basis && <div style={{fontSize:10.5, color:T.sub, lineHeight:1.4, marginTop:3}}>🧠 {t.basis}</div>}
               </div>
               <button onClick={() => dismiss(t.key)} title="Don't show this again" style={{ flexShrink: 0, background: "none", border: "none", color: T.sub, fontSize: 15, lineHeight: 1, padding: "2px 4px", cursor: "pointer" }}>✕</button>
             </div>
           ))}
         </div>
       )}
+      <details style={{marginTop:10, borderTop:`1px solid ${T.line}`, paddingTop:9}}>
+        <summary style={{cursor:"pointer", color:T.sub, fontSize:10.5, fontWeight:800, listStyle:"none"}}>🧪 Research & signals used <span style={{fontSize:8}}>▾</span></summary>
+        <div style={{marginTop:8, padding:"10px 11px", background:T.input, border:`1px solid ${T.line}`, borderRadius:11, fontSize:10.5, color:T.sub, lineHeight:1.55}}>
+          <div style={{color:T.ink, fontWeight:750, marginBottom:4}}>Your coach analyzes logs locally using:</div>
+          <div>Goal mode · experience · split/rotation · recent loads and reps · effort · exercise-specific strength trends · training frequency · machine gym · full and half-set muscle credits.</div>
+          <div style={{marginTop:6}}>Evidence base: Pelland et al. 2026 (volume, frequency, fractional sets); Currier et al. 2023 (load, sets, frequency); Hickmott et al. 2022 (autoregulation); Grgic et al. 2022 (failure vs non-failure); Refalo et al. 2021 (load and specificity); Schoenfeld et al. 2019 (frequency); Ramos-Campo et al. 2024 (split vs full-body).</div>
+          <div style={{marginTop:6, fontStyle:"italic"}}>Recommendations are planning guidance, not medical advice. Missing effort data produces conditional advice instead of pretending the coach knows how hard a set felt.</div>
+        </div>
+      </details>
     </div>
   );
 }
