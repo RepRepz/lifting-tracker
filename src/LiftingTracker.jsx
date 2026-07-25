@@ -81,6 +81,30 @@ const BARBELL_SEED = new Set([
   "Romanian Deadlift","Hip Thrust","Barbell Shrug","Upright Row","Good Morning",
   "Smith Machine Bench Press","Smith Machine Incline Bench Press","Smith Machine Shoulder Press","Smith Machine Squat",
 ]);
+/* Pin-loaded machines and cable stacks: unlike a barbell (fixed 45lb + known plates) or a
+   dumbbell (a standard 5lb-increment number is the same everywhere), the REAL resistance
+   behind a machine's printed number varies gym to gym — different pulley ratios, cam
+   profiles, friction, stack calibration. A "20kg" cable row at one gym can be noticeably
+   harder or easier than another gym's. Exercises here are eligible for gym-tagging (see
+   `machineOf`/multi-gym below); custom exercises can also opt in via the Library's
+   "machine/cable" checkbox. */
+const MACHINE_SEED = new Set([
+  "Machine Chest Press", "Chest Fly", "Cable Crossover",
+  "High To Low Cable Chest Fly", "Low To High Cable Chest Fly", "Middle Cable Chest Fly",
+  "Triceps Pushdown", "Overhead Triceps Extension",
+  "Single-Arm Cable Side Raise", "Rear Delt Fly", "Face Pull",
+  "Lat Pulldown", "Seated Cable Row", "Seated Single-Arm Cross-Body Cable Row", "Cable Curl",
+  "Machine Squat", "Hack Squat", "Leg Press", "Leg Extension", "Lying Leg Curl", "Seated Leg Curl",
+  "Hip Abduction Machine", "Cable Crunch",
+]);
+/* Whether an exercise's load is gym-dependent — the seed flag, or a manual override
+   (`ex.machine === true/false`) set in the Library for that specific exercise. */
+const machineOf = (ex) => !ex ? false : ex.machine != null ? ex.machine : MACHINE_SEED.has(ex.name);
+/* A tiny fixed palette so a gym's color stays the same everywhere it's referenced. */
+const GYM_COLORS = ["#009E04", "#3D7FD9", "#C08A1E", "#9C4DE0", "#D94F00", "#17ABA0", "#A83277", "#5B7CFA"];
+const gymColor = (gyms, id) => { const i = (gyms || []).findIndex(g => g.id === id); return i < 0 ? T.sub : GYM_COLORS[i % GYM_COLORS.length]; };
+const gymName = (gyms, id) => (gyms || []).find(g => g.id === id)?.name || "";
+
 /* Primary muscle groups an exercise hits (old saved data may only have a single `muscle`). */
 const musclesOf = (ex) => !ex ? []
   : Array.isArray(ex.muscles) && ex.muscles.length ? ex.muscles
@@ -188,7 +212,8 @@ const stepsMiles = (steps) => steps ? +(steps * 0.75 / 1609.34).toFixed(2) : nul
 
 const defaultData = {
   // `muscle` (primary) is kept alongside `muscles`/`muscles2` so older cached app versions still work
-  exercises: SEED_EXERCISES.map(([name, muscles, muscles2 = []]) => ({ name, muscle: muscles[0], muscles, muscles2, type: BW_SET.has(name) ? "Bodyweight" : "Weighted", barbell: BARBELL_SEED.has(name) })),
+  exercises: SEED_EXERCISES.map(([name, muscles, muscles2 = []]) => ({ name, muscle: muscles[0], muscles, muscles2, type: BW_SET.has(name) ? "Bodyweight" : "Weighted", barbell: BARBELL_SEED.has(name), machine: MACHINE_SEED.has(name) })),
+  gyms: [], // [{ id, name }] — only used once multi-gym tracking is turned on in Settings
   log: [], bodyweight: [], cardio: [], cardioActivities: SEED_CARDIO,
   routines: [], // optional workout templates (feature toggled in Settings)
   foods: [], nutritionGoals: {}, // optional macro tracking (feature toggled in Settings)
@@ -196,7 +221,7 @@ const defaultData = {
   journal: {}, // { "YYYY-MM-DD": { mood, sleep, text } } — daily notes
   profile: {}, // heightIn (inches) lives here once set
   pins: [],    // pinned dashboard charts (exercise names)
-  libraryV: 10, // bumped when the seed library changes, so existing users get the update once
+  libraryV: 11, // bumped when the seed library changes, so existing users get the update once
 };
 
 /* One-time upgrade of previously saved data: pull in newly added seed exercises and
@@ -213,8 +238,10 @@ function migrateData(d, uname) {
   const seedMap = Object.fromEntries(defaultData.exercises.map(s => [s.name, s]));
   const have = new Set((d.exercises || []).map(x => x.name));
   const exercises = [
-    // known seeds get the refreshed muscle lists (type/equipment edits are kept)
-    ...(d.exercises || []).map(x => seedMap[x.name] ? { ...x, muscle: seedMap[x.name].muscle, muscles: seedMap[x.name].muscles, muscles2: seedMap[x.name].muscles2 } : x),
+    // known seeds get the refreshed muscle lists (type/equipment edits are kept); `machine`
+    // only fills in the seed default the FIRST time (x.machine is undefined pre-migration) —
+    // once set, a manual Library override always wins on later libraryV bumps.
+    ...(d.exercises || []).map(x => seedMap[x.name] ? { ...x, muscle: seedMap[x.name].muscle, muscles: seedMap[x.name].muscles, muscles2: seedMap[x.name].muscles2, machine: x.machine != null ? x.machine : seedMap[x.name].machine } : x),
     ...defaultData.exercises.filter(s => !have.has(s.name)),
   ];
   const haveAct = new Set((d.cardioActivities || []).map(a => a.name));
@@ -333,8 +360,13 @@ export default function LiftingTracker({ user }) {
   const nutritionOn = MACRO_ACCOUNTS.includes((user.user_metadata?.username || "").toLowerCase());
   const [streaksOn, setStreaksOn] = useState(() => localStorage.getItem("lt-streaks-on") !== "0"); // default on
   const [waterOn, setWaterOn] = useState(() => localStorage.getItem("lt-water-on") !== "0"); // default on
+  // "I train at more than one gym" — off by default. Only matters for exercises flagged
+  // `machine` (see machineOf): lets you tag which gym a set was at, since a machine's real
+  // resistance isn't standardized like a barbell's. Everyone else never sees any of it.
+  const [multiGymOn, setMultiGymOn] = useState(() => localStorage.getItem("lt-multigym-on") === "1"); // default OFF
   useEffect(() => { localStorage.setItem("lt-streaks-on", streaksOn ? "1" : "0"); }, [streaksOn]);
   useEffect(() => { localStorage.setItem("lt-water-on", waterOn ? "1" : "0"); }, [waterOn]);
+  useEffect(() => { localStorage.setItem("lt-multigym-on", multiGymOn ? "1" : "0"); }, [multiGymOn]);
   useEffect(() => { localStorage.setItem("lt-start-tab", startTab); }, [startTab]);
   useEffect(() => { localStorage.setItem("lt-units", units); }, [units]);
   useEffect(() => { localStorage.setItem("lt-hunit", hunit); }, [hunit]);
@@ -355,6 +387,7 @@ export default function LiftingTracker({ user }) {
   const setStepsOnSynced = (v) => setProfileFlag("stepsOn", setStepsOn)(v, stepsOn);
   const setCoachOnSynced = (v) => setProfileFlag("coachOn", setCoachOn)(v, coachOn);
   const setMacrosOnSynced = (v) => setProfileFlag("macrosOn", setMacrosOn)(v, macrosOn);
+  const setMultiGymOnSynced = (v) => setProfileFlag("multiGymOn", setMultiGymOn)(v, multiGymOn);
   useEffect(() => {
     const v = data?.profile?.stepsOn;
     if (typeof v === "boolean" && v !== stepsOn) setStepsOn(v);
@@ -367,6 +400,10 @@ export default function LiftingTracker({ user }) {
     const v = data?.profile?.macrosOn;
     if (typeof v === "boolean" && v !== macrosOn) setMacrosOn(v);
   }, [data?.profile?.macrosOn]);
+  useEffect(() => {
+    const v = data?.profile?.multiGymOn;
+    if (typeof v === "boolean" && v !== multiGymOn) setMultiGymOn(v);
+  }, [data?.profile?.multiGymOn]);
   // ---- theme (accent color + dark palette), synced across devices ----
   const [theme, setThemeState] = useState(() => {
     try { return JSON.parse(localStorage.getItem("lt-theme")) || DEFAULT_THEME; } catch { return DEFAULT_THEME; }
@@ -755,6 +792,7 @@ export default function LiftingTracker({ user }) {
           stepsOn={stepsOn} setStepsOn={setStepsOnSynced} isPro={isPro}
           coachOn={coachOn} setCoachOn={setCoachOnSynced}
           macrosOn={macrosOn} setMacrosOn={setMacrosOnSynced}
+          multiGymOn={multiGymOn} setMultiGymOn={setMultiGymOnSynced}
           theme={theme} setTheme={setTheme}
           streaksOn={streaksOn} setStreaksOn={setStreaksOn}
           waterOn={waterOn} setWaterOn={setWaterOn}
@@ -787,8 +825,8 @@ export default function LiftingTracker({ user }) {
 
       <main className={"app-main" + (tab==="macros" ? " app-main-wide" : "")}>
         <div className="tabview" key={tab}>
-          {tab==="dash" && liftingOn && <Dashboard data={data} exMap={exMap} setData={setData} user={user} isPro={isPro} coachEnabled={coachEnabled} stepsEnabled={stepsEnabled} nutritionOn={nutritionOn} openSettings={()=>setShowSettings(true)} setTab={setTab} />}
-          {tab==="log" && liftingOn && <LogTab data={data} exMap={exMap} setData={setData} routinesOn={routinesOn} />}
+          {tab==="dash" && liftingOn && <Dashboard data={data} exMap={exMap} setData={setData} user={user} isPro={isPro} coachEnabled={coachEnabled} stepsEnabled={stepsEnabled} nutritionOn={nutritionOn} multiGymOn={multiGymOn} openSettings={()=>setShowSettings(true)} setTab={setTab} />}
+          {tab==="log" && liftingOn && <LogTab data={data} exMap={exMap} setData={setData} routinesOn={routinesOn} multiGymOn={multiGymOn} />}
           {tab==="records" && liftingOn && <RecordsTab data={data} exMap={exMap} setData={setData} />}
           {tab==="journal" && <JournalTab data={data} setData={setData} />}
           {tab==="friends" && <FriendsTab user={user} exMap={exMap} nutritionOn={nutritionOn} streaksOn={streaksOn} isPro={isPro} openPro={()=>setShowSettings(true)} />}
@@ -980,7 +1018,31 @@ function RoutinesPanel({ data, setData, onPick }) {
 }
 
 /* ================= LOG ================= */
-function LogTab({ data, exMap, setData, routinesOn }) {
+/* Tiny gym select with an inline "add a new gym" affordance — no separate settings
+   page needed. Used wherever a machine/cable exercise needs a gym tag. */
+function GymPicker({ gyms, value, onChange, onCreate }) {
+  const [adding, setAdding] = useState(false);
+  const [name, setName] = useState("");
+  const commit = () => { const n = name.trim(); if (n) onCreate(n); setAdding(false); setName(""); };
+  if (adding) return (
+    <div style={{ display:"flex", gap:6 }}>
+      <input autoFocus value={name} onChange={e=>setName(e.target.value)} placeholder="Gym name (e.g. Gym B)"
+        onKeyDown={e=>{ if (e.key==="Enter") commit(); else if (e.key==="Escape") { setAdding(false); setName(""); } }}
+        style={{ flex:1 }} />
+      <button type="button" onClick={commit} style={{ background:T.green, color:"#000", fontWeight:700, padding:"0 16px", flexShrink:0 }}>Add</button>
+      <button type="button" onClick={()=>{ setAdding(false); setName(""); }} style={{ background:T.input, color:T.sub, padding:"0 12px", flexShrink:0 }}>✕</button>
+    </div>
+  );
+  return (
+    <select value={value || ""} onChange={e => e.target.value === "__add__" ? setAdding(true) : onChange(e.target.value)}>
+      <option value="">— pick a gym —</option>
+      {gyms.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+      <option value="__add__">+ Add a gym…</option>
+    </select>
+  );
+}
+
+function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
   const sorted = useMemo(()=>[...data.log].sort((a,b)=>a.date.localeCompare(b.date)||a.id-b.id),[data.log]);
   const last = sorted[sorted.length-1];
   // date defaults to the "gym day" (before your Settings day-start hour = still yesterday);
@@ -1050,17 +1112,29 @@ function LogTab({ data, exMap, setData, routinesOn }) {
   }, [restDone]);
 
   const isBW = exMap[exName]?.type === "Bodyweight";
+  // Machine/cable exercises only, and only once multi-gym tracking is on — the load a
+  // pin-loaded machine gives at "20kg" isn't standardized like a barbell's, so once tagged,
+  // "last time"/PRs/the sparkline all compare within the SAME gym instead of across gyms.
+  const gyms = data.gyms || [];
+  const isMachine = multiGymOn && machineOf(exMap[exName]);
+  const [gymId, setGymId] = useState("");
+  const addGym = (name) => {
+    const g = { id: Math.random().toString(36).slice(2), name };
+    setData(d => ({ ...d, gyms: [...(d.gyms || []), g] }));
+    setGymId(g.id);
+  };
+  const sameGym = (e) => !isMachine || !gymId || e.gym === gymId;
 
   const lastTime = useMemo(() => {
     if (!exName) return null;
-    const prior = sorted.filter(e => e.exercise===exName && e.date < date);
+    const prior = sorted.filter(e => e.exercise===exName && e.date < date && sameGym(e));
     if (!prior.length) return { first:true };
     const lastDate = prior[prior.length-1].date;
     const sess = prior.filter(e => e.date===lastDate);
     if (isBW) { const best = Math.max(...sess.map(s=>s.reps)); return { text:`${best} reps`, date:lastDate, bestVal:best }; }
     const best = sess.reduce((a,b)=> e1rm(b.weight||0,b.reps) > e1rm(a.weight||0,a.reps) ? b : a);
     return { text:`${dispW(best.weight,units)} × ${best.reps}`, date:lastDate, bestVal:e1rm(best.weight||0,best.reps) };
-  }, [exName, date, sorted, isBW, units]);
+  }, [exName, date, sorted, isBW, units, isMachine, gymId]);
 
   // live "are you beating last time?" from the current inputs
   const beaten = useMemo(() => {
@@ -1075,15 +1149,15 @@ function LogTab({ data, exMap, setData, routinesOn }) {
     if (!exName) return null;
     const byDate = {};
     for (const e of sorted) {
-      if (e.exercise !== exName || e.date >= date || e.effort === "Warm-up") continue;
+      if (e.exercise !== exName || e.date >= date || e.effort === "Warm-up" || !sameGym(e)) continue;
       const v = isBW ? e.reps : e1rm(e.weight || 0, e.reps);
       byDate[e.date] = Math.max(byDate[e.date] || 0, v);
     }
     return Object.keys(byDate).sort().map(k => Math.round(byDate[k])).slice(-10);
-  }, [exName, date, sorted, isBW]);
+  }, [exName, date, sorted, isBW, isMachine, gymId]);
 
   const checkPR = (entry) => {
-    const prior = data.log.filter(e => e.exercise===entry.exercise && e.date < entry.date);
+    const prior = data.log.filter(e => e.exercise===entry.exercise && e.date < entry.date && sameGym(e));
     if (!prior.length) return false;
     if (isBW) return entry.reps > Math.max(...prior.map(p=>p.reps));
     return e1rm(entry.weight, entry.reps) > Math.max(...prior.map(p=>e1rm(p.weight||0,p.reps)));
@@ -1102,7 +1176,7 @@ function LogTab({ data, exMap, setData, routinesOn }) {
     // counts by reps everywhere (leaderboards, graphs, PRs), since those all key off type.
     const entry = { id: Date.now(), date, exercise: exName, set: setNum,
       weight: isBW ? (weight ? toLb(parseFloat(weight), units) : null) : toLb(parseFloat(weight), units), reps: parseInt(reps), effort, notes,
-      ...(cleanDrops.length ? { drops: cleanDrops } : {}) };
+      ...(cleanDrops.length ? { drops: cleanDrops } : {}), ...(isMachine && gymId ? { gym: gymId } : {}) };
     const pr = checkPR(entry);
     setData(d => ({ ...d, log: [...d.log, entry] }));
     setJustSaved({ ...entry, pr });
@@ -1127,10 +1201,20 @@ function LogTab({ data, exMap, setData, routinesOn }) {
     }
     return best ? best.weight : null;
   };
+  // most recent gym you logged this exercise at — so you're not re-picking it every set
+  const lastGymFor = (name) => {
+    let best = null;
+    for (const e of data.log) {
+      if (e.exercise === name && e.gym &&
+          (!best || e.date > best.date || (e.date === best.date && (e.id||0) > (best.id||0)))) best = e;
+    }
+    return best ? best.gym : "";
+  };
   const startNewExercise = (name) => {
     const w = lastWeightFor(name);
     setExName(name); setSetNum(1);
     setWeight(w != null ? String(dispW(w, units)) : ""); // pre-fill the last weight used for this exercise
+    setGymId(lastGymFor(name));
     setReps(""); setJustSaved(null); setDrops([]);
   };
   // on reopen: if an exercise carried over from the current gym-day, pre-fill its last weight too
@@ -1175,6 +1259,7 @@ function LogTab({ data, exMap, setData, routinesOn }) {
   const [noteOpen, setNoteOpen] = useState(null); // set id whose 📝 note is expanded
   const [edit, setEdit] = useState(null); // copy of the set being edited
   const editIsBW = edit ? exMap[edit.exercise]?.type === "Bodyweight" : false;
+  const editIsMachine = edit ? (multiGymOn && machineOf(exMap[edit.exercise])) : false;
   const editValid = edit && edit.reps !== "" && edit.exercise && (editIsBW || edit.weight !== "");
   const saveEdit = () => {
     if (!editValid) return;
@@ -1182,6 +1267,7 @@ function LogTab({ data, exMap, setData, routinesOn }) {
       ...x, date: edit.date > todayStr() ? todayStr() : edit.date, exercise: edit.exercise, set: parseInt(edit.set) || 1,
       weight: editIsBW ? (edit.weight !== "" ? toLb(parseFloat(edit.weight), units) : null) : toLb(parseFloat(edit.weight), units), reps: parseInt(edit.reps),
       effort: edit.effort, notes: edit.notes,
+      ...(editIsMachine ? { gym: edit.gym || null } : {}),
     } : x) }));
     setEdit(null);
   };
@@ -1263,6 +1349,14 @@ function LogTab({ data, exMap, setData, routinesOn }) {
         </div>
       )}
 
+      {isMachine && (
+        <div style={{ marginBottom:10 }}>
+          <label style={lbl}>🏢 Gym <span style={{fontWeight:400, color:T.sub}}>(this move's resistance varies by gym)</span>
+            <GymPicker gyms={gyms} value={gymId} onChange={setGymId} onCreate={addGym} />
+          </label>
+          {!gymId && <div style={{fontSize:11.5, color:AMBER, marginTop:3}}>Pick (or add) a gym so this set compares fairly against others at the same place.</div>}
+        </div>
+      )}
       <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:10}}>
         <label style={lbl}>{isBW ? `+ Added weight (optional, ${uLabel(units)})` : `Weight (${uLabel(units)})`}
           <input type="number" inputMode="decimal" value={weight} onChange={e=>setWeight(e.target.value)} placeholder={isBW ? "e.g. belt/vest" : ""} /></label>
@@ -1400,7 +1494,7 @@ function LogTab({ data, exMap, setData, routinesOn }) {
                     <span className="note-caret" style={{display:"inline-block", transform: noteOpen===e.id?"rotate(90deg)":"none"}}>▸</span> Note
                   </button>
                 )}
-                <PencilBtn onClick={()=>setEdit({ id:e.id, date:e.date, exercise:e.exercise, set:e.set, weight:e.weight==null ? "" : dispW(e.weight, units), reps:e.reps, effort:e.effort||"", notes:e.notes||"" })} />
+                <PencilBtn onClick={()=>setEdit({ id:e.id, date:e.date, exercise:e.exercise, set:e.set, weight:e.weight==null ? "" : dispW(e.weight, units), reps:e.reps, effort:e.effort||"", notes:e.notes||"", gym:e.gym||"" })} />
                 <ConfirmX onConfirm={()=>setData(d=>({...d, log:d.log.filter(x=>x.id!==e.id)}))} />
               </td>
             </tr>
@@ -1425,6 +1519,15 @@ function LogTab({ data, exMap, setData, routinesOn }) {
                       ))}
                     </select>
                   </label>
+                  {editIsMachine && (
+                    <label style={{...lbl, marginBottom:8, display:"block"}}>🏢 Gym
+                      <GymPicker gyms={gyms} value={edit.gym} onChange={v=>setEdit(s=>({...s, gym:v}))} onCreate={(name)=>{
+                        const g = { id: Math.random().toString(36).slice(2), name };
+                        setData(d => ({ ...d, gyms: [...(d.gyms || []), g] }));
+                        setEdit(s => ({ ...s, gym: g.id }));
+                      }} />
+                    </label>
+                  )}
                   <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:8}}>
                     <label style={lbl}>{editIsBW ? "+ Added weight (optional)" : `Weight (${uLabel(units)})`}<input type="number" inputMode="decimal" value={edit.weight} onChange={ev=>setEdit(s=>({...s, weight:ev.target.value}))} /></label>
                     <label style={lbl}>Reps<input type="number" inputMode="numeric" value={edit.reps} onChange={ev=>setEdit(s=>({...s, reps:ev.target.value}))} /></label>
@@ -2099,7 +2202,7 @@ function StatTile({ icon, value, label, hero }) {
   );
 }
 
-function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled, stepsEnabled, nutritionOn, openSettings, setTab }) {
+function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled, stepsEnabled, nutritionOn, multiGymOn, openSettings, setTab }) {
   const units = useUnit();
   // range sticks forever (remembered on this device)
   const [range, setRange] = useState(() => {
@@ -2162,13 +2265,34 @@ function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled
 
   const chartOpts = useMemo(() => [...logged].sort((a, b) => a.localeCompare(b)), [logged]);
 
+  // ---- gym tagging (machine/cable exercises only, once multi-gym is on in Settings) ----
+  const gyms = data.gyms || [];
+  const [gymFilter, setGymFilter] = useState({}); // exName -> "ALL" | gymId; unset = default (most-used gym)
+  // which gym you've logged this exercise at most — the sane default view per chart, so
+  // day-to-day it reads clean; "All gyms" is one tap away to see the full picture.
+  const mostUsedGym = (exName) => {
+    const counts = {};
+    for (const e of data.log) if (e.exercise === exName && e.gym) counts[e.gym] = (counts[e.gym] || 0) + 1;
+    const ids = Object.keys(counts);
+    return ids.length ? ids.sort((a, b) => counts[b] - counts[a])[0] : "";
+  };
+  const gymsUsedFor = (exName) => {
+    const ids = new Set(data.log.filter(e => e.exercise === exName && e.gym).map(e => e.gym));
+    return gyms.filter(g => ids.has(g.id));
+  };
+
   const seriesFor = (exName) => {
     const ex = exMap[exName]; if (!ex) return [];
-    const entries = data.log.filter(e => e.exercise===exName && !(e.effort==="Warm-up"));
+    const isMachineEx = multiGymOn && machineOf(ex);
+    const effGym = isMachineEx ? (gymFilter[exName] ?? mostUsedGym(exName)) : "";
+    const showingAll = isMachineEx && effGym === "ALL";
+    let entries = data.log.filter(e => e.exercise===exName && !(e.effort==="Warm-up"));
+    if (isMachineEx && effGym && !showingAll) entries = entries.filter(e => e.gym === effGym);
     if (!entries.length) return [];
     const isBWex = ex.type==="Bodyweight";
     /* bodyweight lifts: "total" reps per day (volume) or "best" single set (strength/progress) */
     const best = isBWex && bwMode[exName]==="best";
+    const dotColorFor = (gymId) => showingAll ? gymColor(gyms, gymId) : null;
 
     /* 1D: the latest session set-by-set — one dot per set */
     if (range === "1D") {
@@ -2176,32 +2300,33 @@ function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled
       const day = entries.filter(e=>e.date===lastDate).sort((a,b)=>(a.id||0)-(b.id||0));
       if (isBWex && best) {
         let top = 0;
-        return day.map((e,i) => (top = Math.max(top, e.reps), { date:lastDate, label:`Set ${e.set ?? i+1}`, value:e.reps, sub:`${e.reps} reps${e.reps>=top?" · best so far":""}` }));
+        return day.map((e,i) => (top = Math.max(top, e.reps), { date:lastDate, label:`Set ${e.set ?? i+1}`, value:e.reps, sub:`${e.reps} reps${e.reps>=top?" · best so far":""}`, dotColor:dotColorFor(e.gym) }));
       }
       if (isBWex) {
         let run = 0;
-        return day.map((e,i) => (run += e.reps, { date:lastDate, label:`Set ${e.set ?? i+1}`, value:run, sub:`+${e.reps} reps (total ${run})` }));
+        return day.map((e,i) => (run += e.reps, { date:lastDate, label:`Set ${e.set ?? i+1}`, value:run, sub:`+${e.reps} reps (total ${run})`, dotColor:dotColorFor(e.gym) }));
       }
-      return day.map((e,i) => ({ date:lastDate, label:`Set ${e.set ?? i+1}`, value:dispW(e1rm(e.weight||0, e.reps), units), sub:`${dispW(e.weight,units)} ${uLabel(units)} × ${e.reps}` }));
+      return day.map((e,i) => ({ date:lastDate, label:`Set ${e.set ?? i+1}`, value:dispW(e1rm(e.weight||0, e.reps), units), sub:`${dispW(e.weight,units)} ${uLabel(units)} × ${e.reps}${showingAll && e.gym ? ` · ${gymName(gyms, e.gym)}` : ""}`, dotColor:dotColorFor(e.gym) }));
     }
 
     /* longer ranges: one point per day */
     const byDate = {};
     for (const e of entries) {
-      const b = byDate[e.date] || (byDate[e.date] = { reps:0, sets:0, bestSet:0, best1rm:0 });
-      b.sets++; b.reps += e.reps; b.bestSet = Math.max(b.bestSet, e.reps);
+      const b = byDate[e.date] || (byDate[e.date] = { reps:0, sets:0, bestSet:0, best1rm:0, gym:e.gym });
+      b.sets++; b.reps += e.reps; b.bestSet = Math.max(b.bestSet, e.reps); b.gym = e.gym || b.gym; // last entry's gym for the day
       if (!isBWex) b.best1rm = Math.max(b.best1rm, dispW(e1rm(e.weight||0, e.reps), units));
     }
     let pts = Object.entries(byDate).sort((a,b)=>a[0].localeCompare(b[0]))
       .map(([d,b])=>{
         const setTxt = `${b.sets} set${b.sets>1?"s":""}`;
+        const gymTag = showingAll && b.gym ? ` · ${gymName(gyms, b.gym)}` : "";
         if (isBWex && best) return { date:d, label:fmtDate(d),
-          value: b.bestSet, sub: `${setTxt} · ${b.reps} total reps` };
+          value: b.bestSet, sub: `${setTxt} · ${b.reps} total reps${gymTag}`, dotColor:dotColorFor(b.gym) };
         if (isBWex) return { date:d, label:fmtDate(d),
-          value: b.reps, sub: `${setTxt} · best set ${b.bestSet} reps` };
+          value: b.reps, sub: `${setTxt} · best set ${b.bestSet} reps${gymTag}`, dotColor:dotColorFor(b.gym) };
         return { date:d, label:fmtDate(d),
           value: Math.round(b.best1rm*10)/10,
-          sub: `${b.reps} total reps · ${setTxt}` };
+          sub: `${b.reps} total reps · ${setTxt}${gymTag}`, dotColor:dotColorFor(b.gym) };
       });
     const days = RANGE_DAYS[range];
     if (days!==Infinity && pts.length) {
@@ -2277,6 +2402,9 @@ function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled
       const dayReps = daySets.reduce((s,e)=>s+e.reps, 0);
       const isBW = exMap[p]?.type==="Bodyweight";
       const bestMode = isBW && bwMode[p]==="best";
+      const isMachineEx = multiGymOn && machineOf(exMap[p]);
+      const exGyms = isMachineEx ? gymsUsedFor(p) : [];
+      const effGym = isMachineEx ? (gymFilter[p] ?? mostUsedGym(p)) : "";
       return (
       <div className="card" key={p}>
         <div style={{display:"flex", gap:8, alignItems:"center", marginBottom: isBW?8:6}}>
@@ -2292,6 +2420,28 @@ function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled
           </button>
           )}
         </div>
+        {exGyms.length > 0 && (
+          <div style={{display:"flex", gap:6, flexWrap:"wrap", marginBottom:8}}>
+            {exGyms.map(g => {
+              const on = effGym === g.id;
+              return (
+                <button key={g.id} onClick={()=>setGymFilter(f=>({...f, [p]:g.id}))} style={{
+                  display:"inline-flex", alignItems:"center", gap:5, padding:"4px 10px", borderRadius:99,
+                  fontSize:11.5, fontWeight:700, background: on ? "rgba(var(--accent-rgb),.14)" : T.input,
+                  border:`1px solid ${on ? "var(--accent)" : T.line}`, color: on ? T.ink : T.sub,
+                }}>
+                  <span style={{width:7, height:7, borderRadius:99, background:gymColor(gyms, g.id), display:"inline-block"}} />
+                  {g.name}
+                </button>
+              );
+            })}
+            <button onClick={()=>setGymFilter(f=>({...f, [p]:"ALL"}))} style={{
+              padding:"4px 10px", borderRadius:99, fontSize:11.5, fontWeight:700,
+              background: effGym==="ALL" ? "rgba(var(--accent-rgb),.14)" : T.input,
+              border:`1px solid ${effGym==="ALL" ? "var(--accent)" : T.line}`, color: effGym==="ALL" ? T.ink : T.sub,
+            }}>All gyms</button>
+          </div>
+        )}
         {/* Total/Best on its own row so it never squeezes the exercise name */}
         {isBW && (
           <div className="seg" style={{display:"inline-flex", marginBottom:8}}
@@ -3743,6 +3893,7 @@ const properCase = (s) => s.trim().replace(/\s+/g, " ").split(" ")
 function ExercisesTab({ data, setData }) {
   const [name, setName] = useState(""); const [muscles, setMuscles] = useState([]);
   const [muscles2, setMuscles2] = useState([]); const [equip, setEquip] = useState("Barbell (plates)");
+  const [machine, setMachine] = useState(false);
   const [addMsg, setAddMsg] = useState(null); // "already in your library" notice
   const [libQ, setLibQ] = useState(""); const [libM, setLibM] = useState("All");
   const shownEx = useMemo(() => {
@@ -3752,7 +3903,7 @@ function ExercisesTab({ data, setData }) {
       (libM === "All" || musclesOf(x).includes(libM) || secondariesOf(x).includes(libM)));
   }, [data.exercises, libQ, libM]);
 
-  const [edit, setEdit] = useState(null); // { orig, name, muscles, muscles2, equip }
+  const [edit, setEdit] = useState(null); // { orig, name, muscles, muscles2, equip, machine }
   const [mergeTo, setMergeTo] = useState(""); // fold this exercise into another one
   const editValid = edit && edit.name.trim() && edit.muscles.length > 0 &&
     !data.exercises.some(x => x.name.toLowerCase() === edit.name.trim().toLowerCase() && x.name !== edit.orig);
@@ -3760,7 +3911,7 @@ function ExercisesTab({ data, setData }) {
     if (!editValid) return;
     const nn = properCase(edit.name);
     setData(d=>({ ...d,
-      exercises: d.exercises.map(x => x.name===edit.orig ? { name:nn, muscle:edit.muscles[0], muscles:edit.muscles, muscles2:edit.muscles2, ...fromEquip(edit.equip) } : x),
+      exercises: d.exercises.map(x => x.name===edit.orig ? { name:nn, muscle:edit.muscles[0], muscles:edit.muscles, muscles2:edit.muscles2, machine: edit.equip==="Bodyweight" ? false : edit.machine, ...fromEquip(edit.equip) } : x),
       log: nn !== edit.orig ? d.log.map(e => e.exercise===edit.orig ? { ...e, exercise:nn } : e) : d.log,
       routines: nn !== edit.orig ? (d.routines||[]).map(r => ({ ...r, items:(r.items||[]).map(it => it.exercise===edit.orig ? { ...it, exercise:nn } : it) })) : d.routines,
     }));
@@ -3805,6 +3956,12 @@ function ExercisesTab({ data, setData }) {
         <input value={name} onChange={e=>{setName(e.target.value); setAddMsg(null);}} placeholder="Exercise name" style={{flex:2, minWidth:150}} />
         <select value={equip} onChange={e=>setEquip(e.target.value)} style={{flex:1, minWidth:150}}>{EQUIP_OPTS.map(o=><option key={o}>{o}</option>)}</select>
       </div>
+      {equip !== "Bodyweight" && (
+        <label style={{display:"flex", alignItems:"center", gap:8, fontSize:13, color:T.ink, marginBottom:10, cursor:"pointer"}}>
+          <input type="checkbox" checked={machine} onChange={e=>setMachine(e.target.checked)} style={{width:17, height:17, minHeight:0}} />
+          🏢 Machine / cable — resistance varies gym to gym (lets you tag which gym a set was at)
+        </label>
+      )}
       <div style={{fontSize:12, color:T.sub, marginBottom:6}}>Muscle groups: tap once = <b style={{color:T.green}}>✓ main</b> (full set credit) · tap again = <b style={{color:AMBER}}>½ secondary</b> (half credit) · third tap clears. First main pick decides where it sorts.</div>
       <MuscleChips prim={muscles} sec={muscles2} onChange={(p,s)=>{setMuscles(p);setMuscles2(s);}} />
       {name.trim() && !muscles.length && <div style={{fontSize:12, color:AMBER, marginTop:6}}>Pick at least one main muscle group to add this exercise.</div>}
@@ -3814,8 +3971,8 @@ function ExercisesTab({ data, setData }) {
           const nn = properCase(name); // capitalization fixes itself — "cable fly" becomes "Cable Fly"
           const dupe = data.exercises.find(x => x.name.toLowerCase() === nn.toLowerCase());
           if (dupe) { setAddMsg(`“${dupe.name}” is already in your library — no duplicate added. (To fold one exercise into another, open it with ✏️ and use Merge.)`); return; }
-          setData(d=>({...d, exercises:[...d.exercises, {name:nn, muscle:muscles[0], muscles, muscles2, ...fromEquip(equip)}]}));
-          setName(""); setMuscles([]); setMuscles2([]); setAddMsg(null);
+          setData(d=>({...d, exercises:[...d.exercises, {name:nn, muscle:muscles[0], muscles, muscles2, machine: equip==="Bodyweight" ? false : machine, ...fromEquip(equip)}]}));
+          setName(""); setMuscles([]); setMuscles2([]); setMachine(false); setAddMsg(null);
         }}
         disabled={!name.trim()||!muscles.length} className="btn-primary"
         style={{padding:"11px 22px", marginTop:10, marginBottom:14}}>Add exercise</button>
@@ -3833,9 +3990,9 @@ function ExercisesTab({ data, setData }) {
       <div style={{overflowX:"auto"}}>
         <table><thead><tr><th>Exercise</th><th>Muscle</th><th>Equipment</th><th></th></tr></thead>
           <tbody>{shownEx.map(x=>(<Fragment key={x.name}>
-            <tr><td>{x.name}</td><td>{muscleLabel(x)}</td><td>{equipOf(x)}</td>
+            <tr><td>{x.name}</td><td>{muscleLabel(x)}</td><td>{equipOf(x)}{machineOf(x) && <span title="Machine/cable — resistance varies by gym" style={{marginLeft:5}}>🏢</span>}</td>
               <td style={{whiteSpace:"nowrap"}}>
-                <PencilBtn onClick={()=>{ setEdit({ orig:x.name, name:x.name, muscles:musclesOf(x), muscles2:secondariesOf(x), equip:equipOf(x) }); setMergeTo(""); }} />
+                <PencilBtn onClick={()=>{ setEdit({ orig:x.name, name:x.name, muscles:musclesOf(x), muscles2:secondariesOf(x), equip:equipOf(x), machine:machineOf(x) }); setMergeTo(""); }} />
                 <ConfirmX onConfirm={()=>setData(d=>({...d, exercises:d.exercises.filter(e=>e.name!==x.name)}))} />
               </td></tr>
             {edit?.orig === x.name && (
@@ -3846,6 +4003,12 @@ function ExercisesTab({ data, setData }) {
                     <input value={edit.name} onChange={ev=>setEdit(s=>({...s, name:ev.target.value}))} style={{flex:2, minWidth:150}} />
                     <select value={edit.equip} onChange={ev=>setEdit(s=>({...s, equip:ev.target.value}))} style={{flex:1, minWidth:150}}>{EQUIP_OPTS.map(o=><option key={o}>{o}</option>)}</select>
                   </div>
+                  {edit.equip !== "Bodyweight" && (
+                    <label style={{display:"flex", alignItems:"center", gap:8, fontSize:13, color:T.ink, marginBottom:10, cursor:"pointer"}}>
+                      <input type="checkbox" checked={edit.machine} onChange={ev=>setEdit(s=>({...s, machine:ev.target.checked}))} style={{width:17, height:17, minHeight:0}} />
+                      🏢 Machine / cable — resistance varies gym to gym
+                    </label>
+                  )}
                   <div style={{fontSize:12, color:T.sub, marginBottom:6}}>Tap once = ✓ main (full credit) · again = ½ secondary (half credit) · again = off:</div>
                   <div style={{marginBottom:10}}>
                     <MuscleChips prim={edit.muscles} sec={edit.muscles2} onChange={(p,s2)=>setEdit(s=>({...s, muscles:p, muscles2:s2}))} />
@@ -4102,7 +4265,7 @@ function SectionHead({ icon, label }) {
   );
 }
 
-function SettingsModal({ user, username, data, setData, startTab, setStartTab, tabs, units, setUnits, hunit, setHunit, routinesOn, setRoutinesOn, stepsOn, setStepsOn, coachOn, setCoachOn, macrosOn, setMacrosOn, theme, setTheme, streaksOn, setStreaksOn, waterOn, setWaterOn, nutritionOn, isPro, onClose }) {
+function SettingsModal({ user, username, data, setData, startTab, setStartTab, tabs, units, setUnits, hunit, setHunit, routinesOn, setRoutinesOn, stepsOn, setStepsOn, coachOn, setCoachOn, macrosOn, setMacrosOn, multiGymOn, setMultiGymOn, theme, setTheme, streaksOn, setStreaksOn, waterOn, setWaterOn, nutritionOn, isPro, onClose }) {
   const memberSince = user.created_at ? new Date(user.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}) : "—";
   const totalSets = (data.log||[]).length;
   const goPro = () => document.getElementById("pro-section")?.scrollIntoView({ behavior:"smooth", block:"start" });
@@ -4229,6 +4392,8 @@ function SettingsModal({ user, username, data, setData, startTab, setStartTab, t
         <SettingsSection icon="🧩" title="Features" desc="Optional parts of the app — on or off">
           <FeatureToggle label="Workout routines" on={routinesOn} setOn={setRoutinesOn}
             desc="Adds a Routines section to the Log tab: build templates like “Push Day,” then tap Start to log them exercise-by-exercise. Off by default. Turning it off just hides it — your saved routines stay." />
+          <FeatureToggle label="I train at more than one gym" on={multiGymOn} setOn={setMultiGymOn}
+            desc="For machine/cable exercises only (Cable Row, Leg Press, Lat Pulldown, etc.) — a pin-loaded machine's real resistance isn't standardized like a barbell's, so the same number can feel totally different at another gym. Turn this on to tag which gym a set was at; your graphs for those exercises then color-code by gym and let you filter, instead of a gym switch looking like you got weaker. Off by default — barbell/dumbbell/bodyweight moves are unaffected either way." />
           {/* Water + Streaks toggles belong to the Macros feature — shown only when it's unlocked */}
           {nutritionOn && (<>
             <FeatureToggle label="Workout streaks" on={streaksOn} setOn={setStreaksOn}

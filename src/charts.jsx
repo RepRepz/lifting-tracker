@@ -18,7 +18,7 @@ function NiceTip({ active, payload, label, unit }) {
     }}>
       <div style={{ fontSize: 11, color: T.sub, marginBottom: 2 }}>{label}</div>
       <div style={{ fontSize: 15, fontWeight: 700, color: "#FFF", display: "flex", alignItems: "center", gap: 6 }}>
-        <span style={{ width: 8, height: 8, borderRadius: 99, background: p.stroke || p.color, display: "inline-block" }} />
+        <span style={{ width: 8, height: 8, borderRadius: 99, background: p.payload?.dotColor || p.stroke || p.color, display: "inline-block" }} />
         {p.value}{unit ? <span style={{ fontSize: 11.5, color: T.sub, fontWeight: 500 }}>{unit}</span> : null}
       </div>
       {p.payload?.sub && <div style={{ fontSize: 11.5, color: T.sub, marginTop: 3 }}>{p.payload.sub}</div>}
@@ -35,18 +35,20 @@ export function TrendChart({ pts, unit = "", dots = false }) {
   const up = last >= first;
   const stroke = up ? T.green : T.down;
   const gid = up ? "gradUp" : "gradDown";
+  // Points can carry their own `dotColor` (e.g. tagged by gym for a machine/cable
+  // exercise) — that wins over the overall up/down trend color for that one dot.
   const renderDot = (props) => {
     const { cx, cy, index, payload } = props;
     if (payload?._ghost || cx == null) return <g key={`d${index}`} />;
     const solo = display.length === 1;
     const r = solo ? 5 : dots ? 4.5 : 3;
-    return <circle key={`d${index}`} cx={cx} cy={cy} r={r} fill={stroke}
+    return <circle key={`d${index}`} cx={cx} cy={cy} r={r} fill={payload?.dotColor || stroke}
       stroke={dots || solo ? "#000" : "none"} strokeWidth={dots || solo ? 1.5 : 0} />;
   };
   const renderActiveDot = (props) => {
     const { cx, cy, index, payload } = props;
     if (payload?._ghost || cx == null) return <g key={`a${index}`} />;
-    return <circle key={`a${index}`} cx={cx} cy={cy} r={5.5} fill={stroke} stroke="#000" strokeWidth={2} />;
+    return <circle key={`a${index}`} cx={cx} cy={cy} r={5.5} fill={payload?.dotColor || stroke} stroke="#000" strokeWidth={2} />;
   };
   return (
     <ResponsiveContainer width="100%" height={210}>
