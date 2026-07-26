@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, lazy, Suspense, Fragment, createContext, useContext } from "react";
+import { useState, useEffect, useLayoutEffect, useMemo, useRef, lazy, Suspense, Fragment, createContext, useContext } from "react";
 import { createPortal } from "react-dom";
 import { supabase, loadUserState, saveUserState, listMyGroups, listMembers, createGroup, joinGroup, leaveGroup, listReactions, addReaction, removeReaction, setSecurityQuestion, getSecurityQuestion, lastActiveFor, setGroupEmoji, resetInviteCode, listCloudBackups, getCloudBackup, getStepToken, stepsFor, lastStepSync, createDuel, listDuels, deleteDuel, acceptDuel, declineDuel, forfeitDuel, requestDuelCancel, clearDuelCancel, setGroupRecordLifts, getMyProStatus, listProUserIds } from "./lib/storage.js";
 import { SECURITY_QUESTIONS } from "./AuthScreen.jsx";
@@ -710,6 +710,10 @@ export default function LiftingTracker({ user }) {
         /* ---- custom date picker ---- */
         .cal-pop { animation:calPop .16s cubic-bezier(.22,1,.36,1) both; transform-origin:top left; }
         @keyframes calPop { from { opacity:0; transform:translateY(-6px) scale(.97); } to { opacity:1; transform:none; } }
+        .member-menu-pop { animation:memberMenuIn .2s cubic-bezier(.16,1,.3,1) both; will-change:opacity,transform; }
+        @keyframes memberMenuIn { from { opacity:0; transform:translateY(4px) scale(.975); } to { opacity:1; transform:none; } }
+        .member-menu-pop.closing { animation:memberMenuOut .13s cubic-bezier(.4,0,1,1) both; pointer-events:none; }
+        @keyframes memberMenuOut { from { opacity:1; transform:none; } to { opacity:0; transform:translateY(2px) scale(.985); } }
         .cal-day { transition:background .12s ease, color .12s ease, transform .1s ease; }
         .cal-day:active:not(.cal-off) { transform:scale(.85); }
         @media(hover:hover){ .cal-day:not(.cal-off):not(.cal-sel):hover { background:rgba(255,255,255,.09)!important; } }
@@ -2807,7 +2811,9 @@ function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled
         </div>
         <div style={{display:"flex", alignItems:"center", gap:6, margin:"8px 0 7px", flexWrap:"wrap"}}>
           <span style={{fontSize:11.5, color:T.sub, marginRight:2}}>Goal type</span>
-          {Object.entries(GOAL_MODES).map(([mode, info]) => <button key={mode} type="button" onClick={()=>setGoalMode(mode)} aria-pressed={goalMode===mode} style={{background:goalMode===mode ? T.mint : T.input, color:goalMode===mode ? T.green : T.sub, border:`1px solid ${goalMode===mode ? T.green : T.line}`, borderRadius:99, padding:"5px 10px", fontSize:11.5, fontWeight:800}}>{info.label}</button>)}
+          {own
+            ? Object.entries(GOAL_MODES).map(([mode, info]) => <button key={mode} type="button" onClick={()=>setGoalMode(mode)} aria-pressed={goalMode===mode} style={{background:goalMode===mode ? T.mint : T.input, color:goalMode===mode ? T.green : T.sub, border:`1px solid ${goalMode===mode ? T.green : T.line}`, borderRadius:99, padding:"5px 10px", fontSize:11.5, fontWeight:800}}>{info.label}</button>)
+            : <span style={{background:T.mint, color:T.green, border:`1px solid ${T.green}`, borderRadius:99, padding:"5px 10px", fontSize:11.5, fontWeight:800}}>{goalModeInfo.label}</span>}
         </div>
         <div style={{fontSize:12, color:T.sub, marginBottom:12}}>
           {goalModeInfo.short} goal, Mon–Sun. Main muscles count as a full set; secondary muscles (like triceps on bench) count as half. Tap a bar to see its exact count.
@@ -2829,7 +2835,7 @@ function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled
           );
         })}
         {activeTargetMuscle && <TargetBreakdown muscle={activeTargetMuscle} rows={weekSetBreakdown[activeTargetMuscle] || []} count={weekSets[activeTargetMuscle]} goal={targets[activeTargetMuscle]} color={MUSCLE_COLORS[MUSCLES.indexOf(activeTargetMuscle)]} />}
-        <div style={{display:"flex", gap:10, marginTop:6, flexWrap:"wrap"}}>
+        {own && <div style={{display:"flex", gap:10, marginTop:6, flexWrap:"wrap"}}>
           <details style={{width:"100%"}}>
             <summary style={{...dropdownSummary, color:T.green}}>🎛 Modify your own {goalModeInfo.label.toLowerCase()} goals <span style={{fontSize:9}}>▾</span></summary>
             <div style={{marginTop:10, padding:"13px", background:`linear-gradient(145deg, ${T.input}, ${T.card})`, border:`1px solid ${T.line}`, borderRadius:13, boxShadow:"0 10px 28px rgba(0,0,0,.14)"}}>
@@ -2853,8 +2859,8 @@ function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled
               })}
             </div>
           </details>
-        </div>
-        <details style={{marginTop:10}}>
+        </div>}
+        {own && <details style={{marginTop:10}}>
           <summary style={{...dropdownSummary, color:T.sub}}>🔬 Why these numbers? <span style={{fontSize:9}}>▾</span></summary>
           <div style={{marginTop:8, padding:"12px", background:T.input, border:`1px solid ${T.line}`, borderRadius:12}}>
             <div style={{display:"flex", gap:5, marginBottom:11, padding:3, background:T.card, borderRadius:10}}>
@@ -2872,7 +2878,7 @@ function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled
               Evidence reviewed: Schoenfeld, Ogborn & Krieger (2017, doi:10.1080/02640414.2016.1210197); Baz-Valle et al. (2022, doi:10.2478/hukin-2022-0017); Currier et al. (2023, doi:10.1136/bjsports-2023-106807); Lopez et al. (2021, doi:10.1249/MSS.0000000000002585); Ralston et al. (2017, doi:10.1007/s40279-017-0762-7); and Pelland et al. (2026, doi:10.1007/s40279-025-02344-w). These guide a starting point; change goals based on progress and recovery.
             </div>
           </div>
-        </details>
+        </details>}
       </div>
     );
   }
@@ -6606,14 +6612,28 @@ function FriendsTab({ user, data, setData, exMap = {}, nutritionOn, streaksOn, i
   const [states, setStates] = useState({});          // user_id -> tracker data
   const [proIds, setProIds] = useState([]);          // Pro members you can see (for the PRO badge)
   const [memberMenu, setMemberMenu] = useState(null); // compact profile menu anchored to a tapped name
+  const memberMenuRef = useRef(null);
+  const closeMemberMenu = () => setMemberMenu(cur=>cur ? { ...cur, closing:true } : null);
   const isProUser = (uid) => proIds.includes(uid);
   useEffect(() => { listProUserIds().then(setProIds).catch(()=>{}); }, [members]);
   useEffect(() => { setMemberMenu(null); }, [active?.id]);
   useEffect(() => {
+    if (!memberMenu?.closing) return;
+    const timer = window.setTimeout(()=>setMemberMenu(null), 130);
+    return () => window.clearTimeout(timer);
+  }, [memberMenu?.closing]);
+  useEffect(() => {
     if (!memberMenu) return;
-    const onKey = (e) => { if (e.key === "Escape") setMemberMenu(null); };
+    const closeOutside = (e) => {
+      if (!memberMenuRef.current?.contains(e.target) && !e.target.closest?.("[data-member-name]")) closeMemberMenu();
+    };
+    const onKey = (e) => { if (e.key === "Escape") closeMemberMenu(); };
+    document.addEventListener("pointerdown", closeOutside);
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", closeOutside);
+      window.removeEventListener("keydown", onKey);
+    };
   }, [memberMenu]);
   const openMemberMenu = (event, uid, name) => {
     event.stopPropagation();
@@ -6622,8 +6642,9 @@ function FriendsTab({ user, data, setData, exMap = {}, nutritionOn, streaksOn, i
     const menuW = 224, menuH = 108, gap = 7, edge = 10;
     const left = Math.max(edge, Math.min(rect.left, window.innerWidth - menuW - edge));
     const below = rect.bottom + gap;
-    const top = below + menuH <= window.innerHeight - edge ? below : Math.max(edge, rect.top - menuH - gap);
-    setMemberMenu({ uid, name, left, top });
+    const fitsBelow = below + menuH <= window.innerHeight - edge;
+    const top = fitsBelow ? below : Math.max(edge, rect.top - menuH - gap);
+    setMemberMenu({ uid, name, left, top, origin:fitsBelow ? "top left" : "bottom left" });
   };
   // Render a member's name with the theme accent + a PRO badge if they're Pro — used
   // everywhere a friend's name shows. Tapping it opens the same compact profile menu.
@@ -6633,7 +6654,7 @@ function FriendsTab({ user, data, setData, exMap = {}, nutritionOn, streaksOn, i
     // stay pinned (flex-shrink:0) and never get clipped or pushed under the bar
     return (
       <span style={{ display: "inline-flex", alignItems: "center", gap: 4, minWidth: 0, maxWidth: "100%", verticalAlign: "bottom" }}>
-        <span role="button" tabIndex={0} aria-haspopup="menu" aria-expanded={memberMenu?.uid===uid}
+        <span role="button" tabIndex={0} data-member-name aria-haspopup="menu" aria-expanded={memberMenu?.uid===uid}
           title={`Open ${name}'s profile menu`}
           onClick={e=>openMemberMenu(e, uid, name)}
           onKeyDown={e=>{ if (e.key==="Enter" || e.key===" ") { e.preventDefault(); openMemberMenu(e, uid, name); } }}
@@ -6670,6 +6691,15 @@ function FriendsTab({ user, data, setData, exMap = {}, nutritionOn, streaksOn, i
   const [duelMsg, setDuelMsg] = useState("");
   const myName = user.user_metadata?.username || "you";
   const isOwner = active?.created_by === user.id;
+  const viewerTheme = data.profile?.theme || DEFAULT_THEME;
+  const viewedTheme = (profile && states[profile.user_id]?.profile?.theme) || DEFAULT_THEME;
+  // A viewed profile always wears its owner's saved theme. The viewer's subscription and
+  // theme never override it; leaving the profile restores the viewer immediately.
+  useLayoutEffect(() => {
+    if (!profile) { applyTheme(viewerTheme); return; }
+    applyTheme(viewedTheme);
+    return () => applyTheme(viewerTheme);
+  }, [profile?.user_id, viewedTheme.accent, viewedTheme.palette, viewerTheme.accent, viewerTheme.palette]);
   // which lifts the group's strength board tracks — owner-configurable, defaults to the big lifts
   const recordLifts = (Array.isArray(active?.record_lifts) && active.record_lifts.length) ? active.record_lifts : BIG_LIFTS;
   // every exercise the owner can point a column at: the big lifts + anything anyone's logged
@@ -7217,21 +7247,19 @@ function FriendsTab({ user, data, setData, exMap = {}, nutritionOn, streaksOn, i
   if (active) {
     return (<>
       {memberMenu && createPortal(
-        <div onPointerDown={()=>setMemberMenu(null)} style={{position:"fixed", inset:0, zIndex:85, background:"transparent"}}>
-          <div role="menu" aria-label={`${memberMenu.name} profile menu`} onPointerDown={e=>e.stopPropagation()}
-            style={{position:"fixed", left:memberMenu.left, top:memberMenu.top, width:224, background:T.card, border:`1px solid ${T.green}`, borderRadius:13, padding:9, boxShadow:"0 14px 38px rgba(0,0,0,.58)", animation:"calPop .18s ease-out both"}}>
-            <div style={{display:"flex", alignItems:"center", gap:8, padding:"3px 5px 8px", minWidth:0}}>
-              <span style={{display:"grid", placeItems:"center", width:28, height:28, borderRadius:9, flexShrink:0, background:T.mint, color:T.green}}>👤</span>
-              <span style={{minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", color:T.green, fontSize:13.5, fontWeight:850}}>{memberMenu.name}{memberMenu.uid===user.id?" (you)":""}</span>
-            </div>
-            <button role="menuitem" onClick={()=>{
-              const picked = members?.find(m=>m.user_id===memberMenu.uid);
-              setMemberMenu(null);
-              if (picked) { setProfileTab("lifting"); setProfile(picked); }
-            }} style={{width:"100%", display:"flex", alignItems:"center", justifyContent:"space-between", background:"rgba(var(--accent-rgb),.12)", color:T.ink, border:`1px solid ${T.line}`, borderRadius:9, padding:"9px 11px", fontSize:13, fontWeight:800}}>
-              <span>View profile</span><span style={{color:T.green}}>→</span>
-            </button>
+        <div key={memberMenu.uid} ref={memberMenuRef} role="menu" aria-label={`${memberMenu.name} profile menu`} className={`member-menu-pop${memberMenu.closing?" closing":""}`}
+          style={{position:"fixed", zIndex:85, left:memberMenu.left, top:memberMenu.top, width:224, transformOrigin:memberMenu.origin, background:`linear-gradient(155deg, color-mix(in srgb, ${T.card} 91%, var(--accent) 9%), ${T.card})`, border:`1px solid color-mix(in srgb, ${T.green} 72%, ${T.line})`, borderRadius:13, padding:9, boxShadow:"0 18px 48px -12px rgba(0,0,0,.72), 0 0 0 1px rgba(var(--accent-rgb),.08) inset"}}>
+          <div style={{display:"flex", alignItems:"center", gap:8, padding:"3px 5px 8px", minWidth:0}}>
+            <span style={{display:"grid", placeItems:"center", width:28, height:28, borderRadius:9, flexShrink:0, background:T.mint, color:T.green}}>👤</span>
+            <span style={{minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", color:T.green, fontSize:13.5, fontWeight:850}}>{memberMenu.name}{memberMenu.uid===user.id?" (you)":""}</span>
           </div>
+          <button role="menuitem" onClick={()=>{
+            const picked = members?.find(m=>m.user_id===memberMenu.uid);
+            setMemberMenu(null);
+            if (picked) { setProfileTab("lifting"); setProfile(picked); }
+          }} style={{width:"100%", display:"flex", alignItems:"center", justifyContent:"space-between", background:"rgba(var(--accent-rgb),.12)", color:T.ink, border:`1px solid ${T.line}`, borderRadius:9, padding:"9px 11px", fontSize:13, fontWeight:800}}>
+            <span>View profile</span><span style={{color:T.green}}>→</span>
+          </button>
         </div>, document.body
       )}
       {recap && <MonthlyRecapModal recap={recap} groupName={active.name} emoji={active.emoji} onClose={closeRecap} />}
