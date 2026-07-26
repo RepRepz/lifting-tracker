@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, lazy, Suspense, Fragment, createContext, useContext } from "react";
 import { createPortal } from "react-dom";
-import { supabase, loadUserState, saveUserState, listMyGroups, listMembers, createGroup, joinGroup, leaveGroup, listReactions, addReaction, removeReaction, setSecurityQuestion, getSecurityQuestion, lastActiveFor, setGroupEmoji, resetInviteCode, listCloudBackups, getCloudBackup, getStepToken, stepsFor, lastStepSync, createDuel, listDuels, deleteDuel, acceptDuel, declineDuel, forfeitDuel, requestDuelCancel, clearDuelCancel, setGroupRecordLifts, listProUserIds } from "./lib/storage.js";
+import { supabase, loadUserState, saveUserState, listMyGroups, listMembers, createGroup, joinGroup, leaveGroup, listReactions, addReaction, removeReaction, setSecurityQuestion, getSecurityQuestion, lastActiveFor, setGroupEmoji, resetInviteCode, listCloudBackups, getCloudBackup, getStepToken, stepsFor, lastStepSync, createDuel, listDuels, deleteDuel, acceptDuel, declineDuel, forfeitDuel, requestDuelCancel, clearDuelCancel, setGroupRecordLifts, getMyProStatus, listProUserIds } from "./lib/storage.js";
 import { SECURITY_QUESTIONS } from "./AuthScreen.jsx";
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
@@ -350,9 +350,35 @@ export default function LiftingTracker({ user }) {
   // to give someone access, or set to `true` to turn it on for everyone.
   const liftingOn = true;
   const MACRO_ACCOUNTS = ["ancenurkic"];
-  const [proIds, setProIds] = useState([]);
-  useEffect(() => { listProUserIds().then(setProIds).catch(()=>{}); }, []);
-  const isPro = proIds.includes(user.id);
+  // Pro access is checked directly for the signed-in account. Keep the last confirmed
+  // result per account so a temporary network/auth hiccup never turns a Pro member free.
+  const proCacheKey = `lt-pro-${user.id}`;
+  const cachedPro = localStorage.getItem(proCacheKey);
+  const [proStatus, setProStatus] = useState(() => cachedPro == null ? null : cachedPro === "1");
+  useEffect(() => {
+    let alive = true;
+    const refreshPro = async () => {
+      for (const delay of [0, 400, 1200]) {
+        if (delay) await new Promise(resolve => setTimeout(resolve, delay));
+        if (!alive) return;
+        try {
+          const active = await getMyProStatus();
+          if (!alive) return;
+          setProStatus(active);
+          localStorage.setItem(proCacheKey, active ? "1" : "0");
+          return;
+        } catch { /* retry below */ }
+      }
+      // With no confirmed value, allow the app to open as free; online/interval retries
+      // will correct it without requiring a refresh. A prior confirmed Pro stays Pro.
+      if (alive && cachedPro == null) setProStatus(false);
+    };
+    refreshPro();
+    window.addEventListener("online", refreshPro);
+    const interval = setInterval(refreshPro, 5 * 60 * 1000);
+    return () => { alive = false; window.removeEventListener("online", refreshPro); clearInterval(interval); };
+  }, [user.id]);
+  const isPro = proStatus === true;
   // Nutrition/Macros is a Pro feature: auto-on when you have Pro, toggleable in Settings.
   // Legacy demo accounts keep it regardless.
   // Nutrition/Macros is PAUSED for Pro members for now (was auto-on with Pro) — flip the
@@ -526,7 +552,7 @@ export default function LiftingTracker({ user }) {
     </div>
   );
 
-  if (!loaded) return <LoadingScreen />;
+  if (!loaded || proStatus === null) return <LoadingScreen />;
 
   // Grouped by how they're used so the two rows read logically:
   //   row 1 (do it / check daily): Dash · Log · Cardio · Steps · Groups

@@ -76,12 +76,23 @@ export async function stepsFor(userIds, sinceDay) {
 
 /* ---------- The Lab Pro (premium flag) ---------- */
 
+/** Whether the currently signed-in account has an active Pro membership. */
+export async function getMyProStatus() {
+  const { data, error } = await supabase.rpc("my_pro_active");
+  if (error) throw error;
+  return data === true;
+}
+
 /** IDs of Pro members you can see (yourself + groupmates), excluding expired ones. */
 export async function listProUserIds() {
-  const { data, error } = await supabase.from("pro_users").select("user_id, until");
-  if (error) return [];
+  const { data, error } = await supabase.rpc("visible_active_pro_user_ids");
+  if (!error) return (data || []).map(r => r.user_id);
+
+  // Backward-compatible fallback while a deployment reaches an older backend.
+  const fallback = await supabase.from("pro_users").select("user_id, until");
+  if (fallback.error) return [];
   const now = Date.now();
-  return (data || []).filter(r => !r.until || new Date(r.until).getTime() > now).map(r => r.user_id);
+  return (fallback.data || []).filter(r => !r.until || new Date(r.until).getTime() > now).map(r => r.user_id);
 }
 
 /* ---------- step duels (head-to-head) ---------- */
@@ -279,4 +290,3 @@ export async function removeReaction(groupId, eventKey, userId) {
     .eq("group_id", groupId).eq("event_key", eventKey).eq("reactor_id", userId);
   if (error) throw error;
 }
-
