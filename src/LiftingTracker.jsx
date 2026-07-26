@@ -7392,7 +7392,6 @@ function FriendsTab({ user, data, setData, exMap = {}, nutritionOn, streaksOn, i
                     {r.streak>0 ? <>🔥{r.streak}<span style={{fontSize:10, color:T.sub, fontWeight:600}}>wk</span></> : "—"}
                   </span>
                 )}
-                <button onClick={()=>setProfile(members.find(m=>m.user_id===r.uid))} style={{background:"none", color:T.green, fontSize:12.5, fontWeight:700, padding:"4px 4px", whiteSpace:"nowrap", flexShrink:0}}>View ›</button>
               </div>
             );
           })}
