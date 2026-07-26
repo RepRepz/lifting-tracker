@@ -694,8 +694,8 @@ export default function LiftingTracker({ user }) {
         .tabview > .card:nth-child(4) { animation-delay:.15s; }
         .tabview > .card:nth-child(5) { animation-delay:.20s; }
         .tabview > .card:nth-child(n+6) { animation-delay:.24s; }
-        /* desktop depth: cards lift slightly and cast a soft shadow on hover */
-        @media(hover:hover){ .card { transition:border-color .2s ease, transform .2s ease, box-shadow .2s ease; } .card:hover { border-color:color-mix(in srgb, var(--accent) 22%, var(--line)); transform:translateY(-2px); box-shadow:0 1px 0 rgba(255,255,255,.05) inset, 0 16px 40px -18px rgba(0,0,0,.85); } }
+        /* desktop depth without positional movement — floating controls can be crossed safely */
+        @media(hover:hover){ .card { transition:border-color .2s ease, box-shadow .2s ease; } .card:hover { border-color:color-mix(in srgb, var(--accent) 22%, var(--line)); box-shadow:0 1px 0 rgba(255,255,255,.05) inset, 0 16px 40px -18px rgba(0,0,0,.85); } }
         .navicon { transition:transform .2s cubic-bezier(.34,1.56,.64,1); font-size:19px; }
         .navicon.on { transform:translateY(-1px) scale(1.16); }
         @media(prefers-reduced-motion:reduce){ *{transition:none!important;animation:none!important} }
@@ -6638,6 +6638,7 @@ function FriendsTab({ user, data, setData, exMap = {}, nutritionOn, streaksOn, i
   const openMemberMenu = (event, uid, name) => {
     event.stopPropagation();
     if (!members?.some(m=>m.user_id===uid)) return;
+    if (memberMenu?.uid===uid && !memberMenu.closing) { closeMemberMenu(); return; }
     const rect = event.currentTarget.getBoundingClientRect();
     const menuW = 224, menuH = 108, gap = 7, edge = 10;
     const left = Math.max(edge, Math.min(rect.left, window.innerWidth - menuW - edge));
