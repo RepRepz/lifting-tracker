@@ -1802,17 +1802,40 @@ function QuickAddSets({ exercises, onAdd }) {
 
 function TargetBar({ muscle, count, color, goal = 12, max = 20, open, onHover, onLeave, onToggle }) {
   const pct = Math.min(count, max) / max * 100;
+  const goalPct = Math.min(goal, max) / max * 100;
   const status = count < goal ? `${goal-count} under` : count === goal ? "goal hit" : `${count-goal} over`;
   const reached = count >= goal;
+  const [goalTip, setGoalTip] = useState(null); // null | "hover" | "pinned"
+  const wrapRef = useRef(null);
+  useEffect(() => {
+    if (goalTip !== "pinned") return;
+    const close = (e) => { if (!wrapRef.current?.contains(e.target)) setGoalTip(null); };
+    document.addEventListener("pointerdown", close);
+    return () => document.removeEventListener("pointerdown", close);
+  }, [goalTip]);
   return (
-    <div style={{position:"relative", minWidth:0}}>
+    <div ref={wrapRef} style={{position:"relative", minWidth:0, height:28, zIndex:goalTip?12:"auto"}}>
       <button type="button" onClick={onToggle} onMouseEnter={onHover} onMouseLeave={onLeave} onFocus={onHover} onBlur={onLeave} aria-expanded={open} aria-label={`${muscle}: ${count} of ${goal} sets — ${status}. Tap for exercise breakdown.`} style={{display:"block", width:"100%", height:28, padding:0, background:"none", border:0, overflow:"visible", cursor:"pointer", position:"relative"}}>
         <span style={{position:"absolute", left:0, right:0, top:12, height:10, background:T.input, borderRadius:99, overflow:"hidden", boxShadow:"0 1px 0 rgba(255,255,255,.04) inset"}}>
           <span style={{display:"block", width:`${pct}%`, height:"100%", background:color, borderRadius:99, transition:"width .6s ease"}} />
         </span>
-        <span title={`Goal: ${goal} sets`} aria-hidden="true" style={{position:"absolute", zIndex:1, left:`calc(${Math.min(goal, max) / max * 100}% - 5px)`, top:12, width:8, height:8, background:T.card, border:`2px solid ${T.ink}`, borderRadius:2, transform:"rotate(45deg)", boxShadow:`0 0 0 1px ${T.card}`}} />
+        <span aria-hidden="true" style={{position:"absolute", zIndex:1, left:`calc(${goalPct}% - 1px)`, top:8, width:2, height:18, background:goalTip?T.green:T.ink, borderRadius:99, boxShadow:goalTip?`0 0 0 2px ${T.card}, 0 0 12px rgba(var(--accent-rgb),.9)`:`0 0 0 2px ${T.card}, 0 0 8px rgba(255,255,255,.22)`, transition:"background .16s ease, box-shadow .18s ease"}} />
         <span aria-hidden="true" style={{position:"absolute", zIndex:2, left:`calc(${pct}% - 11px)`, top:0, minWidth:22, height:22, padding:"0 4px", borderRadius:99, display:"flex", alignItems:"center", justifyContent:"center", boxSizing:"border-box", background:reached?T.green:T.card, color:reached?"#07110D":T.ink, border:`1px solid ${open?T.green:(reached?T.green:color)}`, fontSize:11, fontWeight:900, fontVariantNumeric:"tabular-nums", boxShadow:open?`0 0 0 3px ${T.mint}, 0 5px 16px rgba(0,0,0,.34)`:`0 0 0 2px ${T.card}, 0 4px 12px rgba(0,0,0,.28)`, transition:"left .6s ease, background .2s ease, box-shadow .2s ease"}}>{count}</span>
       </button>
+      <button type="button" aria-label={`${muscle} goal: ${goal} sets`} aria-expanded={!!goalTip}
+        onClick={e=>{ e.stopPropagation(); setGoalTip(cur=>cur==="pinned"?null:"pinned"); }}
+        onMouseEnter={()=>setGoalTip(cur=>cur==="pinned"?cur:"hover")}
+        onMouseLeave={()=>setGoalTip(cur=>cur==="pinned"?cur:null)}
+        onFocus={()=>setGoalTip(cur=>cur==="pinned"?cur:"hover")}
+        onBlur={()=>setGoalTip(cur=>cur==="pinned"?cur:null)}
+        style={{position:"absolute", zIndex:4, left:`calc(${goalPct}% - 13px)`, top:3, width:26, height:25, padding:0, background:"transparent", border:0, borderRadius:8, cursor:"help"}} />
+      {goalTip && (
+        <div role="tooltip" style={{position:"absolute", zIndex:8, left:`clamp(65px, ${goalPct}%, calc(100% - 65px))`, bottom:31, transform:"translateX(-50%)", minWidth:126, padding:"8px 10px", background:`linear-gradient(155deg, color-mix(in srgb, ${T.card} 90%, var(--accent) 10%), ${T.card})`, border:`1px solid ${T.green}`, borderRadius:10, boxShadow:"0 14px 34px rgba(0,0,0,.5)", pointerEvents:"none", animation:"memberMenuIn .18s cubic-bezier(.16,1,.3,1) both", whiteSpace:"nowrap"}}>
+          <div style={{display:"flex", alignItems:"center", gap:7}}><span style={{color:T.green, fontSize:13}}>🎯</span><span style={{fontSize:11, color:T.sub, fontWeight:750}}>WEEKLY GOAL</span></div>
+          <div style={{fontSize:13, color:T.ink, fontWeight:900, marginTop:2}}>{goal} credited sets</div>
+          <span aria-hidden="true" style={{position:"absolute", left:"50%", bottom:-5, width:9, height:9, background:T.card, borderRight:`1px solid ${T.green}`, borderBottom:`1px solid ${T.green}`, transform:"translateX(-50%) rotate(45deg)"}} />
+        </div>
+      )}
     </div>
   );
 }
@@ -5821,22 +5844,21 @@ const groupsLoggedOn = (log, exMap, date) => {
   for (const e of log) if (e.date === date && e.effort !== "Warm-up") for (const m of entryPrimaryMuscles(e, exMap)) s.add(m);
   return s;
 };
-/* Where you are in a custom rotation TODAY. Rather than blindly counting days from a
-   fixed anchor (which drifts if you skip days), we look at your most recent workout,
-   match it to the closest day in your cycle (best muscle overlap), then roll forward by
-   the days elapsed since. Falls back to the manual cycleStart anchor before you've logged
-   anything that matches. Returns { cycle, idx } (idx = -1 when there's nothing to place). */
+/* Where you are in a custom rotation TODAY. Training days are sticky: a missed workout
+   stays next until a matching session is logged. Explicit rest days still pass with the
+   calendar. A manual restart ignores older logs and puts Day 1 back at the front. */
 function customCyclePosition(data, log, exMap) {
   const cycle = (Array.isArray(data.profile?.customSplit) ? data.profile.customSplit : []).filter(d => d.rest || d.muscles?.length);
   if (!cycle.length) return { cycle, idx: -1 };
   const today = todayStr();
   const len = cycle.length;
-  const roll = (base, days) => (((base + days) % len) + len) % len;
+  const restartAt = Number(data.profile?.cycleRestartAt) || 0;
+  const eligibleLog = restartAt ? (log || []).filter(e => Number(e?.id) > restartAt) : (log || []);
   // 1) log-driven anchor: match your latest logged session to the best-fitting training day
-  const dates = [...new Set((log || []).map(e => e.date))].sort();
-  const lastDate = dates[dates.length - 1];
+  const dates = [...new Set(eligibleLog.map(e => e.date))].sort().reverse();
+  const lastDate = dates.find(date => groupsLoggedOn(eligibleLog, exMap, date).size > 0);
   if (lastDate) {
-    const g = groupsLoggedOn(log, exMap, lastDate);
+    const g = groupsLoggedOn(eligibleLog, exMap, lastDate);
     if (g.size) {
       let bestIdx = -1, best = 0;
       cycle.forEach((d, i) => {
@@ -5847,12 +5869,23 @@ function customCyclePosition(data, log, exMap) {
         const jac = uni ? inter / uni : 0;               // Jaccard overlap — how well the day matches
         if (jac > best) { best = jac; bestIdx = i; }
       });
-      if (bestIdx >= 0) return { cycle, idx: roll(bestIdx, dayGap(today, lastDate)) };
+      if (bestIdx >= 0) {
+        if (lastDate === today) return { cycle, idx: bestIdx };
+        // The matched workout is complete. Move once, then consume only explicit rest
+        // days with elapsed time. Stop on the next training day no matter how old the log is.
+        let idx = (bestIdx + 1) % len;
+        let elapsed = Math.max(1, dayGap(today, lastDate));
+        while (cycle[idx].rest && elapsed > 1) { idx = (idx + 1) % len; elapsed--; }
+        return { cycle, idx };
+      }
     }
   }
-  // 2) fallback: count from the manually-anchored start day
+  // 2) Before a matching workout exists, Day 1 stays queued. If Day 1 is an explicit
+  // rest day, calendar time can consume rest entries until the first training day.
   const start = data.profile?.cycleStart || today;
-  return { cycle, idx: roll(0, dayGap(today, start)) };
+  let idx = 0, elapsed = Math.max(0, dayGap(today, start));
+  while (cycle[idx].rest && elapsed > 0) { idx = (idx + 1) % len; elapsed--; }
+  return { cycle, idx };
 }
 /* First non-rest day at or after startIdx (wrapping once); null if the cycle is all rest. */
 const nextTrainingDay = (cycle, startIdx) => {
@@ -6145,11 +6178,9 @@ function CoachCard({ data, exMap, user, setData }) {
   const addRest = () => setCustom(days => [...days, { id: Math.random().toString(36).slice(2), rest: true, muscles: [] }]);
   const toggleMuscle = (id, m) => setCustom(days => days.map(x => x.id === id ? { ...x, muscles: x.muscles.includes(m) ? x.muscles.filter(z => z !== m) : [...x.muscles, m] } : x));
   const removeDay = (id) => setCustom(days => days.filter(x => x.id !== id));
-  // the repeating cycle is anchored to the day you finish building it (index 0 = that day).
-  // It ROLLS forward day-by-day and loops — it is NOT pinned to weekdays, so "Push/Pull/Legs/Rest"
-  // won't land on the same weekday each week; it just repeats on its own rhythm.
-  const anchorCycle = () => setData(d => ({ ...d, profile: { ...(d.profile || {}), cycleStart: todayStr() } }));
-  const setCycleStart = (dateStr) => setData(d => ({ ...d, profile: { ...(d.profile || {}), cycleStart: dateStr } }));
+  // Explicitly put Day 1 back at the front and ignore workouts logged before this click.
+  // The next new session becomes the rotation's fresh log-driven anchor.
+  const restartRotation = () => setData(d => ({ ...d, profile: { ...(d.profile || {}), cycleStart: todayStr(), cycleRestartAt: Date.now() } }));
   // position is read from your logs (same logic the coach uses), so the builder agrees with the tips
   const { cycle, idx: cyPos } = customCyclePosition(data, data.log || [], exMap);
   const todayDayId = cyPos >= 0 ? cycle[cyPos].id : null;
@@ -6247,6 +6278,12 @@ function CoachCard({ data, exMap, user, setData }) {
         ) : (
           <div style={{ fontSize: 14, color: T.ink, fontWeight: 600, lineHeight: 1.5 }}>✅ On track. Train the next day in your rotation or rest.</div>
         )}
+        {split === "custom" && cycle.length > 0 && !editing && (
+          <div style={{display:"flex", alignItems:"center", gap:8, marginTop:11, paddingTop:10, borderTop:`1px solid ${T.line}`, flexWrap:"wrap"}}>
+            <button onClick={restartRotation} title="Make Day 1 your next workout" style={{background:T.input, color:T.green, border:`1px solid ${T.line}`, borderRadius:99, padding:"7px 12px", fontSize:11.5, fontWeight:850}}>↺ Restart at Day 1</button>
+            <span style={{fontSize:10.5, color:T.sub}}>Use only when you want to begin the rotation again.</span>
+          </div>
+        )}
       </div>
 
       {/* SPLIT SETUP — collapsible; clickable options, no typing */}
@@ -6325,9 +6362,9 @@ function CoachCard({ data, exMap, user, setData }) {
                     Right now you're on <span style={{ color: T.green }}>Day {cyPos + 1} · {dayTitle(cycle[cyPos])}</span>.
                   </div>
                   <div style={{ fontSize: 11.5, color: T.sub, lineHeight: 1.5, marginTop: 4 }}>
-                    Your last workout keeps the rotation aligned.
+                    Missed training days stay queued until you log them.
                   </div>
-                  <button onClick={() => setCycleStart(todayStr())} style={{ marginTop: 9, background: T.input, border: `1px solid ${T.line}`, color: T.green, fontWeight: 800, fontSize: 12.5, padding: "8px 14px", borderRadius: 99 }}>▶ Start the loop from today</button>
+                  <button onClick={restartRotation} style={{ marginTop: 9, background: T.input, border: `1px solid ${T.line}`, color: T.green, fontWeight: 800, fontSize: 12.5, padding: "8px 14px", borderRadius: 99 }}>↺ Restart at Day 1</button>
                 </div>
               )}
             </div>
@@ -6358,7 +6395,7 @@ function CoachCard({ data, exMap, user, setData }) {
           )}
 
           {split && (
-            <button onClick={() => { if (split === "custom") anchorCycle(); setEditing(false); }} className="btn-primary" style={{ width: "100%", padding: "12px", fontSize: 14 }}>✓ Done — show my tips</button>
+            <button onClick={() => setEditing(false)} className="btn-primary" style={{ width: "100%", padding: "12px", fontSize: 14 }}>✓ Done — show my tips</button>
           )}
         </div>
       )}
@@ -6386,6 +6423,7 @@ function CoachCard({ data, exMap, user, setData }) {
         <div style={{marginTop:8, padding:"9px 11px", background:T.input, border:`1px solid ${T.line}`, borderRadius:11, fontSize:10.5, color:T.sub, lineHeight:1.65}}>
           <div>✓ Uses your {goalModeInfo.label.toLowerCase()} goals{customTargetCount ? `, including ${customTargetCount} custom` : ""}.</div>
           <div>✓ Uses your split, recent sets, reps, and effort.</div>
+          {split === "custom" && <div>✓ Missed workout days stay next; logging another split day realigns the rotation.</div>}
           <div>✓ Main muscle = 1 set · secondary = ½ · warm-ups ignored.</div>
         </div>
       </details>
