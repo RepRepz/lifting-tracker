@@ -2331,6 +2331,8 @@ function WorkoutHeatmap({ log, cardio, exMap = {} }) {
 function YearRecap({ data }) {
   const units = useUnit();
   const year = new Date().getFullYear();
+  const [minimized, setMinimized] = useState(() => localStorage.getItem("lt-recap-minimized") === "1");
+  const setMinimizedSaved = (value) => { setMinimized(value); localStorage.setItem("lt-recap-minimized", value ? "1" : "0"); };
   const stats = useMemo(() => {
     const log = (data.log||[]).filter(e => e.date.startsWith(String(year)));
     const cardio = (data.cardio||[]).filter(c => c.date.startsWith(String(year)));
@@ -2351,6 +2353,13 @@ function YearRecap({ data }) {
   }, [data, year, units]);
 
   if (stats.empty) return null;
+  if (minimized) return (
+    <div className="card" style={{display:"flex", alignItems:"center", gap:10, padding:"11px 14px", background:"linear-gradient(160deg,#0C1A0E,#0C0D0D 60%)"}}>
+      <span style={{fontSize:17}}>✨</span>
+      <div style={{minWidth:0, flex:1}}><div className="h" style={{fontSize:14, color:T.green}}>{year} in review</div><div style={{fontSize:11, color:T.sub}}>{stats.sets} sets · {stats.days} workout day{stats.days===1?"":"s"}</div></div>
+      <button onClick={()=>setMinimizedSaved(false)} style={{flexShrink:0, background:T.input, border:`1px solid ${T.line}`, color:T.green, fontWeight:800, fontSize:12, padding:"6px 12px", borderRadius:99}}>Show</button>
+    </div>
+  );
   const Item = ({ big, label }) => (
     <div style={{ textAlign:"center", padding:"6px 4px" }}>
       <div style={{ fontSize:24, fontWeight:800, color:T.ink, lineHeight:1.15 }}>{big}</div>
@@ -2359,7 +2368,10 @@ function YearRecap({ data }) {
   );
   return (
     <div className="card" style={{ background:"linear-gradient(160deg,#0C1A0E,#0C0D0D 60%)", border:`1px solid ${T.creamLine}` }}>
-      <div className="h" style={{ fontSize:19, color:T.green, marginBottom:2 }}>✨ {year} in review</div>
+      <div style={{display:"flex", alignItems:"center", gap:8, marginBottom:2}}>
+        <div className="h" style={{ fontSize:19, color:T.green, flex:1 }}>✨ {year} in review</div>
+        <button onClick={()=>setMinimizedSaved(true)} title="Minimize yearly review" aria-label="Minimize yearly review" style={{background:"none", border:"none", color:T.sub, fontSize:15, lineHeight:1, padding:"4px 5px"}}>➖</button>
+      </div>
       <div style={{ fontSize:12.5, color:T.sub, marginBottom:12 }}>Your year so far.</div>
       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:6 }}>
         <Item big={stats.sets} label="sets logged" />
@@ -2403,6 +2415,16 @@ function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled
   const [targetDetail, setTargetDetail] = useState(null); // { muscle, pinned }
   const [targetMinimized, setTargetMinimized] = useState(() => localStorage.getItem("lt-target-minimized") === "1");
   const minimizeTarget = (value) => { setTargetMinimized(value); localStorage.setItem("lt-target-minimized", value ? "1" : "0"); if (value) setTargetDetail(null); };
+  const [muscleMinimized, setMuscleMinimized] = useState(() => localStorage.getItem("lt-muscle-chart-minimized") === "1");
+  const minimizeMuscle = (value) => { setMuscleMinimized(value); localStorage.setItem("lt-muscle-chart-minimized", value ? "1" : "0"); };
+  const [minimizedCharts, setMinimizedCharts] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("lt-minimized-progress-charts") || "{}"); } catch { return {}; }
+  });
+  const minimizeChart = (name, value) => setMinimizedCharts(cur => {
+    const next = { ...cur, [name]:value };
+    localStorage.setItem("lt-minimized-progress-charts", JSON.stringify(next));
+    return next;
+  });
   const targetCardRef = useRef(null);
   useEffect(() => { setResearchMode(goalModeOf(data)); }, [data.profile?.setGoalMode]);
   useEffect(() => {
@@ -2615,12 +2637,20 @@ function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled
     {picks.map((p,i)=>{
       const pts = seriesFor(p);
       const pinned = isPinned(i);
+      const isBW = exMap[p]?.type==="Bodyweight";
+      if (minimizedCharts[p]) {
+        const latest = pts[pts.length-1];
+        return <div className="card" key={p} style={{display:"flex", alignItems:"center", gap:10, padding:"11px 14px"}}>
+          <span style={{fontSize:17}}>📈</span>
+          <div style={{minWidth:0, flex:1}}><div className="h" style={{fontSize:14, color:T.tealDk, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{p}</div><div style={{fontSize:11, color:T.sub}}>{latest ? `Latest: ${latest.value}${isBW?" reps":` ${uLabel(units)}`}` : "No chart data yet"}</div></div>
+          <button onClick={()=>minimizeChart(p,false)} style={{flexShrink:0, background:T.input, border:`1px solid ${T.line}`, color:T.green, fontWeight:800, fontSize:12, padding:"6px 12px", borderRadius:99}}>Show</button>
+        </div>;
+      }
       /* latest session totals for this exercise (working sets only) */
-      const sess = data.log.filter(e => e.exercise===p && e.effort!=="Warm-up");
+      const sess = data.log.filter(e => e.exercise===p && e.effort!=="Warm-up" && !e.quick);
       const lastDate = sess.length ? sess.reduce((a,b)=>a.date>b.date?a:b).date : null;
       const daySets = lastDate ? sess.filter(e=>e.date===lastDate) : [];
       const dayReps = daySets.reduce((s,e)=>s+e.reps, 0);
-      const isBW = exMap[p]?.type==="Bodyweight";
       const bestMode = isBW && bwMode[p]==="best";
       const isMachineEx = multiGymOn && machineOf(exMap[p]);
       const exGyms = isMachineEx ? gymsUsedFor(p) : [];
@@ -2639,6 +2669,7 @@ function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled
             {pinned ? "📌 Pinned" : "📌 Pin"}
           </button>
           )}
+          <button onClick={()=>minimizeChart(p,true)} title={`Minimize ${p} graph`} aria-label={`Minimize ${p} graph`} style={{flexShrink:0, background:"none", border:"none", color:T.sub, fontSize:15, lineHeight:1, padding:"4px 5px"}}>➖</button>
         </div>
         {exGyms.length > 0 && (
           <div style={{display:"flex", gap:6, flexWrap:"wrap", marginBottom:8}}>
@@ -2820,9 +2851,19 @@ function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled
     </div>
   );
 
-  widgets.muscle = (
+  const muscleTotal = pieData.reduce((sum,row)=>sum+row.value,0);
+  widgets.muscle = muscleMinimized ? (
+    <div className="card" style={{display:"flex", alignItems:"center", gap:10, padding:"11px 14px"}}>
+      <span style={{fontSize:17}}>🥧</span>
+      <div style={{minWidth:0, flex:1}}><div className="h" style={{fontSize:14, color:T.tealDk}}>Last 30 days — work by muscle</div><div style={{fontSize:11, color:T.sub}}>{fmtSets(muscleTotal)} credited sets · {pieData.length} muscle group{pieData.length===1?"":"s"}</div></div>
+      <button onClick={()=>minimizeMuscle(false)} style={{flexShrink:0, background:T.input, border:`1px solid ${T.line}`, color:T.green, fontWeight:800, fontSize:12, padding:"6px 12px", borderRadius:99}}>Show</button>
+    </div>
+  ) : (
     <div className="card">
-      <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:4}}>Last 30 days — work by muscle</div>
+      <div style={{display:"flex", alignItems:"center", gap:8, marginBottom:4}}>
+        <div className="h" style={{fontSize:17, color:T.tealDk, flex:1}}>Last 30 days — work by muscle</div>
+        <button onClick={()=>minimizeMuscle(true)} title="Minimize muscle chart" aria-label="Minimize muscle chart" style={{background:"none", border:"none", color:T.sub, fontSize:15, lineHeight:1, padding:"4px 5px"}}>➖</button>
+      </div>
       <div style={{fontSize:12, color:T.sub, marginBottom:4}}>Main muscles get full credit, secondaries half — a bench set counts 1 for chest, ½ for triceps.</div>
       {pieData.length ? (
         <Suspense fallback={<ChartFallback h={230} />}><MusclePie data={pieData} /></Suspense>
@@ -2891,8 +2932,10 @@ function RecordsTab({ data, exMap, setData }) {
     return { ...d, prNotes: notes };
   });
   const units = useUnit();
+  const [minimized, setMinimized] = useState(() => localStorage.getItem("lt-records-minimized") === "1");
+  const setMinimizedSaved = (value) => { setMinimized(value); localStorage.setItem("lt-records-minimized", value ? "1" : "0"); };
   const rows = useMemo(() => data.exercises.map(ex => {
-    const entries = data.log.filter(e => e.exercise===ex.name);
+    const entries = data.log.filter(e => e.exercise===ex.name && !e.quick && (e.reps||0)>0);
     if (!entries.length) return { ...ex, empty:true };
     const isBW = ex.type==="Bodyweight";
     const mostReps = Math.max(...entries.map(e=>e.reps));
@@ -2924,13 +2967,24 @@ function RecordsTab({ data, exMap, setData }) {
     .filter(r => !q || r.name.toLowerCase().includes(q))
     .slice().sort((a,b)=>b.lastDone.localeCompare(a.lastDone) || a.name.localeCompare(b.name));
 
+  if (minimized) return (
+    <div className="card" style={{display:"flex", alignItems:"center", gap:10, padding:"11px 14px"}}>
+      <span style={{fontSize:17}}>🏆</span>
+      <div style={{minWidth:0, flex:1}}><div className="h" style={{fontSize:14, color:T.tealDk}}>Personal records</div><div style={{fontSize:11, color:T.sub}}>{logged.length} lift{logged.length===1?"":"s"} with saved records</div></div>
+      <button onClick={()=>setMinimizedSaved(false)} style={{flexShrink:0, background:T.input, border:`1px solid ${T.line}`, color:T.green, fontWeight:800, fontSize:12, padding:"6px 12px", borderRadius:99}}>Show</button>
+    </div>
+  );
+
   const statBox = { background:T.input, border:`1px solid ${T.line}`, borderRadius:10, padding:"8px 10px" };
   const statL = { fontSize:10.5, color:T.sub, textTransform:"uppercase", letterSpacing:".6px", fontWeight:600 };
   const statV = { fontSize:15, fontWeight:700, color:T.ink, marginTop:2 };
 
   return (<>
     <div className="card">
-      <div className="h" style={{fontSize:19, color:T.tealDk, marginBottom:2}}>🏆 Personal records</div>
+      <div style={{display:"flex", alignItems:"center", gap:8, marginBottom:2}}>
+        <div className="h" style={{fontSize:19, color:T.tealDk, flex:1}}>🏆 Personal records</div>
+        <button onClick={()=>setMinimizedSaved(true)} title="Minimize personal records" aria-label="Minimize personal records" style={{background:"none", border:"none", color:T.sub, fontSize:15, lineHeight:1, padding:"4px 5px"}}>➖</button>
+      </div>
       <div style={{fontSize:12.5, color:T.sub, marginBottom:12}}>Best-ever numbers per lift, in {uLabel(units)} — freshest first. Tap a lift for the full breakdown.</div>
       <input value={recQ} onChange={e=>setRecQ(e.target.value)} placeholder="🔍 Search lifts…"
         autoCapitalize="none" autoCorrect="off" spellCheck={false} style={{marginBottom:8}} />
