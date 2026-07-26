@@ -1452,7 +1452,10 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
           <label style={lbl}>🏢 Gym <span style={{fontWeight:400, color:T.sub}}>(this move's resistance varies by gym)</span>
             <GymPicker gyms={gyms} value={gymId} onChange={setGymId} onCreate={addGym} />
           </label>
-          {!gymId && <div style={{fontSize:11.5, color:AMBER, marginTop:3}}>Pick (or add) a gym so this set compares fairly against others at the same place.</div>}
+          {!gymId && <div style={{fontSize:11.5, color:AMBER, marginTop:4, lineHeight:1.45}}>
+            Pick (or add) a gym so this set compares fairly against others at the same place.
+            <span style={{display:"block", color:T.sub, marginTop:2}}>Don’t want gym tracking? Remove it anytime in <b style={{color:T.ink}}>Settings → Features → I train at more than one gym</b>.</span>
+          </div>}
         </div>
       )}
       <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:10}}>
@@ -1743,9 +1746,18 @@ function QuickWorkoutLogger({ defaultDate, exercises, onSave, onAddExercise, min
         </div>
         <button onClick={save} disabled={!total} className="btn-primary" style={{width:"100%", padding:"13px", marginTop:11, fontSize:14.5, opacity:total?1:.45}}>Save {total || ""} set{total===1?"":"s"}{selected.length?` · ${selected.length<=2?selected.join(" + "):`${selected.length} muscle groups`}`:""}</button>
         {saved && <div style={{fontSize:12.5,color:T.green,fontWeight:800,textAlign:"center",marginTop:8}}>✓ Quick workout saved everywhere</div>}
-        <details style={{marginTop:11}}>
-          <summary style={{cursor:"pointer",color:T.sub,fontSize:11.5,fontWeight:750,listStyle:"none"}}>Know the exercises? Add by exercise instead ▾</summary>
-          <div style={{marginTop:8}}><QuickAddSets exercises={exercises} onAdd={onAddExercise} /></div>
+        <details style={{marginTop:12}}>
+          <summary style={{cursor:"pointer", listStyle:"none", background:"linear-gradient(110deg,rgba(var(--accent-rgb),.14),rgba(var(--accent-rgb),.04))", border:`1px solid rgba(var(--accent-rgb),.42)`, borderRadius:12, padding:"11px 12px", userSelect:"none"}}>
+            <span style={{display:"flex", alignItems:"center", gap:10}}>
+              <span style={{display:"grid", placeItems:"center", width:32, height:32, borderRadius:9, flexShrink:0, background:T.mint, color:T.green, fontSize:16}}>🏋️</span>
+              <span style={{flex:1, minWidth:0}}>
+                <span style={{display:"block", color:T.green, fontSize:13.5, fontWeight:850, lineHeight:1.2}}>Know the exercises?</span>
+                <span style={{display:"block", color:T.sub, fontSize:11.5, fontWeight:650, marginTop:2}}>Add the exercise and exact set count instead</span>
+              </span>
+              <span style={{color:T.green, fontSize:15, fontWeight:900, flexShrink:0}}>▾</span>
+            </span>
+          </summary>
+          <div style={{marginTop:8, background:T.input, border:`1px solid ${T.line}`, borderRadius:12, padding:10}}><QuickAddSets exercises={exercises} onAdd={onAddExercise} /></div>
         </details>
       </>}
     </div>
@@ -1763,19 +1775,23 @@ function QuickAddSets({ exercises, onAdd }) {
   const [n, setN] = useState("3");
   const add = () => { if (!ex) return; onAdd(ex, parseInt(n)); setEx(""); };
   return (
-    <div style={{display:"flex", gap:8, flexWrap:"wrap", alignItems:"center", width:"100%"}}>
-      <select value={ex} onChange={e=>setEx(e.target.value)} aria-label="Exercise to add sets for" style={{flex:"1 1 190px", minWidth:0, width:"100%", maxWidth:"100%", overflow:"hidden", textOverflow:"ellipsis"}}>
-        <option value="">— pick an exercise —</option>
-        {MUSCLES.map(m => (
-          <optgroup key={m} label={m}>
-            {exercises.filter(x=>muscleOf(x)===m).map(x=><option key={x.name}>{x.name}</option>)}
-          </optgroup>
-        ))}
-      </select>
-      <select value={n} onChange={e=>setN(e.target.value)} aria-label="Number of sets" style={{flex:"0 0 92px", minWidth:92, width:92, textAlign:"center"}}>
-        {Array.from({length:10}, (_,i)=>i+1).map(v => <option key={v} value={v}>{v} set{v>1?"s":""}</option>)}
-      </select>
-      <button onClick={add} disabled={!ex} style={{background:T.green, color:"#000", fontWeight:700, fontSize:13, padding:"9px 16px", borderRadius:9, opacity:ex?1:0.45, flexShrink:0}}>+ Add</button>
+    <div style={{display:"flex", gap:9, flexWrap:"wrap", alignItems:"flex-end", width:"100%"}}>
+      <label style={{...lbl, flex:"1 1 220px", minWidth:0}}>Exercise
+        <select value={ex} onChange={e=>setEx(e.target.value)} aria-label="Exercise to add sets for" style={{width:"100%", maxWidth:"100%", height:44, marginTop:5, fontSize:13.5, fontWeight:700, overflow:"hidden", textOverflow:"ellipsis", borderColor:ex?T.green:T.line}}>
+          <option value="">— pick an exercise —</option>
+          {MUSCLES.map(m => (
+            <optgroup key={m} label={m}>
+              {exercises.filter(x=>muscleOf(x)===m).map(x=><option key={x.name}>{x.name}</option>)}
+            </optgroup>
+          ))}
+        </select>
+      </label>
+      <label style={{...lbl, flex:"1 1 104px", maxWidth:130}}>Sets
+        <select value={n} onChange={e=>setN(e.target.value)} aria-label="Number of sets" style={{width:"100%", height:44, marginTop:5, textAlign:"center", fontSize:14.5, fontWeight:900, color:T.green, background:T.card, border:`1px solid ${T.green}`}}>
+          {Array.from({length:10}, (_,i)=>i+1).map(v => <option key={v} value={v}>{v} set{v>1?"s":""}</option>)}
+        </select>
+      </label>
+      <button onClick={add} disabled={!ex} style={{height:44, background:T.green, color:"#000", fontWeight:850, fontSize:13.5, padding:"0 19px", borderRadius:10, opacity:ex?1:0.45, flex:"1 1 92px", maxWidth:130}}>+ Add</button>
     </div>
   );
 }
@@ -4798,7 +4814,7 @@ function SettingsModal({ user, username, data, setData, startTab, setStartTab, t
           <FeatureToggle label="Workout routines" on={routinesOn} setOn={setRoutinesOn}
             desc="Adds a Routines section to the Log tab: build templates like “Push Day,” then tap Start to log them exercise-by-exercise. Off by default. Turning it off just hides it — your saved routines stay." />
           <FeatureToggle label="I train at more than one gym" on={multiGymOn} setOn={setMultiGymOn}
-            desc="For machine/cable exercises only (Cable Row, Leg Press, Lat Pulldown, etc.) — a pin-loaded machine's real resistance isn't standardized like a barbell's, so the same number can feel totally different at another gym. Turn this on to tag which gym a set was at; your graphs for those exercises then color-code by gym and let you filter, instead of a gym switch looking like you got weaker. Off by default — barbell/dumbbell/bodyweight moves are unaffected either way." />
+            desc="Off by default. Turn it on only if you want machine/cable sets tagged by location, since the same stack can feel different at another gym. Turn this switch back off anytime to remove every gym prompt and filter; your lifting history stays safe. Barbell, dumbbell, and bodyweight moves are never affected." />
           {/* Water + Streaks toggles belong to the Macros feature — shown only when it's unlocked */}
           {nutritionOn && (<>
             <FeatureToggle label="Workout streaks" on={streaksOn} setOn={setStreaksOn}
@@ -6589,17 +6605,41 @@ function FriendsTab({ user, data, setData, exMap = {}, nutritionOn, streaksOn, i
   const [members, setMembers] = useState(null);
   const [states, setStates] = useState({});          // user_id -> tracker data
   const [proIds, setProIds] = useState([]);          // Pro members you can see (for the PRO badge)
+  const [memberMenu, setMemberMenu] = useState(null); // compact profile menu anchored to a tapped name
   const isProUser = (uid) => proIds.includes(uid);
   useEffect(() => { listProUserIds().then(setProIds).catch(()=>{}); }, [members]);
+  useEffect(() => { setMemberMenu(null); }, [active?.id]);
+  useEffect(() => {
+    if (!memberMenu) return;
+    const onKey = (e) => { if (e.key === "Escape") setMemberMenu(null); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [memberMenu]);
+  const openMemberMenu = (event, uid, name) => {
+    event.stopPropagation();
+    if (!members?.some(m=>m.user_id===uid)) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const menuW = 224, menuH = 108, gap = 7, edge = 10;
+    const left = Math.max(edge, Math.min(rect.left, window.innerWidth - menuW - edge));
+    const below = rect.bottom + gap;
+    const top = below + menuH <= window.innerHeight - edge ? below : Math.max(edge, rect.top - menuH - gap);
+    setMemberMenu({ uid, name, left, top });
+  };
   // Render a member's name with the theme accent + a PRO badge if they're Pro — used
-  // EVERYWHERE a friend's name shows, so Pro status is unmistakable and aspirational.
+  // everywhere a friend's name shows. Tapping it opens the same compact profile menu.
   const nameEl = (uid, name, { you = false, weight, size } = {}) => {
     const pro = isProUser(uid);
     // inline-flex so a long name ellipsizes on its own, while "(you)" + the Pro badge
     // stay pinned (flex-shrink:0) and never get clipped or pushed under the bar
     return (
       <span style={{ display: "inline-flex", alignItems: "center", gap: 4, minWidth: 0, maxWidth: "100%", verticalAlign: "bottom" }}>
-        <span style={{ color: (pro || you) ? T.green : "inherit", fontWeight: weight ?? (you ? 800 : 600), fontSize: size, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}{you ? " (you)" : ""}</span>
+        <span role="button" tabIndex={0} aria-haspopup="menu" aria-expanded={memberMenu?.uid===uid}
+          title={`Open ${name}'s profile menu`}
+          onClick={e=>openMemberMenu(e, uid, name)}
+          onKeyDown={e=>{ if (e.key==="Enter" || e.key===" ") { e.preventDefault(); openMemberMenu(e, uid, name); } }}
+          style={{ color:T.green, cursor:"pointer", fontWeight:weight ?? (you ? 800 : 650), fontSize:size, minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", textDecoration:"underline", textDecorationColor:"rgba(var(--accent-rgb),.38)", textUnderlineOffset:3 }}>
+          {name}{you ? " (you)" : ""}
+        </span>
         {pro && <span style={{ flexShrink: 0, display: "inline-flex" }}><ProBadge small /></span>}
       </span>
     );
@@ -7016,10 +7056,10 @@ function FriendsTab({ user, data, setData, exMap = {}, nutritionOn, streaksOn, i
       const st = states[m.user_id]; if (!st) continue;
       const trainDays = new Set([...(st.log||[]).map(e=>e.date), ...(st.cardio||[]).map(e=>e.date)]);
       if (trainDays.size > 0 && (!sessionsBest || trainDays.size > sessionsBest.v))
-        sessionsBest = { v:trainDays.size, text:`${trainDays.size} sessions`, who:m.username };
+        sessionsBest = { v:trainDays.size, text:`${trainDays.size} sessions`, who:m.username, uid:m.user_id };
       const setCount = (st.log || []).reduce((sum,e)=>sum+setCountOf(e),0);
       if (setCount > 0 && (!setsBest || setCount > setsBest.v))
-        setsBest = { v:setCount, text:`${setCount.toLocaleString()} sets`, who:m.username };
+        setsBest = { v:setCount, text:`${setCount.toLocaleString()} sets`, who:m.username, uid:m.user_id };
       // biggest all-time estimated-1RM across the big lifts (progress, not just who's heaviest today).
       // Uses the rep cap so a 30-rep burnout set can't fake a huge 1RM.
       let top1rm = 0, top1rmLift = "";
@@ -7028,20 +7068,20 @@ function FriendsTab({ user, data, setData, exMap = {}, nutritionOn, streaksOn, i
         if (est != null && est > top1rm) { top1rm = est; top1rmLift = lift; }
       }
       if (top1rm > 0 && (!prBest || top1rm > prBest.v))
-        prBest = { v:top1rm, text:`${Math.round(dispW(top1rm,units)).toLocaleString()} ${uLabel(units)} ${LIFT_SHORT[top1rmLift]||top1rmLift}`, who:m.username };
+        prBest = { v:top1rm, text:`${Math.round(dispW(top1rm,units)).toLocaleString()} ${uLabel(units)} ${LIFT_SHORT[top1rmLift]||top1rmLift}`, who:m.username, uid:m.user_id };
       const s = computeStreak(st.log, st.cardio);
       if (s.best > 0 && (!streakBest || s.best > streakBest.v))
-        streakBest = { v:s.best, text:`${s.best} week${s.best===1?"":"s"} in a row`, who:m.username };
+        streakBest = { v:s.best, text:`${s.best} week${s.best===1?"":"s"} in a row`, who:m.username, uid:m.user_id };
       const byWeek = {};
       for (const d of new Set([...(st.log||[]).map(e=>e.date), ...(st.cardio||[]).map(e=>e.date)]))
         byWeek[weekStart(d)] = (byWeek[weekStart(d)] || 0) + 1;
       for (const [wk, c] of Object.entries(byWeek)) {
         if (!weekMost || c > weekMost.v)
-          weekMost = { v:c, text:`${c} day${c===1?"":"s"} (week of ${fmtDate(wk)})`, who:m.username };
+          weekMost = { v:c, text:`${c} day${c===1?"":"s"} (week of ${fmtDate(wk)})`, who:m.username, uid:m.user_id };
       }
       for (const c of (st.cardio || [])) {
         if (c.duration && (!cardioLong || c.duration > cardioLong.v))
-          cardioLong = { v:c.duration, text:`${c.duration} min ${c.activity}`, who:m.username };
+          cardioLong = { v:c.duration, text:`${c.duration} min ${c.activity}`, who:m.username, uid:m.user_id };
       }
     }
     return [
@@ -7176,6 +7216,24 @@ function FriendsTab({ user, data, setData, exMap = {}, nutritionOn, streaksOn, i
   /* ---- group view ---- */
   if (active) {
     return (<>
+      {memberMenu && createPortal(
+        <div onPointerDown={()=>setMemberMenu(null)} style={{position:"fixed", inset:0, zIndex:85, background:"transparent"}}>
+          <div role="menu" aria-label={`${memberMenu.name} profile menu`} onPointerDown={e=>e.stopPropagation()}
+            style={{position:"fixed", left:memberMenu.left, top:memberMenu.top, width:224, background:T.card, border:`1px solid ${T.green}`, borderRadius:13, padding:9, boxShadow:"0 14px 38px rgba(0,0,0,.58)", animation:"calPop .18s ease-out both"}}>
+            <div style={{display:"flex", alignItems:"center", gap:8, padding:"3px 5px 8px", minWidth:0}}>
+              <span style={{display:"grid", placeItems:"center", width:28, height:28, borderRadius:9, flexShrink:0, background:T.mint, color:T.green}}>👤</span>
+              <span style={{minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", color:T.green, fontSize:13.5, fontWeight:850}}>{memberMenu.name}{memberMenu.uid===user.id?" (you)":""}</span>
+            </div>
+            <button role="menuitem" onClick={()=>{
+              const picked = members?.find(m=>m.user_id===memberMenu.uid);
+              setMemberMenu(null);
+              if (picked) { setProfileTab("lifting"); setProfile(picked); }
+            }} style={{width:"100%", display:"flex", alignItems:"center", justifyContent:"space-between", background:"rgba(var(--accent-rgb),.12)", color:T.ink, border:`1px solid ${T.line}`, borderRadius:9, padding:"9px 11px", fontSize:13, fontWeight:800}}>
+              <span>View profile</span><span style={{color:T.green}}>→</span>
+            </button>
+          </div>
+        </div>, document.body
+      )}
       {recap && <MonthlyRecapModal recap={recap} groupName={active.name} emoji={active.emoji} onClose={closeRecap} />}
       {facts && <StepFactsModal name={facts.name} isMe={facts.uid===user.id} map={memberSteps[facts.uid]} rank={(stepBoard.rows.findIndex(r=>r.uid===facts.uid)+1) || null} onClose={()=>setFacts(null)} />}
       {squadCel && (
@@ -7403,7 +7461,7 @@ function FriendsTab({ user, data, setData, exMap = {}, nutritionOn, streaksOn, i
               <tbody>{records.map(r=>(
                 <tr key={r.label}>
                   <td>{r.icon} {r.label}</td>
-                  <td style={{color:T.green, fontWeight:700}}>{r.who}</td>
+                  <td>{nameEl(r.uid, r.who, { weight:700 })}</td>
                   <td>{r.text}</td>
                 </tr>
               ))}</tbody></table>
