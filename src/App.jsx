@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "./lib/storage.js";
-import AuthScreen, { PasswordRecoveryScreen } from "./AuthScreen.jsx";
+import AuthScreen, { AccountDeletionConfirmationScreen, PasswordRecoveryScreen } from "./AuthScreen.jsx";
 import LiftingTracker from "./LiftingTracker.jsx";
 import LoadingScreen from "./LoadingScreen.jsx";
 
@@ -23,6 +23,9 @@ export default function App() {
   }
   if (!session) return <AuthScreen />;
   if (recovering) return <PasswordRecoveryScreen onDone={() => setRecovering(false)} />;
+  const deletionToken = new URLSearchParams(location.search).get("delete_account");
+  if (deletionToken) return <AccountDeletionConfirmationScreen user={session.user} token={deletionToken}
+    onCancel={() => { history.replaceState({},"",`${location.origin}${import.meta.env.BASE_URL}`); location.reload(); }} />;
   // key forces a clean remount (fresh data load) when a different user signs in
   return <LiftingTracker key={session.user.id} user={session.user} />;
 }

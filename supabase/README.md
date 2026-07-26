@@ -11,6 +11,10 @@ Public email signup is intentionally off until both services below are configure
 3. Test signup, email confirmation, password recovery, legacy backup-code recovery, and abuse throttling.
 4. Set the Supabase Auth `disable_signup` setting to `false` and the deployment variable `VITE_PUBLIC_SIGNUPS_ENABLED` to `true`.
 
+## Deletion email
+
+The `account-deletion` Edge Function sends a 30-minute confirmation link and requires the same user to be signed in before it deletes anything. Configure the Edge Function secrets `RESEND_API_KEY`, `DELETE_EMAIL_FROM`, and `PUBLIC_SITE_URL`, deploy the function, test it, and only then set `VITE_ACCOUNT_EMAIL_ENABLED` to `true`. The direct database deletion RPC is intentionally removed.
+
 Never put an SMTP password, Turnstile secret, Supabase service-role key, or management token in a frontend environment variable or GitHub Pages bundle. The Supabase anon key is designed to be public; authorization is enforced by RLS and narrowly granted RPC functions.
 
 ## Apple Health

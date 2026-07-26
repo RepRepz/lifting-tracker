@@ -1,6 +1,6 @@
 import { useState, useEffect, useLayoutEffect, useMemo, useRef, lazy, Suspense, Fragment, createContext, useContext } from "react";
 import { createPortal } from "react-dom";
-import { supabase, loadUserState, loadSharedUserStates, saveUserState, listMyGroups, listMembers, createGroup, joinGroup, leaveGroup, listReactions, addReaction, removeReaction, lastActiveFor, setGroupEmoji, resetInviteCode, listCloudBackups, getCloudBackup, getStepToken, rotateStepToken, disconnectSteps, stepsFor, lastStepSync, createDuel, listDuels, deleteDuel, acceptDuel, declineDuel, forfeitDuel, requestDuelCancel, clearDuelCancel, setGroupRecordLifts, getMyProStatus, listProUserIds, generateBackupCodes, hasBackupCodes, deleteMyAccount, clearLocalAccountData } from "./lib/storage.js";
+import { supabase, loadUserState, loadSharedUserStates, saveUserState, listMyGroups, listMembers, createGroup, joinGroup, leaveGroup, listReactions, addReaction, removeReaction, lastActiveFor, setGroupEmoji, resetInviteCode, getStepToken, rotateStepToken, disconnectSteps, stepsFor, lastStepSync, createDuel, listDuels, deleteDuel, acceptDuel, declineDuel, forfeitDuel, requestDuelCancel, clearDuelCancel, setGroupRecordLifts, getMyProStatus, listProUserIds, generateBackupCodes, hasBackupCodes, requestAccountDeletion, clearLocalAccountData } from "./lib/storage.js";
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -15,6 +15,7 @@ const TrendChart = lazy(() => import("./charts.jsx").then(m => ({ default: m.Tre
 const BodyChart = lazy(() => import("./charts.jsx").then(m => ({ default: m.BodyChart })));
 const MusclePie = lazy(() => import("./charts.jsx").then(m => ({ default: m.MusclePie })));
 const ChartFallback = ({ h }) => <div className="skeleton" style={{ height: h, borderRadius:12 }} />;
+const ACCOUNT_EMAIL_ENABLED = import.meta.env.VITE_ACCOUNT_EMAIL_ENABLED === "true";
 
 /* ---------- seed exercise library ----------
    Each entry: [name, [primary muscles — full credit], [secondary muscles — half credit]]
@@ -523,16 +524,6 @@ export default function LiftingTracker({ user }) {
       return; // NOTHING is written (device or cloud) until the user decides
     }
     allowShrink.current = false;
-    // Rolling backups: first save of each day keeps a snapshot on this device (last 7 days),
-    // restorable from Settings → Data safety.
-    try {
-      const bkey = `lt-bk-${user.id}-${todayStr()}`;
-      if (!localStorage.getItem(bkey)) {
-        localStorage.setItem(bkey, localStorage.getItem(cacheKey) || JSON.stringify(data));
-        const mine = Object.keys(localStorage).filter(k => k.startsWith(`lt-bk-${user.id}-`)).sort();
-        while (mine.length > 7) localStorage.removeItem(mine.shift());
-      }
-    } catch {}
     // Always land the change on this device instantly; the cloud follows.
     localStorage.setItem(cacheKey, JSON.stringify(data));
     localStorage.setItem(pendKey, "1");
@@ -4850,11 +4841,6 @@ function SettingsModal({ user, username, data, setData, startTab, setStartTab, t
           <LegalLinksCard />
         </SettingsSection>
 
-        <SettingsSection icon="🛟" title="Data safety" desc="Automatic backups — in the cloud and on this device">
-          <CloudBackupsCard username={username} setData={setData} />
-          <BackupsCard user={user} username={username} setData={setData} />
-        </SettingsSection>
-
         <SettingsSection icon="🔐" title="Account & security" desc="Password, recovery and account control">
           <ChangePasswordCard />
           <BackupCodesCard user={user} />
@@ -5693,20 +5679,20 @@ function BackupCodesCard({ user }) {
   const legacy=user.email?.endsWith("@lifting.local");
   useEffect(()=>{hasBackupCodes().then(setReady).catch(()=>setReady(false));},[]);
   const generate=async()=>{setBusy(true);setErr("");try{const next=await generateBackupCodes();setCodes(next);setReady(true);}catch(e){setErr(String(e?.message||e));}finally{setBusy(false);}};
-  const copy=async()=>{try{await navigator.clipboard.writeText(codes.join("\n"));setCopied(true);setTimeout(()=>setCopied(false),1600);}catch{setErr("Copy failed — save each code somewhere private.");}};
+  const copy=async()=>{try{await navigator.clipboard.writeText(codes[0]||"");setCopied(true);setTimeout(()=>setCopied(false),1600);}catch{setErr("Copy failed — save the code somewhere private.");}};
   return <div style={{...sCard}}>
-    <div style={{fontSize:14,fontWeight:800,color:T.ink,marginBottom:3}}>🛟 One-time backup codes</div>
+    <div style={{fontSize:14,fontWeight:800,color:T.ink,marginBottom:3}}>🛟 One-time backup code</div>
     <div style={{fontSize:12,color:T.sub,lineHeight:1.5,marginBottom:10}}>
-      {legacy?"Your existing username account does not need an email. These codes are how you recover it if you forget the password.":"Your verified email is the main recovery method. Backup codes are an optional offline fallback."}
-      {' '}Generating a new set permanently replaces the old set.
+      {legacy?"Your existing username account does not need an email. This code lets you recover it once if you forget the password.":"Your verified email is the main recovery method. This code is an optional one-time fallback."}
+      {' '}Generating a new code permanently replaces the old one.
     </div>
     {ready===false&&legacy&&<div style={{background:T.dangerBg,color:T.danger,padding:"9px 11px",borderRadius:9,fontSize:12.5,fontWeight:700,marginBottom:9}}>Recovery is not protected yet. Generate and save your codes now.</div>}
     {codes.length>0&&<div style={{background:T.input,border:`1px solid ${T.green}`,borderRadius:10,padding:11,marginBottom:10}}>
-      <div style={{fontSize:11,color:T.danger,fontWeight:800,marginBottom:8}}>Shown once. Store these in a password manager.</div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,fontFamily:"ui-monospace,monospace",fontSize:12.5}}>{codes.map(c=><code key={c} style={{color:T.ink}}>{c}</code>)}</div>
-      <button onClick={copy} style={{marginTop:10,background:T.green,color:"#000",padding:"8px 12px",fontWeight:800,fontSize:12.5}}>{copied?"Copied ✓":"Copy all codes"}</button>
+      <div style={{fontSize:11,color:T.danger,fontWeight:800,marginBottom:8}}>Shown once. Store it in a password manager.</div>
+      <code style={{display:"block",color:T.ink,fontFamily:"ui-monospace,monospace",fontSize:14,letterSpacing:.4}}>{codes[0]}</code>
+      <button onClick={copy} style={{marginTop:10,background:T.green,color:"#000",padding:"8px 12px",fontWeight:800,fontSize:12.5}}>{copied?"Copied ✓":"Copy code"}</button>
     </div>}
-    <button onClick={generate} disabled={busy} style={{background:T.input,color:T.ink,border:`1px solid ${T.line}`,padding:"9px 14px",fontSize:13,fontWeight:750,opacity:busy ? 0.6 : 1}}>{busy?"Generating…":ready?"Replace my codes":"Generate backup codes"}</button>
+    <button onClick={generate} disabled={busy} style={{background:T.input,color:T.ink,border:`1px solid ${T.line}`,padding:"9px 14px",fontSize:13,fontWeight:750,opacity:busy ? 0.6 : 1}}>{busy?"Generating…":ready?"Replace my code":"Generate backup code"}</button>
     {err&&<div style={{color:T.danger,fontSize:12.5,marginTop:8}}>{err}</div>}
   </div>;
 }
@@ -5725,15 +5711,15 @@ function PrivacySharingCard({ data, setData }) {
 }
 
 function DeleteAccountCard({ user }) {
-  const [confirm,setConfirm]=useState(false); const [typed,setTyped]=useState(""); const [busy,setBusy]=useState(false); const [err,setErr]=useState("");
-  const remove=async()=>{if(typed!=="DELETE")return;setBusy(true);setErr("");try{await deleteMyAccount();clearLocalAccountData(user.id);await supabase.auth.signOut({scope:"local"});}catch(e){setErr(String(e?.message||e));setBusy(false);}};
+  const [busy,setBusy]=useState(false); const [err,setErr]=useState(""); const [sent,setSent]=useState(false);
+  const legacy=user.email?.endsWith("@lifting.local");
+  const request=async()=>{setBusy(true);setErr("");try{await requestAccountDeletion();setSent(true);}catch(e){setErr(String(e?.message||e));}finally{setBusy(false);}};
   return <div style={{...sCard,border:`1px solid ${T.danger}`}}>
     <div style={{fontSize:14,fontWeight:800,color:T.danger,marginBottom:4}}>Permanently delete account</div>
-    <div style={{fontSize:12,color:T.sub,lineHeight:1.5}}>Deletes your login, tracker data, backups, groups you own, memberships, reactions, duels, step token and step history. This cannot be undone.</div>
-    {!confirm?<button onClick={()=>setConfirm(true)} style={{marginTop:10,background:T.dangerBg,color:T.danger,padding:"9px 13px",fontSize:13,fontWeight:800}}>Delete my account…</button>:<div style={{marginTop:10}}>
-      <label style={lbl}>Type DELETE to confirm<input value={typed} onChange={e=>setTyped(e.target.value)} autoCapitalize="characters" /></label>
-      <div style={{display:"flex",gap:8,marginTop:8}}><button onClick={remove} disabled={busy||typed!=="DELETE"} style={{background:T.danger,color:"#fff",padding:"9px 13px",fontSize:13,fontWeight:800,opacity:(busy||typed!=="DELETE") ? 0.5 : 1}}>{busy?"Deleting…":"Delete forever"}</button><button onClick={()=>{setConfirm(false);setTyped("");}} style={{background:T.input,color:T.sub,padding:"9px 13px",fontSize:13}}>Cancel</button></div>
-    </div>}
+    <div style={{fontSize:12,color:T.sub,lineHeight:1.5}}>Deletion is never immediate. We email a private confirmation link first; the final confirmation permanently removes your login and app data.</div>
+    {legacy?<div style={{marginTop:9,fontSize:12.5,color:T.sub}}>This username-only account has no delivery email. It can stay email-free; choose the legacy deletion policy before this option is activated.</div>:
+      sent?<div style={{marginTop:9,fontSize:12.5,color:T.green,fontWeight:750}}>Confirmation sent to {user.email}. The link expires in 30 minutes.</div>:
+      <button onClick={request} disabled={busy||!ACCOUNT_EMAIL_ENABLED} style={{marginTop:10,background:T.dangerBg,color:T.danger,padding:"9px 13px",fontSize:13,fontWeight:800,opacity:ACCOUNT_EMAIL_ENABLED?1:.55}}>{busy?"Sending…":ACCOUNT_EMAIL_ENABLED?"Email deletion confirmation":"Email confirmation is being activated"}</button>}
     {err&&<div style={{color:T.danger,fontSize:12.5,marginTop:8}}>{err}</div>}
   </div>;
 }

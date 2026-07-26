@@ -33,26 +33,6 @@ export async function saveUserState(userId, value) {
   if (error) throw error;
 }
 
-/* ---------- cloud backups (daily automatic snapshots, ~30 days) ---------- */
-
-/** Lists the signed-in user's cloud snapshots: [{ day, sets, weighins, cardio }], newest first. */
-export async function listCloudBackups() {
-  const { data, error } = await supabase.rpc("list_state_history");
-  if (error) throw error;
-  return data ?? [];
-}
-
-/** Fetches one snapshot's full data by day ("YYYY-MM-DD"); RLS limits it to your own. */
-export async function getCloudBackup(day) {
-  const { data, error } = await supabase
-    .from("user_state_history")
-    .select("value")
-    .eq("day", day)
-    .maybeSingle();
-  if (error) throw error;
-  return data?.value ?? null;
-}
-
 /* ---------- steps (Apple Health via the phone Shortcut) ---------- */
 
 /** Returns (and lazily creates) the signed-in user's secret step-upload code. */
@@ -189,8 +169,13 @@ export async function resetPasswordWithBackupCode(username, code, newPassword) {
   return data ?? { ok: false, code: "invalid" };
 }
 
-export async function deleteMyAccount() {
-  const { error } = await supabase.rpc("delete_my_account");
+export async function requestAccountDeletion() {
+  const { error } = await supabase.functions.invoke("account-deletion", { body: { action:"request" } });
+  if (error) throw error;
+}
+
+export async function confirmAccountDeletion(token) {
+  const { error } = await supabase.functions.invoke("account-deletion", { body: { action:"confirm", token } });
   if (error) throw error;
 }
 

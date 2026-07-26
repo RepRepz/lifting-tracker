@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { supabase, resetPasswordWithBackupCode } from "./lib/storage.js";
+import { supabase, resetPasswordWithBackupCode, confirmAccountDeletion, clearLocalAccountData } from "./lib/storage.js";
 import { LegalModal } from "./Legal.jsx";
 
 const C = {
@@ -79,6 +79,23 @@ export function PasswordRecoveryScreen({ onDone }) {
     {error&&<ErrorBox>{error}</ErrorBox>}
     <Submit busy={busy} label="Update password" />
   </form></AuthShell>;
+}
+
+export function AccountDeletionConfirmationScreen({ user, token, onCancel }) {
+  const [busy,setBusy]=useState(false); const [error,setError]=useState("");
+  const remove=async()=>{setBusy(true);setError("");try{
+    await confirmAccountDeletion(token);
+    clearLocalAccountData(user.id);
+    history.replaceState({},"",`${location.origin}${import.meta.env.BASE_URL}`);
+    await supabase.auth.signOut({scope:"local"});
+  }catch(err){setError(String(err?.message||err));setBusy(false);}};
+  return <AuthShell legal={null}><div style={{...cardStyle,border:`1px solid ${C.danger}`}}>
+    <div style={{...titleStyle,color:C.danger}}>Confirm account deletion</div>
+    <div style={{fontSize:13,color:C.sub,lineHeight:1.55}}>This permanently deletes your login and all data connected to it. The emailed link expires after 30 minutes.</div>
+    {error&&<ErrorBox>{error}</ErrorBox>}
+    <button onClick={remove} disabled={busy} style={{width:"100%",marginTop:14,padding:12,border:0,borderRadius:24,background:C.danger,color:"#fff",fontWeight:850,fontSize:15,opacity:busy ? 0.6 : 1}}>{busy?"Deleting…":"Permanently delete my account"}</button>
+    <button onClick={onCancel} disabled={busy} style={{width:"100%",marginTop:9,padding:10,background:C.input,color:C.sub,border:`1px solid ${C.line}`,fontWeight:750}}>Keep my account</button>
+  </div></AuthShell>;
 }
 
 function ErrorBox({children}) { return <div style={{background:C.dangerBg,color:C.danger,borderRadius:8,padding:"9px 12px",fontSize:13.5,marginTop:12}}>{children}</div>; }

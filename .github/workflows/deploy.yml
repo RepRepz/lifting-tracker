@@ -33,6 +33,7 @@ jobs:
           VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
           VITE_TURNSTILE_SITE_KEY: ${{ vars.VITE_TURNSTILE_SITE_KEY }}
           VITE_PUBLIC_SIGNUPS_ENABLED: ${{ vars.VITE_PUBLIC_SIGNUPS_ENABLED }}
+          VITE_ACCOUNT_EMAIL_ENABLED: ${{ vars.VITE_ACCOUNT_EMAIL_ENABLED }}
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
