@@ -5758,12 +5758,12 @@ function coachTips(data, exMap, units) {
   }
   progPool.sort((a, b) => (BIG_LIFT_SET.has(b.ex) - BIG_LIFT_SET.has(a.ex)));
   for (const p of progPool.slice(0, 2)) {
-    const recent = `${dispW(p.cur, units)}${uLabel(units)} for ${p.repsList.map(r=>`${r} reps`).join(", ")} across your last ${p.sessions} sessions`;
+    const recent = `${dispW(p.cur, units)}${uLabel(units)} × ${p.repsList.join(" / ")} over ${p.sessions} sessions`;
     const action = p.failed
-      ? `Keep ${dispW(p.cur, units)}${uLabel(units)} next time and aim to match it without reaching failure.`
+      ? `Repeat the weight without hitting failure.`
       : p.canAdd
-        ? `Try ${dispW(p.next, units)}${uLabel(units)} for ${p.nextRepText} next session.`
-        : `If you had about 1–2 clean reps left, try ${dispW(p.next, units)}${uLabel(units)} for ${p.nextRepText}; otherwise keep the load and add a clean rep.`;
+        ? `Next: ${dispW(p.next, units)}${uLabel(units)} for ${p.nextRepText}.`
+        : `Had 1–2 reps left? Try ${dispW(p.next, units)}${uLabel(units)}. If not, add 1 clean rep.`;
     tips.push({ key: `prog-${p.ex}-${p.cur}-${p.curReps}`, icon: "📈", cat: "Progression",
       text: `${p.ex}: ${recent}. ${action}`,
       basis: `${goalMode === "strength" ? "Strength" : "Hypertrophy"} mode · warm-ups excluded · effort ${p.failed || p.canAdd ? "was logged" : "wasn't logged"}` });
@@ -5786,7 +5786,7 @@ function coachTips(data, exMap, units) {
       const weeksTo = Math.ceil((milestone - cur) / slope);
       if (weeksTo >= 1 && weeksTo <= 16) {
         tips.push({ key: `pr-${ex}-${milestone}`, icon: "🚀", cat: "Projection",
-          text: `${LIFT_SHORT[ex] || ex} is trending up. If the recent pace holds, your estimated 1RM could reach ${milestone}${uLabel(units)} in about ${weeksTo} week${weeksTo === 1 ? "" : "s"}.`,
+          text: `${LIFT_SHORT[ex] || ex}: estimated 1RM trending toward ${milestone}${uLabel(units)} in ~${weeksTo} week${weeksTo === 1 ? "" : "s"}.`,
           basis: `${recent.length} weekly bests · estimate, not a guarantee` });
         break;
       }
@@ -5804,7 +5804,7 @@ function coachTips(data, exMap, units) {
     const recent = weeks.slice(-4);
     if (Math.max(...recent.map(w => weekBest[w])) <= weekBest[recent[0]] * 1.005)
       tips.push({ key: `plateau-${ex}-${wk}`, icon: "🧱", cat: "Plateau",
-        text: `${LIFT_SHORT[ex] || ex}'s estimated strength has been flat across four trained weeks. First check technique and effort; if fatigue is high, use a lower-fatigue week instead of forcing a load jump.`,
+        text: `${LIFT_SHORT[ex] || ex}: no estimated-strength gain in 4 trained weeks. Check technique and effort; go lighter if fatigued.`,
         basis: "Four weekly estimated-1RM bests · high-rep sets excluded" });
   }
 
@@ -5830,11 +5830,10 @@ function coachTips(data, exMap, units) {
       const daysLeft = 6 - mondayIndex;
       const remaining = fmtSets(worst.deficit);
       const timing = daysLeft <= 1 && worst.deficit > 4
-        ? `With ${daysLeft === 0 ? "the week ending today" : "one day left"}, don't cram all ${remaining} into one session—use this as a planning signal for next week.`
-        : `${remaining} remain${daysLeft ? ` across ${daysLeft + 1} calendar days` : " today"}; distribute them across normal sessions instead of one marathon workout.`;
-      const modeNote = goalMode === "strength" ? "Keep the main lift work heavy and technically specific." : "Quality hard sets matter more than chasing the number while fatigued.";
+        ? `Don't cram ${remaining} sets in now—plan them across next week.`
+        : `${remaining} left this week. Spread them across normal sessions.`;
       tips.push({ key: `vol-${worst.m}-${wk}`, icon: "📊", cat: "Volume",
-        text: `${worst.m}: ${fmtSets(worst.got)} / ${worst.tgt} credited sets toward your ${usesCustomGoal?"custom ":""}${goalMode} goal. ${timing} ${modeNote}`,
+        text: `${worst.m}: ${fmtSets(worst.got)} / ${worst.tgt} sets. ${timing}`,
         basis: `${usesCustomGoal?"Saved custom target":"Research starting target"} · main muscle = 1 · secondary muscle = ½ · warm-ups excluded` });
     }
   }
@@ -5848,13 +5847,13 @@ function coachTips(data, exMap, units) {
     const g = MUSCLE_GROUP(exMap[e.exercise]?.muscle); vol[g]++; recentTrainingDates.add(e.date);
   }
   if (vol.push + vol.pull >= 8) {
-    if (vol.push >= vol.pull * 1.75 && vol.push-vol.pull >= 6) tips.push({ key: `bal-pp-${wk}`, icon: "⚖️", cat: "Balance", text: `Your last four weeks contain ${vol.push} push-focused sets and ${vol.pull} pull-focused sets. If balanced upper-body development is your goal, give rows or pulldowns more room in the next block.`, basis:"Four-week primary-muscle comparison · warm-ups excluded" });
-    else if (vol.pull >= vol.push * 1.75 && vol.pull-vol.push >= 6) tips.push({ key: `bal-pp-${wk}`, icon: "⚖️", cat: "Balance", text: `Your last four weeks contain ${vol.pull} pull-focused sets and ${vol.push} push-focused sets. If balanced upper-body development is your goal, give pressing more room in the next block.`, basis:"Four-week primary-muscle comparison · warm-ups excluded" });
+    if (vol.push >= vol.pull * 1.75 && vol.push-vol.pull >= 6) tips.push({ key: `bal-pp-${wk}`, icon: "⚖️", cat: "Balance", text: `4 weeks: ${vol.push} push vs ${vol.pull} pull sets. Add rows or pulldowns for better balance.`, basis:"Four-week primary-muscle comparison · warm-ups excluded" });
+    else if (vol.pull >= vol.push * 1.75 && vol.pull-vol.push >= 6) tips.push({ key: `bal-pp-${wk}`, icon: "⚖️", cat: "Balance", text: `4 weeks: ${vol.pull} pull vs ${vol.push} push sets. Add pressing for better balance.`, basis:"Four-week primary-muscle comparison · warm-ups excluded" });
   }
   const tot = vol.push + vol.pull + vol.legs + vol.core + vol.other;
   const customPlansLegs = split !== "custom" || (data.profile?.customSplit || []).some(d=>d.muscles?.includes("Legs"));
   if (customPlansLegs && recentTrainingDates.size >= 5 && tot >= 20 && vol.legs <= tot * 0.15)
-    tips.push({ key: `bal-legs-${wk}`, icon: "🦵", cat: "Balance", text: `Across ${recentTrainingDates.size} training days in the last four weeks, ${vol.legs} sets were leg-focused versus ${vol.push + vol.pull} upper-body sets. If balanced development is your goal, schedule the next leg session instead of trying to make it up all at once.`, basis:"Four-week primary-muscle comparison · neutral planning flag" });
+    tips.push({ key: `bal-legs-${wk}`, icon: "🦵", cat: "Balance", text: `4 weeks: ${vol.legs} leg vs ${vol.push + vol.pull} upper-body sets. Schedule legs next for better balance.`, basis:"Four-week primary-muscle comparison · neutral planning flag" });
 
   // ---- RECOVERY: only flag a lower-fatigue week when schedule + effort support it ----
   const daysByWeek = {};
@@ -5870,7 +5869,7 @@ function coachTips(data, exMap, units) {
   const hasPlateau = tips.some(t=>t.cat==="Plateau");
   if (streakWeeks >= 5 && effortSets.length >= 6 && failureRate >= 0.35 && hasPlateau)
     tips.push({ key: `deload-${wk}`, icon: "🛌", cat: "Recovery",
-      text: `${streakWeeks} consecutive 3+ day lifting weeks, a recent plateau, and ${Math.round(failureRate*100)}% of effort-rated sets taken to failure point to accumulated fatigue. Consider a lower-fatigue week: fewer sets, stop farther from failure, and keep technique sharp.`,
+      text: `Fatigue flag: ${streakWeeks} busy weeks + a plateau + ${Math.round(failureRate*100)}% failure sets. Consider a lighter week.`,
       basis:"Schedule + logged effort + performance trend; only appears when all three agree" });
 
   return tips;
@@ -5911,7 +5910,6 @@ function CoachCard({ data, exMap, user, setData }) {
   const targets = setTargetsOf(data);
   const bumpTarget = (m, delta) => setData(d => { const cur = setTargetsOf(d); const key = targetOverrideKeyOf(d); return { ...d, profile: { ...(d.profile || {}), [key]: { ...(d.profile?.[key] || {}), [m]: Math.max(0, Math.min(40, (cur[m] || 0) + delta)) } } }; });
   const [showTargets, setShowTargets] = useState(false);
-  const [coachInfoTab, setCoachInfoTab] = useState("logic");
   // the split setup collapses once you've chosen one; expands again via the ✎ chip
   const [editing, setEditing] = useState(!split);
 
@@ -5944,7 +5942,7 @@ function CoachCard({ data, exMap, user, setData }) {
         }
         if (alive && worst && worst.ratio < 0.85)
           setGroupTip({ key: `weak-${worst.lift}`, icon: "🎯", cat: "Weak point",
-            text: `Relative to bodyweight, your ${LIFT_SHORT[worst.lift] || worst.lift} is ${Math.round((1 - worst.ratio) * 100)}% below your group's median. If that lift matters to you, give it first priority on its training day.`,
+            text: `${LIFT_SHORT[worst.lift] || worst.lift}: ${Math.round((1 - worst.ratio) * 100)}% below your group's bodyweight-adjusted median. Prioritize it if it matters to you.`,
             basis:`Compared with ${worst.peers} group members using estimated 1RM ÷ latest bodyweight` });
       } catch { /* offline / no groups */ }
     })();
@@ -5973,8 +5971,7 @@ function CoachCard({ data, exMap, user, setData }) {
     <div className="card" style={{ border: "1px solid rgba(var(--accent-rgb),.4)", background: "radial-gradient(120% 90% at 0% 0%, rgba(var(--accent-rgb),.12), transparent 55%), linear-gradient(180deg, color-mix(in srgb, var(--card) 90%, #fff 5%), var(--card) 70%)" }}>
       {/* header — split chip + "hide for today" on the right */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 13 }}>
-        <div className="h" style={{ fontSize: 18, color: T.ink }}>💪 Lab's AI Coach</div>
-        <span style={{ fontSize: 9.5, fontWeight: 800, color: T.green, background: "rgba(var(--accent-rgb),.14)", padding: "3px 9px", borderRadius: 99, letterSpacing: .5 }}>SMART</span>
+        <div className="h" style={{ fontSize: 18, color: T.ink, flex:1, minWidth:0 }}>💪 Lab's AI Coach</div>
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 7, flexShrink: 0 }}>
           {split && !editing && (
             <button onClick={() => setEditing(true)} title="Change split" style={{ display: "flex", alignItems: "center", gap: 5, background: T.input, border: `1px solid ${T.line}`, color: T.ink, fontSize: 11.5, fontWeight: 700, padding: "5px 11px", borderRadius: 99 }}>
@@ -5983,12 +5980,6 @@ function CoachCard({ data, exMap, user, setData }) {
           )}
           <button onClick={() => setHideToday(todayStr())} title="Hide the coach until tomorrow" style={{ background: "none", border: "none", color: T.sub, fontSize: 15, lineHeight: 1, padding: "4px 5px", cursor: "pointer" }}>➖</button>
         </div>
-      </div>
-      <div style={{display:"flex", alignItems:"center", gap:6, flexWrap:"wrap", margin:"-5px 0 11px", fontSize:10.5, color:T.sub}}>
-        <span style={{padding:"3px 7px", borderRadius:99, background:T.input, border:`1px solid ${T.line}`, color:T.green, fontWeight:800}}>{goalModeInfo.label}</span>
-        <span style={{padding:"3px 7px", borderRadius:99, background:T.input, border:`1px solid ${T.line}`, textTransform:"capitalize", fontWeight:700}}>{trainingLevel}</span>
-        {customTargetCount>0 && <span style={{padding:"3px 7px", borderRadius:99, background:T.mint, border:`1px solid ${T.green}`, color:T.green, fontWeight:800}}>{customTargetCount} custom goal{customTargetCount===1?"":"s"}</span>}
-        <span>Uses your split, recent sessions, effort, frequency, and fractional set credits.</span>
       </div>
 
       {/* TODAY'S FOCUS — the headline: what to hit right now */}
@@ -6003,7 +5994,7 @@ function CoachCard({ data, exMap, user, setData }) {
         ) : trainTip ? (
           <div style={{ fontSize: 15.5, color: T.ink, fontWeight: 700, lineHeight: 1.45 }}>{trainTip.text}</div>
         ) : (
-          <div style={{ fontSize: 14, color: T.ink, fontWeight: 600, lineHeight: 1.5 }}>✅ Nothing overdue — you're on rhythm. Hit the next day in your rotation, or take a well-earned rest day.</div>
+          <div style={{ fontSize: 14, color: T.ink, fontWeight: 600, lineHeight: 1.5 }}>✅ On track. Train the next day in your rotation or rest.</div>
         )}
       </div>
 
@@ -6015,7 +6006,6 @@ function CoachCard({ data, exMap, user, setData }) {
             <div style={{display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:6}}>
               {[['beginner','Beginner'],['intermediate','Intermediate'],['advanced','Advanced']].map(([value,label])=><button key={value} type="button" onClick={()=>setTrainingLevel(value)} aria-pressed={trainingLevel===value} style={{padding:"8px 5px", borderRadius:9, background:trainingLevel===value?T.mint:T.card, color:trainingLevel===value?T.green:T.sub, border:`1px solid ${trainingLevel===value?T.green:T.line}`, fontSize:10.5, fontWeight:800}}>{label}</button>)}
             </div>
-            <div style={{fontSize:10.5, color:T.sub, lineHeight:1.4, marginTop:7}}>{trainingLevel==="beginner"?"More conservative load jumps and simpler next actions.":trainingLevel==="intermediate"?"Balances progression speed with repeatable performance.":"Requires stronger confirmation before recommending advanced progression changes."}</div>
           </div>
           <div className="eyebrow" style={{ fontSize: 9.5, color: T.sub, marginBottom: 9 }}>Choose your split</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(102px, 1fr))", gap: 7, marginBottom: split === "custom" ? 12 : (split ? 12 : 0) }}>
@@ -6036,7 +6026,7 @@ function CoachCard({ data, exMap, user, setData }) {
           {/* custom builder — an ordered, repeating cycle of training + rest days */}
           {split === "custom" && (
             <div>
-              <div style={{ fontSize: 12, color: T.sub, lineHeight: 1.5, marginBottom: 10 }}>Build your rotation in order — add training days (tap the muscles they hit, incl. <b style={{ color: T.ink }}>Abs</b>) and <b style={{ color: T.ink }}>rest days</b>, then it <b style={{ color: T.green }}>loops forever</b>. e.g. <b style={{ color: T.ink }}>Push · Pull · Legs · Rest</b> → repeat. It rolls day-by-day, so it isn't locked to weekdays.</div>
+              <div style={{ fontSize: 12, color: T.sub, lineHeight: 1.5, marginBottom: 10 }}>Add training and rest days in order. The cycle repeats automatically.</div>
               {customDays.map((day, idx) => {
                 const isToday = day.id === todayDayId;
                 return (
@@ -6084,7 +6074,7 @@ function CoachCard({ data, exMap, user, setData }) {
                     Right now you're on <span style={{ color: T.green }}>Day {cyPos + 1} · {dayTitle(cycle[cyPos])}</span>.
                   </div>
                   <div style={{ fontSize: 11.5, color: T.sub, lineHeight: 1.5, marginTop: 4 }}>
-                    The coach reads your last workout to place you here, then rolls forward — it won't lock to weekdays. Tap below to hard-reset the loop to start today.
+                    Your last workout keeps the rotation aligned.
                   </div>
                   <button onClick={() => setCycleStart(todayStr())} style={{ marginTop: 9, background: T.input, border: `1px solid ${T.line}`, color: T.green, fontWeight: 800, fontSize: 12.5, padding: "8px 14px", borderRadius: 99 }}>▶ Start the loop from today</button>
                 </div>
@@ -6102,7 +6092,7 @@ function CoachCard({ data, exMap, user, setData }) {
               </button>
               {showTargets && (
                 <div style={{ marginTop: 9 }}>
-                  <div style={{ fontSize: 11.5, color: T.sub, lineHeight: 1.55, marginBottom: 10 }}><b style={{ color: T.ink }}>{goalModeInfo.label} mode</b> is active. These are the same editable weekly goals shown on your Dashboard; change the goal type there to switch between hypertrophy and strength guidance.</div>
+                  <div style={{ fontSize: 11.5, color: T.sub, lineHeight: 1.55, marginBottom: 10 }}><b style={{ color: T.ink }}>{goalModeInfo.label}</b> goals · synced with Dashboard.</div>
                   {MUSCLES.map(m => (
                     <div key={m} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 2px", borderTop: `1px solid ${T.creamLine}` }}>
                       <span style={{ flex: 1, fontSize: 13.5, fontWeight: 700, color: T.ink }}>{m}</span>
@@ -6124,7 +6114,7 @@ function CoachCard({ data, exMap, user, setData }) {
 
       {/* INSIGHTS — everything except the "train today" headline */}
       {otherTips.length === 0 ? (
-        <div style={{ fontSize: 13.5, color: T.sub, paddingTop: 2, lineHeight: 1.5 }}>{split ? "All caught up 🎉 Keep logging and I'll surface fresh progressions, plateaus and imbalances." : "Log a few sessions and tips on progressions, plateaus and balance appear here."}</div>
+        <div style={{ fontSize: 13.5, color: T.sub, paddingTop: 2, lineHeight: 1.5 }}>{split ? "All caught up. Keep logging for new insights." : "Log a few sessions to unlock insights."}</div>
       ) : (
         <div>
           <div className="eyebrow" style={{ fontSize: 9.5, color: T.sub, marginBottom: 2 }}>Insights</div>
@@ -6133,8 +6123,7 @@ function CoachCard({ data, exMap, user, setData }) {
               <span style={{ fontSize: 19, lineHeight: 1.2, flexShrink: 0 }}>{t.icon}</span>
               <div style={{ minWidth: 0, flex: 1 }}>
                 <span style={{ fontSize: 9.5, fontWeight: 800, color: CAT_COLOR[t.cat] || T.sub, textTransform: "uppercase", letterSpacing: .5 }}>{t.cat}</span>
-                <div style={{ fontSize: 13.5, color: T.ink, lineHeight: 1.5 }}>{t.text}</div>
-                {t.basis && <div style={{fontSize:10.5, color:T.sub, lineHeight:1.4, marginTop:3}}>🧠 {t.basis}</div>}
+                <div title={t.basis || ""} style={{ fontSize: 13.5, color: T.ink, lineHeight: 1.45 }}>{t.text}</div>
               </div>
               <button onClick={() => dismiss(t.key)} title="Don't show this again" style={{ flexShrink: 0, background: "none", border: "none", color: T.sub, fontSize: 15, lineHeight: 1, padding: "2px 4px", cursor: "pointer" }}>✕</button>
             </div>
@@ -6142,24 +6131,11 @@ function CoachCard({ data, exMap, user, setData }) {
         </div>
       )}
       <details style={{marginTop:10, borderTop:`1px solid ${T.line}`, paddingTop:9}}>
-        <summary style={{cursor:"pointer", color:T.sub, fontSize:10.5, fontWeight:800, listStyle:"none"}}>🧪 Research & signals used <span style={{fontSize:8}}>▾</span></summary>
-        <div style={{marginTop:8, padding:"10px 11px", background:T.input, border:`1px solid ${T.line}`, borderRadius:11, fontSize:10.5, color:T.sub, lineHeight:1.55}}>
-          <div style={{display:"flex", gap:5, marginBottom:9, padding:3, background:T.card, borderRadius:9}}>
-            {[['logic','Coach logic'],['legs','Why legs matter']].map(([value,label])=><button key={value} type="button" onClick={()=>setCoachInfoTab(value)} aria-pressed={coachInfoTab===value} style={{flex:1, background:coachInfoTab===value?T.mint:"transparent", color:coachInfoTab===value?T.green:T.sub, border:`1px solid ${coachInfoTab===value?T.green:"transparent"}`, borderRadius:7, padding:"6px 7px", fontSize:10.5, fontWeight:800}}>{label}</button>)}
-          </div>
-          {coachInfoTab==="logic" ? <>
-            <div style={{color:T.ink, fontWeight:750, marginBottom:4}}>Your coach analyzes logs locally using:</div>
-            <div>Goal mode · exact saved custom set targets · experience · split/rotation · recent loads and reps · effort · exercise-specific strength trends · training frequency · machine gym · full and half-set muscle credits.</div>
-            <div style={{marginTop:6, padding:"7px 8px", borderRadius:8, background:T.card, border:`1px solid ${customTargetCount?T.green:T.line}`}}><b style={{color:customTargetCount?T.green:T.ink}}>Weekly goals:</b> {customTargetCount ? `The coach is currently using your ${customTargetCount} custom ${goalModeInfo.label.toLowerCase()} target${customTargetCount===1?"":"s"}; all other muscles use their research starting values.` : `No custom ${goalModeInfo.label.toLowerCase()} targets are active, so the coach is using the research starting values.`}</div>
-            <div style={{marginTop:6}}>Evidence base: Pelland et al. 2026 (volume, frequency, fractional sets); Currier et al. 2023 (load, sets, frequency); Hickmott et al. 2022 (autoregulation); Grgic et al. 2022 (failure vs non-failure); Refalo et al. 2021 (load and specificity); Schoenfeld et al. 2019 (frequency); Ramos-Campo et al. 2024 (split vs full-body).</div>
-            <div style={{marginTop:6, fontStyle:"italic"}}>Recommendations are planning guidance, not medical advice. Missing effort data produces conditional advice instead of pretending the coach knows how hard a set felt.</div>
-          </> : <>
-            <div style={{color:T.ink, fontWeight:800, fontSize:12, marginBottom:5}}>Leg training is valuable—but not because it magically boosts testosterone.</div>
-            <div>Your legs contain several of the body's largest muscle groups: glutes, quadriceps, hamstrings, and calves. Building them supports squatting, hinging, walking, stairs, balance, athletic movement, and overall lower-body strength. Resistance training also provides useful loading for muscle and bone health.</div>
-            <div style={{marginTop:7, padding:"7px 8px", borderRadius:8, background:T.card, border:`1px solid ${T.line}`}}><b style={{color:T.green}}>Testosterone reality:</b> A demanding leg workout can cause a short-lived hormone change, but research does not show that this temporary spike makes unrelated muscles grow. Training produces primarily local adaptations in the muscles doing the work.</div>
-            <div style={{marginTop:7}}><b style={{color:T.ink}}>Cover the whole group:</b> squats/lunges emphasize quads and glutes; hinges emphasize glutes and hamstrings; leg curls train knee-flexing hamstrings; calf raises train calves. One leg exercise does not fully cover every area.</div>
-            <div style={{marginTop:7, fontStyle:"italic"}}>Evidence: West et al. 2006 (PMID 16972050); Laurentino et al. 2022 (PMID 36157947); García-Hermoso et al. 2018 (PMID 29425700); Momma et al. 2022 (PMID 35228201).</div>
-          </>}
+        <summary style={{cursor:"pointer", color:T.sub, fontSize:10.5, fontWeight:800, listStyle:"none"}}>How coaching works <span style={{fontSize:8}}>▾</span></summary>
+        <div style={{marginTop:8, padding:"9px 11px", background:T.input, border:`1px solid ${T.line}`, borderRadius:11, fontSize:10.5, color:T.sub, lineHeight:1.65}}>
+          <div>✓ Uses your {goalModeInfo.label.toLowerCase()} goals{customTargetCount ? `, including ${customTargetCount} custom` : ""}.</div>
+          <div>✓ Uses your split, recent sets, reps, and effort.</div>
+          <div>✓ Main muscle = 1 set · secondary = ½ · warm-ups ignored.</div>
         </div>
       </details>
     </div>
