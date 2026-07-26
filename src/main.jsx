@@ -2,6 +2,12 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App.jsx";
 
+// Apple devices keep their native emoji; other platforms use the self-hosted Twemoji font.
+const ua = navigator.userAgent || "";
+const isApple = /iPhone|iPad|iPod|Macintosh|Mac OS X/.test(ua) ||
+  (navigator.platform && /Mac|iPhone|iPad|iPod/.test(navigator.platform));
+if (!isApple) document.documentElement.classList.add("tw");
+
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <App />

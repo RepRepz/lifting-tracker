@@ -1,11 +1,10 @@
 import { useState, useEffect, useLayoutEffect, useMemo, useRef, lazy, Suspense, Fragment, createContext, useContext } from "react";
 import { createPortal } from "react-dom";
-import { supabase, loadUserState, saveUserState, listMyGroups, listMembers, createGroup, joinGroup, leaveGroup, listReactions, addReaction, removeReaction, setSecurityQuestion, getSecurityQuestion, lastActiveFor, setGroupEmoji, resetInviteCode, listCloudBackups, getCloudBackup, getStepToken, stepsFor, lastStepSync, createDuel, listDuels, deleteDuel, acceptDuel, declineDuel, forfeitDuel, requestDuelCancel, clearDuelCancel, setGroupRecordLifts, getMyProStatus, listProUserIds } from "./lib/storage.js";
-import { SECURITY_QUESTIONS } from "./AuthScreen.jsx";
+import { supabase, loadUserState, loadSharedUserStates, saveUserState, listMyGroups, listMembers, createGroup, joinGroup, leaveGroup, listReactions, addReaction, removeReaction, lastActiveFor, setGroupEmoji, resetInviteCode, listCloudBackups, getCloudBackup, getStepToken, rotateStepToken, disconnectSteps, stepsFor, lastStepSync, createDuel, listDuels, deleteDuel, acceptDuel, declineDuel, forfeitDuel, requestDuelCancel, clearDuelCancel, setGroupRecordLifts, getMyProStatus, listProUserIds, generateBackupCodes, hasBackupCodes, deleteMyAccount, clearLocalAccountData } from "./lib/storage.js";
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { MacroTab, GroupMacrosCard, MacroCalendar } from "./Nutrition.jsx";
+import { LegalModal } from "./Legal.jsx";
 
 import { T, tipStyle, applyTheme, DEFAULT_THEME, ACCENTS, PALETTES } from "./theme.js";
 import LoadingScreen from "./LoadingScreen.jsx";
@@ -354,13 +353,7 @@ export default function LiftingTracker({ user }) {
   const [routinesOn, setRoutinesOn] = useState(() => localStorage.getItem("lt-routines-on") === "1"); // optional templates feature
   const [stepsOn, setStepsOn] = useState(() => localStorage.getItem("lt-steps-on") !== "0"); // Apple Health steps (Pro; default on)
   const [coachOn, setCoachOn] = useState(() => localStorage.getItem("lt-coach-on") !== "0"); // Lab's AI Coach (Pro; default on)
-  const [macrosOn, setMacrosOn] = useState(() => localStorage.getItem("lt-macros-on") !== "0"); // Nutrition/Macros (Pro; default on)
-  // Lifting is always on for everyone. The full Macros/nutrition feature is built and kept
-  // in the codebase (Nutrition.jsx + the tab wiring below) but PARKED for most accounts.
-  // Currently unlocked ONLY for these usernames (a private demo for Anis). Add a name here
-  // to give someone access, or set to `true` to turn it on for everyone.
   const liftingOn = true;
-  const MACRO_ACCOUNTS = ["ancenurkic"];
   // Pro access is checked directly for the signed-in account. Keep the last confirmed
   // result per account so a temporary network/auth hiccup never turns a Pro member free.
   const proCacheKey = `lt-pro-${user.id}`;
@@ -390,11 +383,8 @@ export default function LiftingTracker({ user }) {
     return () => { alive = false; window.removeEventListener("online", refreshPro); clearInterval(interval); };
   }, [user.id]);
   const isPro = proStatus === true;
-  // Nutrition/Macros is a Pro feature: auto-on when you have Pro, toggleable in Settings.
-  // Legacy demo accounts keep it regardless.
-  // Nutrition/Macros is PAUSED for Pro members for now (was auto-on with Pro) — flip the
-  // `isPro && macrosOn` clause back on to re-enable it for everyone with Pro.
-  const nutritionOn = MACRO_ACCOUNTS.includes((user.user_metadata?.username || "").toLowerCase());
+  // The unreleased nutrition prototype is intentionally not imported or shipped.
+  const nutritionOn = false;
   const [streaksOn, setStreaksOn] = useState(() => localStorage.getItem("lt-streaks-on") !== "0"); // default on
   const [waterOn, setWaterOn] = useState(() => localStorage.getItem("lt-water-on") !== "0"); // default on
   // "I train at more than one gym" — off by default. Only matters for exercises flagged
@@ -410,7 +400,6 @@ export default function LiftingTracker({ user }) {
   useEffect(() => { localStorage.setItem("lt-routines-on", routinesOn ? "1" : "0"); }, [routinesOn]);
   useEffect(() => { localStorage.setItem("lt-steps-on", stepsOn ? "1" : "0"); }, [stepsOn]);
   useEffect(() => { localStorage.setItem("lt-coach-on", coachOn ? "1" : "0"); }, [coachOn]);
-  useEffect(() => { localStorage.setItem("lt-macros-on", macrosOn ? "1" : "0"); }, [macrosOn]);
   // Steps & the AI Coach are Pro features (default on for Pro). Non-Pro never see them.
   const stepsEnabled = isPro && stepsOn;
   const coachEnabled = isPro && coachOn;
@@ -423,7 +412,6 @@ export default function LiftingTracker({ user }) {
   };
   const setStepsOnSynced = (v) => setProfileFlag("stepsOn", setStepsOn)(v, stepsOn);
   const setCoachOnSynced = (v) => setProfileFlag("coachOn", setCoachOn)(v, coachOn);
-  const setMacrosOnSynced = (v) => setProfileFlag("macrosOn", setMacrosOn)(v, macrosOn);
   const setMultiGymOnSynced = (v) => setProfileFlag("multiGymOn", setMultiGymOn)(v, multiGymOn);
   useEffect(() => {
     const v = data?.profile?.stepsOn;
@@ -433,10 +421,6 @@ export default function LiftingTracker({ user }) {
     const v = data?.profile?.coachOn;
     if (typeof v === "boolean" && v !== coachOn) setCoachOn(v);
   }, [data?.profile?.coachOn]);
-  useEffect(() => {
-    const v = data?.profile?.macrosOn;
-    if (typeof v === "boolean" && v !== macrosOn) setMacrosOn(v);
-  }, [data?.profile?.macrosOn]);
   useEffect(() => {
     const v = data?.profile?.multiGymOn;
     if (typeof v === "boolean" && v !== multiGymOn) setMultiGymOn(v);
@@ -456,9 +440,8 @@ export default function LiftingTracker({ user }) {
     if (v && (v.accent !== theme.accent || v.palette !== theme.palette)) { setThemeState(v); try { localStorage.setItem("lt-theme", JSON.stringify(v)); } catch {} }
   }, [data?.profile?.theme]);
   useEffect(() => {
-    if (tab === "macros" && !nutritionOn) setTab("dash"); // non-dev accounts never land on Macros
     if (tab === "steps" && !stepsEnabled) setTab("dash"); // hide the Steps tab when off / not Pro
-  }, [nutritionOn, stepsEnabled, tab]);
+  }, [stepsEnabled, tab]);
   const [loaded, setLoaded] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
   const [syncState, setSyncState] = useState("synced"); // "synced" | "offline"
@@ -595,14 +578,13 @@ export default function LiftingTracker({ user }) {
 
   // Grouped by how they're used so the two rows read logically:
   //   row 1 (do it / check daily): Dash · Log · Cardio · Steps · Groups
-  //   row 2 (look it up / less often): Records · Library · Body · Journal · Macros
+  //   row 2 (look it up / less often): Records · Library · Body · Journal
   const tabs = [
     ...(liftingOn ? [["dash","Dash","📊"],["log","Log","📝"],["cardio","Cardio","🏃"]] : []),
     ...(liftingOn && stepsEnabled ? [["steps","Steps","👟"]] : []),
     ["friends","Groups","👥"],
     ...(liftingOn ? [["records","Records","🏆"],["ex","Library","📚"],["body","Body","⚖️"]] : []),
     ["journal","Journal","📓"],
-    ...(nutritionOn ? [["macros","Macros","🥗"]] : []),
   ];
 
   return (
@@ -860,7 +842,6 @@ export default function LiftingTracker({ user }) {
           routinesOn={routinesOn} setRoutinesOn={setRoutinesOn}
           stepsOn={stepsOn} setStepsOn={setStepsOnSynced} isPro={isPro}
           coachOn={coachOn} setCoachOn={setCoachOnSynced}
-          macrosOn={macrosOn} setMacrosOn={setMacrosOnSynced}
           multiGymOn={multiGymOn} setMultiGymOn={setMultiGymOnSynced}
           theme={theme} setTheme={setTheme}
           streaksOn={streaksOn} setStreaksOn={setStreaksOn}
@@ -892,14 +873,13 @@ export default function LiftingTracker({ user }) {
         </div>
       )}
 
-      <main className={"app-main" + (tab==="macros" ? " app-main-wide" : "")}>
+      <main className="app-main">
         <div className="tabview" key={tab}>
           {tab==="dash" && liftingOn && <Dashboard data={data} exMap={exMap} setData={setData} user={user} isPro={isPro} coachEnabled={coachEnabled} stepsEnabled={stepsEnabled} nutritionOn={nutritionOn} multiGymOn={multiGymOn} openSettings={()=>setShowSettings(true)} setTab={setTab} />}
           {tab==="log" && liftingOn && <LogTab data={data} exMap={exMap} setData={setData} routinesOn={routinesOn} multiGymOn={multiGymOn} />}
           {tab==="records" && liftingOn && <RecordsTab data={data} exMap={exMap} setData={setData} />}
           {tab==="journal" && <JournalTab data={data} setData={setData} />}
           {tab==="friends" && <FriendsTab user={user} data={data} setData={setData} exMap={exMap} nutritionOn={nutritionOn} streaksOn={streaksOn} isPro={isPro} openPro={()=>setShowSettings(true)} />}
-          {tab==="macros" && nutritionOn && <MacroTab data={data} setData={setData} streaksOn={streaksOn} waterOn={waterOn} />}
           {tab==="body" && liftingOn && <BodyTab data={data} setData={setData} hunit={hunit} />}
           {tab==="cardio" && liftingOn && <CardioTab data={data} setData={setData} latestBW={latestBW} user={user} stepsOn={stepsEnabled} />}
           {tab==="steps" && liftingOn && stepsEnabled && <StepsTab user={user} data={data} setData={setData} />}
@@ -2964,9 +2944,8 @@ function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled
 function ProUpsellCard({ openSettings }) {
   const feats = [
     ["💪", "Lab's AI Coach", "Personalized progression, plateau & weak-point advice from your logs."],
-    ["👟", "Apple Health steps", "Auto-track steps, step duels, and a group steps board."],
+    ["👟", "Apple Health steps", "Sync steps by iPhone Shortcut, plus duels and a group board."],
     ["🎨", "Themes", "Recolor the app — accent colors + dark palettes."],
-    ["🥗", "Nutrition & macros", "Full food logging with macro targets and trends."],
   ];
   return (
     <div className="card pro-hero" style={{ marginBottom: 14, overflow: "hidden",
@@ -2977,7 +2956,7 @@ function ProUpsellCard({ openSettings }) {
         <div className="recap-title" style={{ fontSize: 22, fontWeight: 900, letterSpacing: .3 }}>✨ The Lab Pro</div>
         <span style={{ fontSize: 10, fontWeight: 800, color: "#05140b", background: "linear-gradient(100deg, rgb(var(--accent-rgb)), #8fe3a0)", padding: "3px 9px", borderRadius: 99, letterSpacing: .5, boxShadow: "0 2px 10px rgba(var(--accent-rgb),.45)" }}>UPGRADE</span>
       </div>
-      <div style={{ fontSize: 13, color: T.sub, marginBottom: 14, lineHeight: 1.5 }}>Unlock the coach, steps, themes and nutrition — everything that makes The Lab <b style={{color:T.ink}}>yours</b>.</div>
+      <div style={{ fontSize: 13, color: T.sub, marginBottom: 14, lineHeight: 1.5 }}>Unlock the coach, steps and themes — everything that makes The Lab <b style={{color:T.ink}}>yours</b>.</div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 15 }}>
         {feats.map(([icon, title, desc]) => (
           <div key={title} className="pro-feat" style={{ background: "color-mix(in srgb, var(--input) 88%, transparent)", border: `1px solid ${T.line}`, borderRadius: 14, padding: "12px 13px", transition: "border-color .18s ease, transform .18s ease" }}>
@@ -3751,17 +3730,17 @@ function DuelsCard({ user, all, nameOf, myId, myName, proIds = [], minimized = f
 
   const create = async () => {
     if (!oppId) return;
-    const n = Math.max(1, Math.min(365, parseInt(days)||7));
+    const n = Math.max(1, Math.min(30, parseInt(days)||7));
     setBusy(true); setErr("");
-    try { await createDuel(oppId, myName, nameOf[oppId]||"?", today, dAdd(today, n-1), n); setOpen(false); setOppId(""); setDays("7"); await load(); }
+    try { await createDuel(oppId, n); setOpen(false); setOppId(""); setDays("7"); await load(); }
     catch(e){ setErr(String(e?.message||e)); }
     finally { setBusy(false); }
   };
   const remove  = async (id) => { try { await deleteDuel(id); await load(); } catch {} };
-  const accept  = async (d)  => { const n = Math.max(1, Math.min(365, d.days||7)); try { await acceptDuel(d.id, today, dAdd(today, n-1)); await load(); } catch(e){ setErr(String(e?.message||e)); } };
+  const accept  = async (d)  => { try { await acceptDuel(d.id); await load(); } catch(e){ setErr(String(e?.message||e)); } };
   const decline = async (id) => { try { await declineDuel(id); await load(); } catch {} };
-  const forfeit = async (id, winnerId) => { try { await forfeitDuel(id, winnerId); await load(); } catch {} };
-  const reqCancel = async (id) => { try { await requestDuelCancel(id, myId); await load(); } catch {} };
+  const forfeit = async (id) => { try { await forfeitDuel(id); await load(); } catch {} };
+  const reqCancel = async (id) => { try { await requestDuelCancel(id); await load(); } catch {} };
   const undoCancel = async (id) => { try { await clearDuelCancel(id); await load(); } catch {} };
 
   const currentCount = mine.filter(d => d.status === "pending" || (d.status === "active" && today <= d.end_day)).length;
@@ -3898,7 +3877,7 @@ function DuelsCard({ user, all, nameOf, myId, myName, proIds = [], minimized = f
                 <span style={{fontSize:11, color:T.sub}}>{fmtDate(d.start_day)} – {fmtDate(d.end_day)}</span>
                 <div style={{display:"flex", gap:7, alignItems:"center"}}>
                   <button onClick={()=>reqCancel(d.id)} title="Both sides must agree to void a duel" style={{background:"none", border:`1px solid ${T.line}`, color:T.sub, fontSize:11.5, fontWeight:700, padding:"5px 11px", borderRadius:99}}>Ask to void</button>
-                  <ConfirmX label="Forfeit" onConfirm={()=>forfeit(d.id, oId)} />
+                  <ConfirmX label="Forfeit" onConfirm={()=>forfeit(d.id)} />
                 </div>
               </div>
             )}
@@ -3958,7 +3937,7 @@ function StepsTab({ user, data, setData }) {
         <div style={{fontSize:40, marginBottom:8}}>👟</div>
         <div className="h" style={{fontSize:19, color:T.tealDk, marginBottom:6}}>No steps yet</div>
         <div style={{fontSize:13, color:T.sub, lineHeight:1.55, maxWidth:340, margin:"0 auto"}}>
-          Your steps sync automatically once you finish the one-time setup in <b style={{color:T.ink}}>Settings → 🚶 Apple Health steps</b>.
+          Set up the iPhone Shortcut in <b style={{color:T.ink}}>Settings → 🚶 Apple Health steps</b>, then tap <b style={{color:T.ink}}>Sync now</b> when you want to refresh.
           After the first sync your ring, charts, and group board fill in here.
         </div>
       </div>
@@ -4040,7 +4019,7 @@ function CardioStepsRecap({ user }) {
       <span style={{fontSize:24}}>👟</span>
       <div style={{flex:1, minWidth:0}}>
         <div style={{fontSize:18, fontWeight:800, color:T.green, fontVariantNumeric:"tabular-nums"}}>{show.n.toLocaleString()} <span style={{fontSize:12.5, color:T.sub, fontWeight:600}}>steps {show.when}</span></div>
-        <div style={{fontSize:11.5, color:T.sub}}>Auto-tracked from Apple Health · full charts in the Steps tab</div>
+        <div style={{fontSize:11.5, color:T.sub}}>Synced from Apple Health via your iPhone Shortcut · full charts in the Steps tab</div>
       </div>
     </div>
   );
@@ -4180,7 +4159,7 @@ function CardioTab({ data, setData, latestBW, user, stepsOn }) {
       {isSteps && stepsOn && (
         <div style={{display:"flex", gap:9, alignItems:"flex-start", background:"rgba(255,80,0,.10)", border:`1px solid ${T.danger}`, borderRadius:10, padding:"9px 12px", marginBottom:10, fontSize:12.5, color:T.sub, lineHeight:1.5}}>
           <span style={{flexShrink:0}}>⚠️</span>
-          <span>Your steps are already <b style={{color:T.ink}}>auto-tracked in the Steps tab</b> from Apple Health. Logging a step count here too will double-count — skip it unless you specifically want a separate manual entry.</span>
+          <span>Your Apple Health steps are already <b style={{color:T.ink}}>synced in the Steps tab</b> through your Shortcut. Logging a step count here too will double-count — skip it unless you specifically want a separate manual entry.</span>
         </div>
       )}
       {estCal!=null && <div style={{background:T.cream, borderRadius:10, padding:"8px 12px", marginBottom:10, fontSize:14}}>Estimated: <b>{estCal} cal</b>{isSteps && steps && <span style={{color:T.sub}}> · about {stepsMiles(parseInt(steps)||0)} mi</span>}</div>}
@@ -4715,7 +4694,7 @@ function SectionHead({ icon, label }) {
   );
 }
 
-function SettingsModal({ user, username, data, setData, startTab, setStartTab, tabs, units, setUnits, hunit, setHunit, routinesOn, setRoutinesOn, stepsOn, setStepsOn, coachOn, setCoachOn, macrosOn, setMacrosOn, multiGymOn, setMultiGymOn, theme, setTheme, streaksOn, setStreaksOn, waterOn, setWaterOn, nutritionOn, isPro, onClose }) {
+function SettingsModal({ user, username, data, setData, startTab, setStartTab, tabs, units, setUnits, hunit, setHunit, routinesOn, setRoutinesOn, stepsOn, setStepsOn, coachOn, setCoachOn, multiGymOn, setMultiGymOn, theme, setTheme, streaksOn, setStreaksOn, waterOn, setWaterOn, nutritionOn, isPro, onClose }) {
   const memberSince = user.created_at ? new Date(user.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}) : "—";
   const totalSets = (data.log||[]).length;
   const goPro = () => document.getElementById("pro-section")?.scrollIntoView({ behavior:"smooth", block:"start" });
@@ -4791,7 +4770,7 @@ function SettingsModal({ user, username, data, setData, startTab, setStartTab, t
         </div>
 
         <div id="pro-section">
-          <SettingsSection icon="✨" title={isPro ? "The Lab Pro — active" : "Go Pro"} desc={isPro ? "You're a Pro member 🎉" : "Nutrition, themes & an AI coach"} defaultOpen={!isPro}>
+          <SettingsSection icon="✨" title={isPro ? "The Lab Pro — active" : "Go Pro"} desc={isPro ? "You're a Pro member 🎉" : "Steps, themes & an AI coach"} defaultOpen={!isPro}>
             <ProCard isPro={isPro} />
           </SettingsSection>
         </div>
@@ -4844,13 +4823,6 @@ function SettingsModal({ user, username, data, setData, startTab, setStartTab, t
             desc="Adds a Routines section to the Log tab: build templates like “Push Day,” then tap Start to log them exercise-by-exercise. Off by default. Turning it off just hides it — your saved routines stay." />
           <FeatureToggle label="I train at more than one gym" on={multiGymOn} setOn={setMultiGymOn}
             desc="Off by default. Turn it on only if you want machine/cable sets tagged by location, since the same stack can feel different at another gym. Turn this switch back off anytime to remove every gym prompt and filter; your lifting history stays safe. Barbell, dumbbell, and bodyweight moves are never affected." />
-          {/* Water + Streaks toggles belong to the Macros feature — shown only when it's unlocked */}
-          {nutritionOn && (<>
-            <FeatureToggle label="Workout streaks" on={streaksOn} setOn={setStreaksOn}
-              desc="Shows your weekly streak (🔥) on the dashboard and in groups. Turning it off just hides the streak counters." />
-            <FeatureToggle label="Water tracking" on={waterOn} setOn={setWaterOn}
-              desc="Adds a daily water-intake tracker to the Macros tab. Turning it off just hides it — anything you logged stays." />
-          </>)}
         </SettingsSection>
 
         <SettingsSection icon="🎨" title="Themes" desc={isPro ? "Recolor the app your way" : "Accent colors + palettes · Pro"} defaultOpen={false}>
@@ -4864,19 +4836,18 @@ function SettingsModal({ user, username, data, setData, startTab, setStartTab, t
           ) : <ProLocked feature="Lab's AI Coach" note="Personalized progression, plateau, and weak-point coaching from your own logs." onGoPro={goPro} />}
         </SettingsSection>
 
-        <SettingsSection icon="🥗" title="Nutrition & macros" desc="Temporarily paused">
-          <div style={{ fontSize:13.5, color:T.sub, lineHeight:1.5, padding:"4px 2px" }}>
-            🥗 Nutrition & macros is turned off for everyone right now while it gets more work.
-            Anything you'd already logged is safe and untouched — it'll be back.
-          </div>
-        </SettingsSection>
 
-        <SettingsSection icon="🚶" title="Apple Health steps" desc={isPro ? "Auto-log your daily steps from your iPhone" : "Auto step tracking · Pro"}>
+        <SettingsSection icon="🚶" title="Apple Health steps" desc={isPro ? "Sync daily steps from your iPhone" : "iPhone step syncing · Pro"}>
           {isPro ? (<>
             <FeatureToggle label="Show the Steps tab" on={stepsOn} setOn={setStepsOn}
               desc="Adds a 👟 Steps tab (goal ring, 1D/W/M/6M/Y/5Y charts, group leaderboard, step duels) and a steps recap on the Cardio tab. On by default. Set up syncing below." />
-            <StepsCard user={user} />
-          </>) : <ProLocked feature="Apple Health steps" note="Auto-track your steps, battle friends in step duels, and climb the group steps board." onGoPro={goPro} />}
+            <StepsCard user={user} data={data} setData={setData} />
+          </>) : <ProLocked feature="Apple Health steps" note="Sync iPhone steps, battle friends in step duels, and climb the group steps board." onGoPro={goPro} />}
+        </SettingsSection>
+
+        <SettingsSection icon="🛡️" title="Privacy & sharing" desc="Control exactly what groupmates receive">
+          <PrivacySharingCard data={data} setData={setData} />
+          <LegalLinksCard />
         </SettingsSection>
 
         <SettingsSection icon="🛟" title="Data safety" desc="Automatic backups — in the cloud and on this device">
@@ -4884,12 +4855,13 @@ function SettingsModal({ user, username, data, setData, startTab, setStartTab, t
           <BackupsCard user={user} username={username} setData={setData} />
         </SettingsSection>
 
-        <SettingsSection icon="🔐" title="Account & security" desc="Password and your reset question">
+        <SettingsSection icon="🔐" title="Account & security" desc="Password, recovery and account control">
           <ChangePasswordCard />
-          <SecurityCard username={username} />
+          <BackupCodesCard user={user} />
+          <DeleteAccountCard user={user} />
         </SettingsSection>
 
-        <button onClick={()=>supabase.auth.signOut()} style={{
+        <button onClick={()=>signOutAndClear(user)} style={{
           width:"100%", marginTop:6, padding:13, background:T.dangerBg, color:T.danger, fontWeight:700, fontSize:15,
         }}>
           Sign out
@@ -5100,12 +5072,14 @@ function StepBlock({ n, title, children }) {
    apps), so an iPhone Shortcut reads today's steps and POSTs them to log_steps() using
    this user's secret code. The card generates that code, shows every setup value as a
    copy button, walks the whole Shortcut with mock action cards, and shows today's count. */
-function StepsCard({ user }) {
+function StepsCard({ user, data, setData }) {
   const [token, setToken] = useState(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
   const [copied, setCopied] = useState("");
   const [latest, setLatest] = useState(undefined); // undefined = loading, null = none, else { day, count }
+  const [securityMsg, setSecurityMsg] = useState("");
+  const consented = !!data.profile?.appleHealthConsentAt;
   const url = (import.meta.env.VITE_SUPABASE_URL || "") + "/rest/v1/rpc/log_steps";
   const apikey = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
 
@@ -5126,9 +5100,22 @@ function StepsCard({ user }) {
   })(); }, [user.id]);
 
   const connect = async () => {
+    if (!consented) { setErr("Confirm the step-data notice first."); return; }
     setBusy(true); setErr(null);
     try { setToken(await getStepToken()); }
     catch { setErr("Couldn't set this up right now — check your connection and try again."); }
+    finally { setBusy(false); }
+  };
+  const rotate = async () => {
+    setBusy(true); setErr(null); setSecurityMsg("");
+    try { setToken(await rotateStepToken()); setSecurityMsg("Secret rotated. Replace p_token in your iPhone Shortcut before syncing again."); }
+    catch { setErr("Couldn't rotate the secret right now."); }
+    finally { setBusy(false); }
+  };
+  const disconnect = async () => {
+    setBusy(true); setErr(null); setSecurityMsg("");
+    try { await disconnectSteps(true); setToken(null); setLatest(null); setSecurityMsg("Disconnected. The old secret is revoked and synced step history was deleted."); }
+    catch { setErr("Couldn't disconnect right now."); }
     finally { setBusy(false); }
   };
   const copy = (text, label) => {
@@ -5198,9 +5185,13 @@ function StepsCard({ user }) {
     <div style={{ ...sCard, marginBottom:0 }}>
       <div style={{ fontSize:14, fontWeight:700, color:T.ink, marginBottom:2 }}>🚶 Steps from Apple Health</div>
       <div style={{ fontSize:12, color:T.sub, marginBottom:10, lineHeight:1.55 }}>
-        A website can't read Apple Health on its own, so this uses a free <b>Apple Shortcut</b> on your
-        iPhone to send your daily steps in — refreshing each time you open The Lab. A one-time, ~2-minute setup.
+        A website can't read Apple Health on its own. This uses an iPhone <b>Shortcut</b> that sends only a date and daily step total when you tap <b>Sync now</b>. A one-time, ~2-minute setup.
       </div>
+
+      <label style={{display:"flex",gap:9,alignItems:"flex-start",background:T.input,border:`1px solid ${consented?T.green:T.line}`,borderRadius:10,padding:"10px 11px",fontSize:11.5,color:T.sub,lineHeight:1.5,marginBottom:10}}>
+        <input type="checkbox" checked={consented} onChange={e=>setData(d=>({...d,profile:{...(d.profile||{}),appleHealthConsentAt:e.target.checked?new Date().toISOString():null}}))} style={{width:18,minHeight:18,marginTop:1}} />
+        <span>I understand the Shortcut sends <b style={{color:T.ink}}>daily date + step total</b> to The Lab/Supabase. Individual Health samples are not uploaded. I can revoke access and delete synced steps below.</span>
+      </label>
 
       {latest !== undefined && latest !== null && (
         <div style={{ display:"flex", alignItems:"baseline", gap:8, background:"rgba(var(--accent-rgb),.10)", border:`1px solid ${T.green}`,
@@ -5211,13 +5202,19 @@ function StepsCard({ user }) {
       )}
 
       {err && <div style={{ fontSize:12.5, color:T.danger, marginBottom:8 }}>{err}</div>}
+      {securityMsg && <div style={{fontSize:12.5,color:T.green,fontWeight:700,marginBottom:8,lineHeight:1.45}}>{securityMsg}</div>}
 
       {!token ? (
-        <button onClick={connect} disabled={busy} style={{ background:T.green, color:"#000", fontWeight:800,
-          padding:"11px 16px", borderRadius:10, fontSize:14, width:"100%", opacity:busy?0.6:1 }}>
+        <button onClick={connect} disabled={busy || !consented} style={{ background:T.green, color:"#000", fontWeight:800,
+          padding:"11px 16px", borderRadius:10, fontSize:14, width:"100%", opacity:(busy||!consented)?0.5:1 }}>
           {busy ? "Setting up…" : "Connect Apple Health"}
         </button>
       ) : (<>
+        <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",margin:"2px 0 12px",padding:"10px 11px",background:T.input,border:`1px solid ${T.line}`,borderRadius:10}}>
+          <div style={{flex:1,minWidth:170,fontSize:11.5,color:T.sub,lineHeight:1.45}}><b style={{color:T.ink}}>Shortcut access is active.</b> Rotate if the secret was exposed. Disconnect revokes it and deletes synced steps.</div>
+          <ConfirmX label="Rotate secret" onConfirm={rotate} />
+          <ConfirmX label="Disconnect & delete" onConfirm={disconnect} />
+        </div>
         {/* how it works + the 14-day loop */}
         <div style={{ display:"flex", gap:11, alignItems:"flex-start", background:T.cardAlt, border:`1px solid ${T.line}`, borderRadius:12, padding:"12px 13px", margin:"4px 0 12px" }}>
           <span style={{ fontSize:20, flexShrink:0, lineHeight:1.1 }}>💡</span>
@@ -5501,9 +5498,8 @@ function ProCard({ isPro }) {
   const [note, setNote] = useState(false);
   const feats = [
     ["💪", "Lab's AI Coach", "Progression, plateau, volume & weak-point tips from your logs"],
-    ["👟", "Apple Health steps", "Auto step tracking, step duels & the group steps board"],
+    ["👟", "Apple Health steps", "iPhone Shortcut syncing, step duels & the group steps board"],
     ["🎨", "Themes & PRO badge", "Accent colors, dark palettes, and a PRO badge in your groups"],
-    ["🥗", "Nutrition & macros", "Full food log, macro goals, and water tracking"],
   ];
   return (
     <div style={{ ...sCard, marginBottom:0 }}>
@@ -5648,8 +5644,10 @@ function BackupsCard({ user, username, setData }) {
   );
 }
 
-/* Change the password while signed in (no current-password needed — session proves identity). */
+/* Password changes require the current password, so an unattended signed-in device is
+   not enough to silently take over the account. */
 function ChangePasswordCard() {
+  const [current, setCurrent] = useState("");
   const [pw, setPw] = useState("");
   const [pw2, setPw2] = useState("");
   const [show, setShow] = useState(false);
@@ -5657,26 +5655,28 @@ function ChangePasswordCard() {
   const [msg, setMsg] = useState(null); // {ok, text}
   const save = async () => {
     setMsg(null);
-    if (pw.length < 6) { setMsg({ ok:false, text:"At least 6 characters." }); return; }
+    if (!current) { setMsg({ ok:false, text:"Enter your current password." }); return; }
+    if (pw.length < 10) { setMsg({ ok:false, text:"Use at least 10 characters." }); return; }
     if (pw !== pw2) { setMsg({ ok:false, text:"The two passwords don't match." }); return; }
     setBusy(true);
     try {
-      const { error } = await supabase.auth.updateUser({ password: pw });
+      const { error } = await supabase.auth.updateUser({ password: pw, current_password: current });
       if (error) throw error;
       setMsg({ ok:true, text:"✅ Password changed — your browser will offer to update the saved one." });
-      setPw(""); setPw2("");
+      setCurrent(""); setPw(""); setPw2("");
     } catch (e) { setMsg({ ok:false, text:String(e?.message || e) }); }
     finally { setBusy(false); }
   };
   return (
-    <div style={{ ...sCard }}>
+      <div style={{ ...sCard }}>
       <div style={{ fontSize:14, fontWeight:700, color:T.ink, marginBottom:10 }}>Change password</div>
+      <input type={show?"text":"password"} value={current} onChange={e=>{setCurrent(e.target.value);setMsg(null);}} placeholder="current password" autoComplete="current-password" style={{marginBottom:8}} />
       <div style={{ display:"flex", gap:8, marginBottom:8 }}>
         <input type={show?"text":"password"} value={pw} onChange={e=>{setPw(e.target.value); setMsg(null);}} placeholder="new password" autoComplete="new-password" />
         <button onClick={()=>setShow(s=>!s)} style={{ background:T.input, color:T.sub, padding:"0 12px", fontSize:13, border:`1px solid ${T.line}` }}>{show?"Hide":"Show"}</button>
       </div>
       <input type={show?"text":"password"} value={pw2} onChange={e=>{setPw2(e.target.value); setMsg(null);}} placeholder="confirm new password" autoComplete="new-password" style={{ marginBottom:10 }} />
-      <button onClick={save} disabled={busy || !pw || !pw2} style={{ background:T.green, color:"#000", padding:"10px 18px", fontWeight:700, opacity:(busy||!pw||!pw2)?0.5:1 }}>
+      <button onClick={save} disabled={busy || !current || !pw || !pw2} style={{ background:T.green, color:"#000", padding:"10px 18px", fontWeight:700, opacity:(busy||!current||!pw||!pw2)?0.5:1 }}>
         {busy ? "Saving…" : "Update password"}
       </button>
       {msg && <div style={{ marginTop:8, fontSize:13, color: msg.ok?T.green:T.danger }}>{msg.text}</div>}
@@ -5684,61 +5684,72 @@ function ChangePasswordCard() {
   );
 }
 
-/* Set/change the password-reset security question (answers are hashed server-side). */
-function SecurityCard({ username }) {
-  const [q, setQ] = useState(SECURITY_QUESTIONS[0]);
-  const [a, setA] = useState("");
-  const [cur, setCur] = useState(null); // question currently saved on the server
-  const [saved, setSaved] = useState(false);
-  const [err, setErr] = useState("");
+function BackupCodesCard({ user }) {
+  const [ready,setReady]=useState(null);
+  const [codes,setCodes]=useState([]);
+  const [copied,setCopied]=useState(false);
   const [busy, setBusy] = useState(false);
-  useEffect(() => {
-    let live = true;
-    (async () => {
-      try {
-        const sq = await getSecurityQuestion(username);
-        if (live && sq) { setCur(sq); if (SECURITY_QUESTIONS.includes(sq)) setQ(sq); }
-      } catch { /* card still works without it */ }
-    })();
-    return () => { live = false; };
-  }, [username]);
-  const save = async () => {
-    if (a.trim().length < 2) return;
-    setBusy(true); setErr(""); setSaved(false);
-    try { await setSecurityQuestion(q, a); setSaved(true); setCur(q); setA(""); }
-    catch (e) { setErr(String(e?.message || e)); }
-    finally { setBusy(false); }
-  };
-  return (
-    <div className="card">
-      <div className="h" style={{fontSize:19, color:T.tealDk, marginBottom:4}}>🔒 Password reset question</div>
-      <div style={{fontSize:12.5, color:T.sub, marginBottom:12}}>
-        If you ever forget your password, answering this on the sign-in screen lets you set a new one — no email involved.
-        Saving here replaces whatever question you had before. Answers aren't case-sensitive.
-      </div>
-      {cur && (
-        <div style={{fontSize:13, background:T.input, border:`1px solid ${T.line}`, borderRadius:8, padding:"9px 12px", marginBottom:12}}>
-          Currently active: <b>{cur}</b>
-        </div>
-      )}
-      <div style={{display:"grid", gap:10, marginBottom:12}}>
-        <label style={lbl}>Question
-          <select value={q} onChange={e=>setQ(e.target.value)}>
-            {SECURITY_QUESTIONS.map(x=><option key={x}>{x}</option>)}
-          </select>
-        </label>
-        <label style={lbl}>Your answer
-          <input value={a} onChange={e=>{setA(e.target.value); setSaved(false);}} placeholder="something you'll remember" />
-        </label>
-      </div>
-      <button onClick={save} disabled={busy || a.trim().length < 2}
-        style={{background:T.green, color:"#000", padding:"11px 20px", fontWeight:700, opacity:(busy || a.trim().length<2)?0.5:1}}>
-        {busy ? "Saving…" : "Save question"}
-      </button>
-      {saved && <span className="chip" style={{background:T.mint, color:T.green, marginLeft:10}}>✓ Saved</span>}
-      {err && <div style={{color:T.danger, fontSize:13, marginTop:8}}>{err}</div>}
+  const [err,setErr]=useState("");
+  const legacy=user.email?.endsWith("@lifting.local");
+  useEffect(()=>{hasBackupCodes().then(setReady).catch(()=>setReady(false));},[]);
+  const generate=async()=>{setBusy(true);setErr("");try{const next=await generateBackupCodes();setCodes(next);setReady(true);}catch(e){setErr(String(e?.message||e));}finally{setBusy(false);}};
+  const copy=async()=>{try{await navigator.clipboard.writeText(codes.join("\n"));setCopied(true);setTimeout(()=>setCopied(false),1600);}catch{setErr("Copy failed — save each code somewhere private.");}};
+  return <div style={{...sCard}}>
+    <div style={{fontSize:14,fontWeight:800,color:T.ink,marginBottom:3}}>🛟 One-time backup codes</div>
+    <div style={{fontSize:12,color:T.sub,lineHeight:1.5,marginBottom:10}}>
+      {legacy?"Your existing username account does not need an email. These codes are how you recover it if you forget the password.":"Your verified email is the main recovery method. Backup codes are an optional offline fallback."}
+      {' '}Generating a new set permanently replaces the old set.
     </div>
-  );
+    {ready===false&&legacy&&<div style={{background:T.dangerBg,color:T.danger,padding:"9px 11px",borderRadius:9,fontSize:12.5,fontWeight:700,marginBottom:9}}>Recovery is not protected yet. Generate and save your codes now.</div>}
+    {codes.length>0&&<div style={{background:T.input,border:`1px solid ${T.green}`,borderRadius:10,padding:11,marginBottom:10}}>
+      <div style={{fontSize:11,color:T.danger,fontWeight:800,marginBottom:8}}>Shown once. Store these in a password manager.</div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,fontFamily:"ui-monospace,monospace",fontSize:12.5}}>{codes.map(c=><code key={c} style={{color:T.ink}}>{c}</code>)}</div>
+      <button onClick={copy} style={{marginTop:10,background:T.green,color:"#000",padding:"8px 12px",fontWeight:800,fontSize:12.5}}>{copied?"Copied ✓":"Copy all codes"}</button>
+    </div>}
+    <button onClick={generate} disabled={busy} style={{background:T.input,color:T.ink,border:`1px solid ${T.line}`,padding:"9px 14px",fontSize:13,fontWeight:750,opacity:busy ? 0.6 : 1}}>{busy?"Generating…":ready?"Replace my codes":"Generate backup codes"}</button>
+    {err&&<div style={{color:T.danger,fontSize:12.5,marginTop:8}}>{err}</div>}
+  </div>;
+}
+
+function PrivacySharingCard({ data, setData }) {
+  const sharing=data.profile?.sharing||{};
+  const toggle=(key, fallback)=>(value)=>setData(d=>({...d,profile:{...(d.profile||{}),sharing:{...(d.profile?.sharing||{}),[key]:typeof value==="function"?value(d.profile?.sharing?.[key]??fallback):value}}}));
+  return <div style={{...sCard}}>
+    <div style={{fontSize:14,fontWeight:800,color:T.ink,marginBottom:3}}>👥 What groups can see</div>
+    <div style={{fontSize:12,color:T.sub,lineHeight:1.5,marginBottom:10}}>The private account file is never shared. These switches control the small, sanitized profile groups receive.</div>
+    <FeatureToggle label="Workout history and PRs" on={sharing.workouts??true} setOn={toggle("workouts",true)} desc="On by default. Shares set details needed for the group feed, records and workout profile." />
+    <FeatureToggle label="Cardio activity" on={sharing.cardio??true} setOn={toggle("cardio",true)} desc="On by default. Shares activity, duration and calories—not private notes." />
+    <FeatureToggle label="Bodyweight" on={sharing.bodyweight??false} setOn={toggle("bodyweight",false)} desc="Private by default. Enable only if you want group comparisons and your profile weight tile." />
+    <FeatureToggle label="Bodyweight goals" on={sharing.goals??false} setOn={toggle("goals",false)} desc="Private by default. Enable only if you want your goal and progress shown to groupmates." />
+  </div>;
+}
+
+function DeleteAccountCard({ user }) {
+  const [confirm,setConfirm]=useState(false); const [typed,setTyped]=useState(""); const [busy,setBusy]=useState(false); const [err,setErr]=useState("");
+  const remove=async()=>{if(typed!=="DELETE")return;setBusy(true);setErr("");try{await deleteMyAccount();clearLocalAccountData(user.id);await supabase.auth.signOut({scope:"local"});}catch(e){setErr(String(e?.message||e));setBusy(false);}};
+  return <div style={{...sCard,border:`1px solid ${T.danger}`}}>
+    <div style={{fontSize:14,fontWeight:800,color:T.danger,marginBottom:4}}>Permanently delete account</div>
+    <div style={{fontSize:12,color:T.sub,lineHeight:1.5}}>Deletes your login, tracker data, backups, groups you own, memberships, reactions, duels, step token and step history. This cannot be undone.</div>
+    {!confirm?<button onClick={()=>setConfirm(true)} style={{marginTop:10,background:T.dangerBg,color:T.danger,padding:"9px 13px",fontSize:13,fontWeight:800}}>Delete my account…</button>:<div style={{marginTop:10}}>
+      <label style={lbl}>Type DELETE to confirm<input value={typed} onChange={e=>setTyped(e.target.value)} autoCapitalize="characters" /></label>
+      <div style={{display:"flex",gap:8,marginTop:8}}><button onClick={remove} disabled={busy||typed!=="DELETE"} style={{background:T.danger,color:"#fff",padding:"9px 13px",fontSize:13,fontWeight:800,opacity:(busy||typed!=="DELETE") ? 0.5 : 1}}>{busy?"Deleting…":"Delete forever"}</button><button onClick={()=>{setConfirm(false);setTyped("");}} style={{background:T.input,color:T.sub,padding:"9px 13px",fontSize:13}}>Cancel</button></div>
+    </div>}
+    {err&&<div style={{color:T.danger,fontSize:12.5,marginTop:8}}>{err}</div>}
+  </div>;
+}
+
+function LegalLinksCard() {
+  const [page,setPage]=useState(null);
+  return <div style={{...sCard,display:"flex",gap:8}}>
+    <button onClick={()=>setPage("privacy")} style={{flex:1,background:T.input,color:T.ink,border:`1px solid ${T.line}`,padding:9,fontSize:13}}>Privacy Policy</button>
+    <button onClick={()=>setPage("terms")} style={{flex:1,background:T.input,color:T.ink,border:`1px solid ${T.line}`,padding:9,fontSize:13}}>Terms of Use</button>
+    {page&&<LegalModal page={page} onClose={()=>setPage(null)} />}
+  </div>;
+}
+
+function signOutAndClear(user) {
+  clearLocalAccountData(user.id);
+  return supabase.auth.signOut();
 }
 
 /* ================= FRIENDS ================= */
@@ -6223,8 +6234,8 @@ function CoachCard({ data, exMap, user, setData }) {
         const ids = new Set();
         for (const g of groups) { const ms = await listMembers(g.id); for (const m of ms) if (m.user_id !== user.id) ids.add(m.user_id); }
         if (!ids.size) return;
-        const list = [...ids], states = {};
-        await Promise.all(list.map(async id => { try { states[id] = await loadUserState(id); } catch { /* no data */ } }));
+        const list = [...ids];
+        const states = await loadSharedUserStates(list);
         const myLog = data.log || [];
         const latestBw = (st) => {
           const rows = [...(st?.bodyweight || [])].filter(x=>x.weight>0).sort((a,b)=>a.date.localeCompare(b.date));
@@ -6671,6 +6682,7 @@ function FriendsTab({ user, data, setData, exMap = {}, nutritionOn, streaksOn, i
   const [active, setActive] = useState(null);        // selected group
   const [members, setMembers] = useState(null);
   const [states, setStates] = useState({});          // user_id -> tracker data
+  useEffect(() => { setStates(cur => ({ ...cur, [user.id]: data })); }, [data, user.id]);
   const [proIds, setProIds] = useState([]);          // Pro members you can see (for the PRO badge)
   const [memberMenu, setMemberMenu] = useState(null); // compact profile menu anchored to a tapped name
   const memberMenuRef = useRef(null);
@@ -6783,8 +6795,8 @@ function FriendsTab({ user, data, setData, exMap = {}, nutritionOn, streaksOn, i
 
   const startDuel = async () => {
     if (!profile) return;
-    const n = Math.max(1, Math.min(365, parseInt(duelDays)||7));
-    try { await createDuel(profile.user_id, myName, profile.username, todayStr(), dAdd(todayStr(), n-1));
+    const n = Math.max(1, Math.min(30, parseInt(duelDays)||7));
+    try { await createDuel(profile.user_id, n);
       setDueling(false); setDuelMsg(`Duel started — ${n} day${n===1?"":"s"}! Track it in the 👟 Steps tab.`); }
     catch(e){ setDuelMsg("Couldn't start: " + String(e?.message||e)); }
   };
@@ -6926,10 +6938,9 @@ function FriendsTab({ user, data, setData, exMap = {}, nutritionOn, streaksOn, i
       try {
         const ms = await listMembers(active.id);
         setMembers(ms);
-        const st = {};
-        await Promise.all(ms.map(async (m) => {
-          try { st[m.user_id] = await loadUserState(m.user_id); } catch { /* member has no data yet */ }
-        }));
+        const otherIds = ms.map(m=>m.user_id).filter(id=>id!==user.id);
+        const st = await loadSharedUserStates(otherIds);
+        st[user.id] = data;
         setStates(st);
         try {
           const rs = await listReactions(active.id);
@@ -6990,8 +7001,15 @@ function FriendsTab({ user, data, setData, exMap = {}, nutritionOn, streaksOn, i
   const doJoin = async () => {
     if (!code.trim()) return;
     setBusy(true); setErr("");
-    try { await joinGroup(code.trim()); setCode(""); await refreshGroups(); }
-    catch (e) { setErr(/no group/i.test(String(e?.message)) ? "No group found with that invite code — double-check it." : String(e?.message || e)); }
+    try {
+      const result = await joinGroup(code.trim());
+      if (!result?.ok) {
+        if (result?.code === "slow_down") throw new Error(`Too many wrong codes. Try again in ${Math.max(1, Math.ceil((result.retry_after || 15) / 60))} minute(s).`);
+        throw new Error("No group found with that invite code — double-check it.");
+      }
+      setCode(""); await refreshGroups();
+    }
+    catch (e) { setErr(String(e?.message || e)); }
     finally { setBusy(false); }
   };
   const copyCode = () => {
@@ -7208,9 +7226,7 @@ function FriendsTab({ user, data, setData, exMap = {}, nutritionOn, streaksOn, i
       {!pdata ? (
         <div className="card" style={{color:T.sub}}>They haven't logged anything yet.</div>
       ) : (() => {
-        // Sub-tabs: Lifting + Steps always; Macros only when nutrition is unlocked (built,
-        // hidden for everyone else — the layout already accounts for it).
-        const ptabs = [["lifting","Lifting","🏋️"], ["steps","Steps","👟"], ...(nutritionOn ? [["macros","Macros","🥗"]] : [])];
+        const ptabs = [["lifting","Lifting","🏋️"], ["steps","Steps","👟"]];
         const tab = ptabs.some(t=>t[0]===profileTab) ? profileTab : "lifting";
         return (<>
           <div className="seg" style={{display:"flex", width:"100%", marginBottom:14, borderRadius:14, padding:4}}>
@@ -7250,7 +7266,7 @@ function FriendsTab({ user, data, setData, exMap = {}, nutritionOn, streaksOn, i
                 )}
                 {dueling && (
                   <div style={{display:"flex", gap:8, alignItems:"flex-end", flexWrap:"wrap"}}>
-                    <label style={{...lbl, flex:1, minWidth:120}}>Length (days)<input type="number" inputMode="numeric" value={duelDays} onChange={e=>setDuelDays(e.target.value)} /></label>
+                    <label style={{...lbl, flex:1, minWidth:120}}>Length (1–30 days)<input type="number" inputMode="numeric" min="1" max="30" value={duelDays} onChange={e=>setDuelDays(e.target.value)} /></label>
                     <button onClick={startDuel} style={{background:T.green, color:"#000", fontWeight:800, padding:"11px 16px"}}>Start ⚔️</button>
                     <button onClick={()=>setDueling(false)} style={{background:T.input, color:T.sub, padding:"11px 13px"}}>Cancel</button>
                   </div>
@@ -7296,11 +7312,6 @@ function FriendsTab({ user, data, setData, exMap = {}, nutritionOn, streaksOn, i
               })()}
           </>)}
 
-          {tab==="macros" && nutritionOn && (
-            (pdata.foods || []).length > 0
-              ? <MacroCalendar data={pdata} title={`🥗 ${profile.username}'s nutrition`} />
-              : <div className="card" style={{color:T.sub}}>No nutrition logged yet.</div>
-          )}
         </>);
       })()}
     </>);
@@ -7382,7 +7393,6 @@ function FriendsTab({ user, data, setData, exMap = {}, nutritionOn, streaksOn, i
       )}
 
       {members && (<>
-        {nutritionOn && <GroupMacrosCard members={members} states={states} myId={user.id} streaksOn={streaksOn} />}
         <div className="card">
           <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:8}}>📣 Recent activity</div>
           {!feed.length && <div style={{color:T.sub, fontSize:14}}>Nothing yet — someone go lift something.</div>}
@@ -7509,7 +7519,7 @@ function FriendsTab({ user, data, setData, exMap = {}, nutritionOn, streaksOn, i
               minimized={!!data.profile?.minimizedSections?.stepDuels}
               onMinimizedChange={value=>setData(d=>({ ...d, profile:{ ...(d.profile||{}), minimizedSections:{ ...(d.profile?.minimizedSections||{}), stepDuels:value } } }))} />
           : <ProTeaser icon="👟" title="Join the steps game" onGoPro={openPro}
-              desc="You can see the squad's steps here — go Pro to auto-track your own, climb the board, and challenge friends to head-to-head step duels ⚔️" />}
+              desc="You can see the squad's steps here — go Pro to sync your own, climb the board, and challenge friends to head-to-head step duels ⚔️" />}
 
         <div className="card">
           <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:2}}>🏋️ Strength — best est. 1RM ({uLabel(units)})</div>
@@ -7560,10 +7570,11 @@ function FriendsTab({ user, data, setData, exMap = {}, nutritionOn, streaksOn, i
 
         <div className="card">
           <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:8}}>🎟️ Invite & members</div>
-          <div style={{fontSize:13.5, color:T.sub, marginBottom:10}}>
-            Invite code: <b style={{color:T.green, letterSpacing:"1px"}}>{active.invite_code}</b>
-            <button onClick={copyCode} style={{background:"none", color:T.green, fontSize:12.5, marginLeft:8, textDecoration:"underline"}}>{copied ? "Copied!" : "Copy"}</button>
-            <span style={{marginLeft:6}}>— friends enter it under Groups → Join.</span>
+          <div style={{fontSize:13.5, color:T.sub, marginBottom:10,lineHeight:1.55}}>
+            <div>Private invite code:</div>
+            <div style={{display:"flex",gap:8,alignItems:"center",margin:"5px 0",minWidth:0}}><code style={{color:T.green,letterSpacing:".7px",fontSize:11.5,overflowWrap:"anywhere",flex:1}}>{active.invite_code}</code>
+            <button onClick={copyCode} style={{background:T.input, color:T.green, fontSize:12.5, padding:"7px 11px",flexShrink:0}}>{copied ? "Copied!" : "Copy"}</button></div>
+            <span>Friends enter it under Groups → Join. Wrong attempts are throttled after three tries.</span>
           </div>
           {members.map(m=>(
             <div key={m.user_id} style={{display:"flex", alignItems:"center", gap:8, padding:"7px 0", borderBottom:`1px solid ${T.line}`, fontSize:14}}>
@@ -7640,9 +7651,10 @@ function FriendsTab({ user, data, setData, exMap = {}, nutritionOn, streaksOn, i
 
     <div className="card">
       <div className="h" style={{fontSize:16, color:T.tealDk, marginBottom:8}}>Join with an invite code</div>
+      <div style={{fontSize:11.5,color:T.sub,lineHeight:1.5,marginBottom:9}}>Joining lets members see only the categories enabled under <b style={{color:T.ink}}>Settings → Privacy & sharing</b>. Journals, private notes, routines, nutrition history, email and backups are never included.</div>
       <div style={{display:"flex", gap:8}}>
-        <input value={code} onChange={e=>setCode(e.target.value.toUpperCase())} placeholder="6-character code" maxLength={6} style={{letterSpacing:"2px"}} />
-        <button onClick={doJoin} disabled={busy||code.trim().length<6} className="btn-primary" style={{padding:"0 20px"}}>Join</button>
+        <input value={code} onChange={e=>setCode(e.target.value.toUpperCase().replace(/[^A-F0-9]/g,""))} placeholder="32-character private code" maxLength={32} style={{letterSpacing:"1px",fontFamily:"ui-monospace,monospace"}} />
+        <button onClick={doJoin} disabled={busy||code.trim().length<32} className="btn-primary" style={{padding:"0 20px"}}>Join</button>
       </div>
     </div>
 

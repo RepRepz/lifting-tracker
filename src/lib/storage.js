@@ -16,6 +16,15 @@ export async function loadUserState(userId) {
   return data?.value ?? null;
 }
 
+/** Sanitized states for the signed-in user's groupmates. The server strips journals,
+    nutrition, routines, notes and every field the owner did not choose to share. */
+export async function loadSharedUserStates(userIds) {
+  if (!userIds?.length) return {};
+  const { data, error } = await supabase.rpc("get_shared_user_states", { p_user_ids: userIds });
+  if (error) throw error;
+  return Object.fromEntries((data ?? []).map((row) => [row.user_id, row.value]));
+}
+
 /** Upserts the signed-in user's tracker state (a plain JSON object). */
 export async function saveUserState(userId, value) {
   const { error } = await supabase
@@ -53,6 +62,19 @@ export async function getStepToken() {
   return data ?? null;
 }
 
+/** Invalidates the previous Shortcut secret and returns a replacement. */
+export async function rotateStepToken() {
+  const { data, error } = await supabase.rpc("rotate_step_token");
+  if (error) throw error;
+  return data ?? null;
+}
+
+/** Revokes Shortcut access and optionally removes every synced step row. */
+export async function disconnectSteps(deleteData = true) {
+  const { error } = await supabase.rpc("disconnect_steps", { p_delete_data: deleteData });
+  if (error) throw error;
+}
+
 /** When the user's steps were last written (ISO string), or null. */
 export async function lastStepSync(userId) {
   const { data, error } = await supabase.from("steps").select("updated_at")
@@ -86,38 +108,28 @@ export async function getMyProStatus() {
 /** IDs of Pro members you can see (yourself + groupmates), excluding expired ones. */
 export async function listProUserIds() {
   const { data, error } = await supabase.rpc("visible_active_pro_user_ids");
-  if (!error) return (data || []).map(r => r.user_id);
-
-  // Backward-compatible fallback while a deployment reaches an older backend.
-  const fallback = await supabase.from("pro_users").select("user_id, until");
-  if (fallback.error) return [];
-  const now = Date.now();
-  return (fallback.data || []).filter(r => !r.until || new Date(r.until).getTime() > now).map(r => r.user_id);
+  if (error) throw error;
+  return (data || []).map(r => r.user_id);
 }
 
 /* ---------- step duels (head-to-head) ---------- */
 
 /** Send a duel challenge to another user. Stays "pending" until they accept.
     start/end are a placeholder window; the real clock starts when they accept. */
-export async function createDuel(bId, aName, bName, startDay, endDay, days) {
-  const { data: { user } } = await supabase.auth.getUser();
-  const { error } = await supabase.from("duels").insert({
-    a_id: user.id, b_id: bId, a_name: aName, b_name: bName,
-    start_day: startDay, end_day: endDay, days, status: "pending",
-  });
+export async function createDuel(bId, days) {
+  const { error } = await supabase.rpc("duel_create", { p_b_id: bId, p_days: days });
   if (error) throw error;
 }
 
 /** Opponent accepts a pending duel — the window starts today for `days` days. */
-export async function acceptDuel(id, startDay, endDay) {
-  const { error } = await supabase.from("duels")
-    .update({ status: "active", start_day: startDay, end_day: endDay }).eq("id", id);
+export async function acceptDuel(id) {
+  const { error } = await supabase.rpc("duel_accept", { p_id: id });
   if (error) throw error;
 }
 
 /** Opponent declines a pending duel. */
 export async function declineDuel(id) {
-  const { error } = await supabase.from("duels").update({ status: "declined" }).eq("id", id);
+  const { error } = await supabase.rpc("duel_decline", { p_id: id });
   if (error) throw error;
 }
 
@@ -130,49 +142,64 @@ export async function listDuels() {
 
 /** Cancel/remove a duel (either participant may). */
 export async function deleteDuel(id) {
-  const { error } = await supabase.from("duels").delete().eq("id", id);
+  const { error } = await supabase.rpc("duel_delete", { p_id: id });
   if (error) throw error;
 }
 
 /** Forfeit an active duel — the other person is recorded as the winner. */
-export async function forfeitDuel(id, winnerId) {
-  const { error } = await supabase.from("duels")
-    .update({ status: "forfeited", winner_id: winnerId, cancel_req: null }).eq("id", id);
+export async function forfeitDuel(id) {
+  const { error } = await supabase.rpc("duel_forfeit", { p_id: id });
   if (error) throw error;
 }
 
 /** Ask to void an active duel with no result. Voiding only happens once BOTH sides agree:
     one calls this to request, the other calls deleteDuel to agree (or clearDuelCancel to decline). */
-export async function requestDuelCancel(id, myId) {
-  const { error } = await supabase.from("duels").update({ cancel_req: myId }).eq("id", id);
+export async function requestDuelCancel(id) {
+  const { error } = await supabase.rpc("duel_request_cancel", { p_id: id });
   if (error) throw error;
 }
 
 /** Withdraw / decline a pending void request. */
 export async function clearDuelCancel(id) {
-  const { error } = await supabase.from("duels").update({ cancel_req: null }).eq("id", id);
+  const { error } = await supabase.rpc("duel_clear_cancel", { p_id: id });
   if (error) throw error;
 }
 
-/* ---------- security question (password reset without email) ---------- */
+/* ---------- account recovery ---------- */
 
-/** Signed-in user sets/changes their reset question + answer (answer is hashed server-side). */
-export async function setSecurityQuestion(q, a) {
-  const { error } = await supabase.rpc("set_security_question", { q, a });
+export async function generateBackupCodes() {
+  const { data, error } = await supabase.rpc("generate_backup_codes");
+  if (error) throw error;
+  return (data ?? []).map((row) => row.code);
+}
+
+export async function hasBackupCodes() {
+  const { data, error } = await supabase.rpc("has_backup_codes");
+  if (error) throw error;
+  return data === true;
+}
+
+export async function resetPasswordWithBackupCode(username, code, newPassword) {
+  const { data, error } = await supabase.rpc("reset_password_with_backup_code", {
+    p_username: username,
+    p_code: code,
+    p_new_password: newPassword,
+  });
+  if (error) throw error;
+  return data ?? { ok: false, code: "invalid" };
+}
+
+export async function deleteMyAccount() {
+  const { error } = await supabase.rpc("delete_my_account");
   if (error) throw error;
 }
 
-/** Anyone can look up a username's question (null if they never set one). */
-export async function getSecurityQuestion(uname) {
-  const { data, error } = await supabase.rpc("get_security_question", { uname });
-  if (error) throw error;
-  return data ?? null;
-}
-
-/** Resets the password if the answer matches; locks for 1h after 5 wrong tries. */
-export async function resetPasswordWithAnswer(uname, answer, new_password) {
-  const { error } = await supabase.rpc("reset_password_with_answer", { uname, answer, new_password });
-  if (error) throw error;
+/** Remove this account's private cached state/backups from the current browser. */
+export function clearLocalAccountData(userId) {
+  const exact = new Set([`lt-data-${userId}`, `lt-cache-${userId}`, `lt-pending-${userId}`, `lt-pro-${userId}`]);
+  for (const key of Object.keys(localStorage)) {
+    if (exact.has(key) || key.startsWith(`lt-bk-${userId}-`)) localStorage.removeItem(key);
+  }
 }
 
 /* ---------- groups ---------- */
@@ -186,7 +213,7 @@ export async function listMyGroups() {
 
 /** Any member can change the group's emoji (only the emoji column is writable). */
 export async function setGroupEmoji(groupId, emoji) {
-  const { error } = await supabase.from("groups").update({ emoji }).eq("id", groupId);
+  const { error } = await supabase.rpc("set_group_emoji", { p_group_id: groupId, p_emoji: emoji });
   if (error) throw error;
 }
 
@@ -232,11 +259,8 @@ function lastLoggedTs(value) {
 /** When each user last actually logged a workout entry: { user_id: ISO string | null }. */
 export async function lastActiveFor(userIds) {
   if (!userIds.length) return {};
-  const { data, error } = await supabase
-    .from("user_state").select("user_id, value")
-    .in("user_id", userIds);
-  if (error) throw error;
-  return Object.fromEntries((data ?? []).map(r => [r.user_id, lastLoggedTs(r.value)]));
+  const states = await loadSharedUserStates(userIds);
+  return Object.fromEntries(userIds.map(id => [id, lastLoggedTs(states[id])]));
 }
 
 /** Creates a group and returns { group_id, invite_code }. */
@@ -250,7 +274,7 @@ export async function createGroup(name) {
 export async function joinGroup(code) {
   const { data, error } = await supabase.rpc("join_group", { p_code: code });
   if (error) throw error;
-  return Array.isArray(data) ? data[0] : data;
+  return data;
 }
 
 /** Owner-only: regenerates the invite code and returns the new one. */
