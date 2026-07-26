@@ -497,6 +497,34 @@ export default function LiftingTracker({ user }) {
     }
   })(); }, [user.id]);
 
+  // One-time bridge from the old device-only minimize settings into the cloud profile.
+  // Once a key exists in the profile, the cloud value always wins on every device.
+  useEffect(() => {
+    if (!loaded) return;
+    setData(d => {
+      const profile = d.profile || {};
+      const sections = { ...(profile.minimizedSections || {}) };
+      let changed = false;
+      const migrate = (profileKey, storageKey, invert = false) => {
+        if (Object.prototype.hasOwnProperty.call(sections, profileKey)) return;
+        const raw = localStorage.getItem(storageKey); if (raw == null) return;
+        sections[profileKey] = invert ? raw === "0" : raw === "1"; changed = true;
+      };
+      migrate("weeklyTargets", "lt-target-minimized");
+      migrate("muscleChart", "lt-muscle-chart-minimized");
+      migrate("yearRecap", "lt-recap-minimized");
+      migrate("personalRecords", "lt-records-minimized");
+      migrate("quickWorkout", "lt-quick-workout-open", true);
+      if (!Object.prototype.hasOwnProperty.call(sections, "aiCoach") && profile.coachHideDate === todayStr()) { sections.aiCoach = true; changed = true; }
+      let charts = profile.minimizedCharts;
+      if (charts == null) {
+        try { const old = JSON.parse(localStorage.getItem("lt-minimized-progress-charts") || "{}"); if (old && Object.keys(old).length) { charts = old; changed = true; } } catch {}
+      }
+      if (!changed) return d;
+      return { ...d, profile:{ ...profile, minimizedSections:sections, ...(charts ? { minimizedCharts:charts } : {}) } };
+    });
+  }, [loaded, user.id]);
+
   // Big-delete guard: if one change would wipe out a big chunk of the data (a bug or a
   // fat-fingered mass delete), saving pauses and a modal asks first. One-at-a-time
   // deletes never come close to triggering it.
@@ -866,7 +894,7 @@ export default function LiftingTracker({ user }) {
           {tab==="log" && liftingOn && <LogTab data={data} exMap={exMap} setData={setData} routinesOn={routinesOn} multiGymOn={multiGymOn} />}
           {tab==="records" && liftingOn && <RecordsTab data={data} exMap={exMap} setData={setData} />}
           {tab==="journal" && <JournalTab data={data} setData={setData} />}
-          {tab==="friends" && <FriendsTab user={user} exMap={exMap} nutritionOn={nutritionOn} streaksOn={streaksOn} isPro={isPro} openPro={()=>setShowSettings(true)} />}
+          {tab==="friends" && <FriendsTab user={user} data={data} setData={setData} exMap={exMap} nutritionOn={nutritionOn} streaksOn={streaksOn} isPro={isPro} openPro={()=>setShowSettings(true)} />}
           {tab==="macros" && nutritionOn && <MacroTab data={data} setData={setData} streaksOn={streaksOn} waterOn={waterOn} />}
           {tab==="body" && liftingOn && <BodyTab data={data} setData={setData} hunit={hunit} />}
           {tab==="cardio" && liftingOn && <CardioTab data={data} setData={setData} latestBW={latestBW} user={user} stepsOn={stepsEnabled} />}
@@ -1362,7 +1390,9 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
       </div>
     )}
     {routinesOn && <RoutinesPanel data={data} setData={setData} onPick={pickFromRoutine} />}
-    <QuickWorkoutLogger defaultDate={gymDay} exercises={data.exercises} onSave={addQuickWorkout} onAddExercise={addQuickSets} />
+    <QuickWorkoutLogger defaultDate={gymDay} exercises={data.exercises} onSave={addQuickWorkout} onAddExercise={addQuickSets}
+      minimized={!!data.profile?.minimizedSections?.quickWorkout}
+      onMinimizedChange={value=>setData(d=>({ ...d, profile:{ ...(d.profile||{}), minimizedSections:{ ...(d.profile?.minimizedSections||{}), quickWorkout:value } } }))} />
     <div className="card">
       <div className="h" style={{fontSize:19, color:T.tealDk, marginBottom:10}}>Log a set</div>
       <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:10}}>
@@ -1667,14 +1697,13 @@ function Spark({ pts, w = 88, h = 26 }) {
 }
 
 /* Horizontal progress bar with a highlighted target zone (weekly sets). */
-function QuickWorkoutLogger({ defaultDate, exercises, onSave, onAddExercise }) {
-  const [open, setOpen] = useState(() => localStorage.getItem("lt-quick-workout-open") !== "0");
+function QuickWorkoutLogger({ defaultDate, exercises, onSave, onAddExercise, minimized, onMinimizedChange }) {
+  const open = !minimized;
   const [date, setDate] = useState(defaultDate || todayStr());
   const [counts, setCounts] = useState(() => Object.fromEntries(MUSCLES.map(m=>[m,0])));
   const [saved, setSaved] = useState(false);
   const total = MUSCLES.reduce((sum,m)=>sum+(counts[m]||0),0);
   const selected = MUSCLES.filter(m=>(counts[m]||0)>0);
-  const setOpenSaved = (value) => { setOpen(value); localStorage.setItem("lt-quick-workout-open", value ? "1" : "0"); };
   const bump = (muscle, delta) => {
     setSaved(false);
     setCounts(cur => {
@@ -1696,7 +1725,7 @@ function QuickWorkoutLogger({ defaultDate, exercises, onSave, onAddExercise }) {
           <div className="h" style={{fontSize:18, color:T.tealDk}}>⚡ Quick workout</div>
           {!open && <div style={{fontSize:11.5, color:T.sub, marginTop:2}}>Muscles + set counts. No exercises, weight, or reps.</div>}
         </div>
-        <button onClick={()=>setOpenSaved(!open)} title={open?"Minimize quick workout":"Open quick workout"} aria-expanded={open} style={{background:T.input, border:`1px solid ${T.line}`, color:T.sub, width:34, height:30, borderRadius:9, padding:0, fontSize:open?15:12, fontWeight:800, flexShrink:0}}>{open?"−":"Show"}</button>
+        <button onClick={()=>onMinimizedChange?.(open)} title={open?"Minimize quick workout":"Open quick workout"} aria-expanded={open} style={{background:T.input, border:`1px solid ${T.line}`, color:T.sub, width:34, height:30, borderRadius:9, padding:0, fontSize:open?15:12, fontWeight:800, flexShrink:0}}>{open?"−":"Show"}</button>
       </div>
       {open && <>
         <div style={{fontSize:12, color:T.sub, lineHeight:1.45, margin:"5px 0 12px"}}>For days you only want to track what you trained. It fills your calendar, streak, muscle charts, weekly goals, and group activity—never strength records.</div>
@@ -2328,11 +2357,12 @@ function WorkoutHeatmap({ log, cardio, exMap = {} }) {
 }
 
 /* Spotify-Wrapped-style yearly recap. */
-function YearRecap({ data }) {
+function YearRecap({ data, setData }) {
   const units = useUnit();
   const year = new Date().getFullYear();
-  const [minimized, setMinimized] = useState(() => localStorage.getItem("lt-recap-minimized") === "1");
-  const setMinimizedSaved = (value) => { setMinimized(value); localStorage.setItem("lt-recap-minimized", value ? "1" : "0"); };
+  const canMinimize = typeof setData === "function";
+  const minimized = canMinimize && !!data.profile?.minimizedSections?.yearRecap;
+  const setMinimizedSaved = (value) => setData?.(d=>({ ...d, profile:{ ...(d.profile||{}), minimizedSections:{ ...(d.profile?.minimizedSections||{}), yearRecap:value } } }));
   const stats = useMemo(() => {
     const log = (data.log||[]).filter(e => e.date.startsWith(String(year)));
     const cardio = (data.cardio||[]).filter(c => c.date.startsWith(String(year)));
@@ -2370,7 +2400,7 @@ function YearRecap({ data }) {
     <div className="card" style={{ background:"linear-gradient(160deg,#0C1A0E,#0C0D0D 60%)", border:`1px solid ${T.creamLine}` }}>
       <div style={{display:"flex", alignItems:"center", gap:8, marginBottom:2}}>
         <div className="h" style={{ fontSize:19, color:T.green, flex:1 }}>✨ {year} in review</div>
-        <button onClick={()=>setMinimizedSaved(true)} title="Minimize yearly review" aria-label="Minimize yearly review" style={{background:"none", border:"none", color:T.sub, fontSize:15, lineHeight:1, padding:"4px 5px"}}>➖</button>
+        {canMinimize && <button onClick={()=>setMinimizedSaved(true)} title="Minimize yearly review" aria-label="Minimize yearly review" style={{background:"none", border:"none", color:T.sub, fontSize:15, lineHeight:1, padding:"4px 5px"}}>➖</button>}
       </div>
       <div style={{ fontSize:12.5, color:T.sub, marginBottom:12 }}>Your year so far.</div>
       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:6 }}>
@@ -2413,18 +2443,14 @@ function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled
   const units = useUnit();
   const [researchMode, setResearchMode] = useState(() => goalModeOf(data));
   const [targetDetail, setTargetDetail] = useState(null); // { muscle, pinned }
-  const [targetMinimized, setTargetMinimized] = useState(() => localStorage.getItem("lt-target-minimized") === "1");
-  const minimizeTarget = (value) => { setTargetMinimized(value); localStorage.setItem("lt-target-minimized", value ? "1" : "0"); if (value) setTargetDetail(null); };
-  const [muscleMinimized, setMuscleMinimized] = useState(() => localStorage.getItem("lt-muscle-chart-minimized") === "1");
-  const minimizeMuscle = (value) => { setMuscleMinimized(value); localStorage.setItem("lt-muscle-chart-minimized", value ? "1" : "0"); };
-  const [minimizedCharts, setMinimizedCharts] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("lt-minimized-progress-charts") || "{}"); } catch { return {}; }
-  });
-  const minimizeChart = (name, value) => setMinimizedCharts(cur => {
-    const next = { ...cur, [name]:value };
-    localStorage.setItem("lt-minimized-progress-charts", JSON.stringify(next));
-    return next;
-  });
+  const minimizedSections = data.profile?.minimizedSections || {};
+  const setSectionMinimized = (key, value) => setData(d=>({ ...d, profile:{ ...(d.profile||{}), minimizedSections:{ ...(d.profile?.minimizedSections||{}), [key]:value } } }));
+  const targetMinimized = own && !!minimizedSections.weeklyTargets;
+  const minimizeTarget = (value) => { setSectionMinimized("weeklyTargets", value); if (value) setTargetDetail(null); };
+  const muscleMinimized = own && !!minimizedSections.muscleChart;
+  const minimizeMuscle = (value) => setSectionMinimized("muscleChart", value);
+  const minimizedCharts = own ? (data.profile?.minimizedCharts || {}) : {};
+  const minimizeChart = (name, value) => setData(d=>({ ...d, profile:{ ...(d.profile||{}), minimizedCharts:{ ...(d.profile?.minimizedCharts||{}), [name]:value } } }));
   const targetCardRef = useRef(null);
   useEffect(() => { setResearchMode(goalModeOf(data)); }, [data.profile?.setGoalMode]);
   useEffect(() => {
@@ -2669,7 +2695,7 @@ function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled
             {pinned ? "📌 Pinned" : "📌 Pin"}
           </button>
           )}
-          <button onClick={()=>minimizeChart(p,true)} title={`Minimize ${p} graph`} aria-label={`Minimize ${p} graph`} style={{flexShrink:0, background:"none", border:"none", color:T.sub, fontSize:15, lineHeight:1, padding:"4px 5px"}}>➖</button>
+          {own && <button onClick={()=>minimizeChart(p,true)} title={`Minimize ${p} graph`} aria-label={`Minimize ${p} graph`} style={{flexShrink:0, background:"none", border:"none", color:T.sub, fontSize:15, lineHeight:1, padding:"4px 5px"}}>➖</button>}
         </div>
         {exGyms.length > 0 && (
           <div style={{display:"flex", gap:6, flexWrap:"wrap", marginBottom:8}}>
@@ -2761,7 +2787,7 @@ function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled
       <div className="card" ref={targetCardRef}>
         <div style={{display:"flex", alignItems:"center", gap:8, marginBottom:2}}>
           <div className="h" style={{fontSize:17, color:T.tealDk, flex:1}}>Weekly set target</div>
-          <button onClick={()=>minimizeTarget(true)} title="Minimize weekly targets" aria-label="Minimize weekly targets" style={{background:"none", border:"none", color:T.sub, fontSize:15, lineHeight:1, padding:"4px 5px", cursor:"pointer"}}>➖</button>
+          {own && <button onClick={()=>minimizeTarget(true)} title="Minimize weekly targets" aria-label="Minimize weekly targets" style={{background:"none", border:"none", color:T.sub, fontSize:15, lineHeight:1, padding:"4px 5px", cursor:"pointer"}}>➖</button>}
         </div>
         <div style={{display:"flex", alignItems:"center", gap:6, margin:"8px 0 7px", flexWrap:"wrap"}}>
           <span style={{fontSize:11.5, color:T.sub, marginRight:2}}>Goal type</span>
@@ -2862,7 +2888,7 @@ function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled
     <div className="card">
       <div style={{display:"flex", alignItems:"center", gap:8, marginBottom:4}}>
         <div className="h" style={{fontSize:17, color:T.tealDk, flex:1}}>Last 30 days — work by muscle</div>
-        <button onClick={()=>minimizeMuscle(true)} title="Minimize muscle chart" aria-label="Minimize muscle chart" style={{background:"none", border:"none", color:T.sub, fontSize:15, lineHeight:1, padding:"4px 5px"}}>➖</button>
+        {own && <button onClick={()=>minimizeMuscle(true)} title="Minimize muscle chart" aria-label="Minimize muscle chart" style={{background:"none", border:"none", color:T.sub, fontSize:15, lineHeight:1, padding:"4px 5px"}}>➖</button>}
       </div>
       <div style={{fontSize:12, color:T.sub, marginBottom:4}}>Main muscles get full credit, secondaries half — a bench set counts 1 for chest, ½ for triceps.</div>
       {pieData.length ? (
@@ -2871,7 +2897,7 @@ function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled
     </div>
   );
 
-  widgets.recap = <YearRecap data={data} />;
+  widgets.recap = <YearRecap data={data} setData={own ? setData : null} />;
 
   return (<>
     {own && coachEnabled && user && <CoachCard data={data} exMap={exMap} user={user} setData={setData} />}
@@ -2932,8 +2958,9 @@ function RecordsTab({ data, exMap, setData }) {
     return { ...d, prNotes: notes };
   });
   const units = useUnit();
-  const [minimized, setMinimized] = useState(() => localStorage.getItem("lt-records-minimized") === "1");
-  const setMinimizedSaved = (value) => { setMinimized(value); localStorage.setItem("lt-records-minimized", value ? "1" : "0"); };
+  const canMinimize = typeof setData === "function";
+  const minimized = canMinimize && !!data.profile?.minimizedSections?.personalRecords;
+  const setMinimizedSaved = (value) => setData?.(d=>({ ...d, profile:{ ...(d.profile||{}), minimizedSections:{ ...(d.profile?.minimizedSections||{}), personalRecords:value } } }));
   const rows = useMemo(() => data.exercises.map(ex => {
     const entries = data.log.filter(e => e.exercise===ex.name && !e.quick && (e.reps||0)>0);
     if (!entries.length) return { ...ex, empty:true };
@@ -2983,7 +3010,7 @@ function RecordsTab({ data, exMap, setData }) {
     <div className="card">
       <div style={{display:"flex", alignItems:"center", gap:8, marginBottom:2}}>
         <div className="h" style={{fontSize:19, color:T.tealDk, flex:1}}>🏆 Personal records</div>
-        <button onClick={()=>setMinimizedSaved(true)} title="Minimize personal records" aria-label="Minimize personal records" style={{background:"none", border:"none", color:T.sub, fontSize:15, lineHeight:1, padding:"4px 5px"}}>➖</button>
+        {canMinimize && <button onClick={()=>setMinimizedSaved(true)} title="Minimize personal records" aria-label="Minimize personal records" style={{background:"none", border:"none", color:T.sub, fontSize:15, lineHeight:1, padding:"4px 5px"}}>➖</button>}
       </div>
       <div style={{fontSize:12.5, color:T.sub, marginBottom:12}}>Best-ever numbers per lift, in {uLabel(units)} — freshest first. Tap a lift for the full breakdown.</div>
       <input value={recQ} onChange={e=>setRecQ(e.target.value)} placeholder="🔍 Search lifts…"
@@ -3655,7 +3682,7 @@ function StepRingChart({ map, goal, meta }) {
 
 /* Head-to-head step duels: instant-start, custom length, most total steps wins.
    Standings are summed from each person's step map over the duel window. */
-function DuelsCard({ user, all, nameOf, myId, myName, proIds = [] }) {
+function DuelsCard({ user, all, nameOf, myId, myName, proIds = [], minimized = false, onMinimizedChange }) {
   const oIsPro = (oId) => proIds.includes(oId);
   const [duels, setDuels] = useState([]);
   const [open, setOpen] = useState(false);
@@ -3692,11 +3719,23 @@ function DuelsCard({ user, all, nameOf, myId, myName, proIds = [] }) {
   const reqCancel = async (id) => { try { await requestDuelCancel(id, myId); await load(); } catch {} };
   const undoCancel = async (id) => { try { await clearDuelCancel(id); await load(); } catch {} };
 
+  const currentCount = mine.filter(d => d.status === "pending" || (d.status === "active" && today <= d.end_day)).length;
+  if (minimized) return (
+    <div className="card" style={{display:"flex", alignItems:"center", gap:10, padding:"11px 14px"}}>
+      <span style={{fontSize:17}}>⚔️</span>
+      <div style={{minWidth:0, flex:1}}><div className="h" style={{fontSize:14, color:T.tealDk}}>Step duels</div><div style={{fontSize:11, color:T.sub}}>{currentCount} current duel{currentCount===1?"":"s"}{mine.length>currentCount?` · ${mine.length} total`:""}</div></div>
+      <button onClick={()=>onMinimizedChange?.(false)} style={{flexShrink:0, background:T.input, border:`1px solid ${T.line}`, color:T.green, fontWeight:800, fontSize:12, padding:"6px 12px", borderRadius:99}}>Show</button>
+    </div>
+  );
+
   return (
     <div className="card">
       <div style={{display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom: (mine.length||open)?10:0}}>
         <div className="h" style={{fontSize:16, color:T.tealDk}}>⚔️ Step duels</div>
-        {!open && <button onClick={()=>setOpen(true)} style={{background:T.green, color:"#000", fontWeight:800, fontSize:12.5, padding:"6px 13px", borderRadius:99}}>+ New</button>}
+        <div style={{display:"flex", alignItems:"center", gap:7}}>
+          {!open && <button onClick={()=>setOpen(true)} style={{background:T.green, color:"#000", fontWeight:800, fontSize:12.5, padding:"6px 13px", borderRadius:99}}>+ New</button>}
+          <button onClick={()=>{setOpen(false);onMinimizedChange?.(true);}} title="Minimize step duels" aria-label="Minimize step duels" style={{background:"none", border:"none", color:T.sub, fontSize:15, lineHeight:1, padding:"4px 5px"}}>➖</button>
+        </div>
       </div>
 
       {open && (
@@ -3916,7 +3955,9 @@ function StepsTab({ user, data, setData }) {
 
     <StepRingChart map={merged.map} goal={goal} meta={merged.meta} />
 
-    <DuelsCard user={user} all={all} nameOf={nameOf} myId={myId} myName={myName} proIds={proIds} />
+    <DuelsCard user={user} all={all} nameOf={nameOf} myId={myId} myName={myName} proIds={proIds}
+      minimized={!!data.profile?.minimizedSections?.stepDuels}
+      onMinimizedChange={value=>setData(d=>({ ...d, profile:{ ...(d.profile||{}), minimizedSections:{ ...(d.profile?.minimizedSections||{}), stepDuels:value } } }))} />
 
     {race.length > 1 && (
       <div className="card" style={{display:"flex", alignItems:"center", gap:11, padding:"13px 15px"}}>
@@ -6143,22 +6184,21 @@ function CoachCard({ data, exMap, user, setData }) {
   const otherTips = all.filter(t => t.cat !== "Train today");
   const CAT_COLOR = { Progression: T.green, "Train today": STEP_BLUE, Projection: "#9D5CFF", Plateau: "#E9C46A", Volume: STEP_BLUE, Balance: STEP_BLUE, Recovery: "#00D1B2", "Weak point": "#FF7A45" };
 
-  // "Hide for today" — snoozes the whole card until tomorrow (stores today's date).
-  const setHideToday = (v) => setData(d => ({ ...d, profile: { ...(d.profile || {}), coachHideDate: v } }));
-  const hiddenToday = data.profile?.coachHideDate === todayStr();
-  if (hiddenToday) {
+  const setMinimized = (value) => setData(d => ({ ...d, profile: { ...(d.profile || {}), minimizedSections:{ ...(d.profile?.minimizedSections||{}), aiCoach:value } } }));
+  const minimized = !!data.profile?.minimizedSections?.aiCoach;
+  if (minimized) {
     return (
       <div className="card" style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 14px" }}>
         <span style={{ fontSize: 16 }}>💪</span>
-        <span style={{ fontSize: 13, color: T.sub, fontWeight: 600, flex: 1, minWidth: 0 }}>Coach hidden for today{trainTip ? " — you're set" : ""}.</span>
-        <button onClick={() => setHideToday("")} style={{ flexShrink: 0, background: T.input, border: `1px solid ${T.line}`, color: T.green, fontWeight: 800, fontSize: 12.5, padding: "6px 14px", borderRadius: 99 }}>Show</button>
+        <span style={{ fontSize: 13, color: T.sub, fontWeight: 600, flex: 1, minWidth: 0 }}>Lab's AI Coach minimized{trainTip ? " — today's focus is ready" : ""}.</span>
+        <button onClick={() => setMinimized(false)} style={{ flexShrink: 0, background: T.input, border: `1px solid ${T.line}`, color: T.green, fontWeight: 800, fontSize: 12.5, padding: "6px 14px", borderRadius: 99 }}>Show</button>
       </div>
     );
   }
 
   return (
     <div className="card" style={{ border: "1px solid rgba(var(--accent-rgb),.4)", background: "radial-gradient(120% 90% at 0% 0%, rgba(var(--accent-rgb),.12), transparent 55%), linear-gradient(180deg, color-mix(in srgb, var(--card) 90%, #fff 5%), var(--card) 70%)" }}>
-      {/* header — split chip + "hide for today" on the right */}
+      {/* header — split chip + minimize on the right */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 13 }}>
         <div className="h" style={{ fontSize: 18, color: T.ink, flex:1, minWidth:0 }}>💪 Lab's AI Coach</div>
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 7, flexShrink: 0 }}>
@@ -6167,7 +6207,7 @@ function CoachCard({ data, exMap, user, setData }) {
               {SPLITS[split].icon} {SPLITS[split].short}{split === "custom" && customDays.length ? ` · ${customDays.length}d` : ""} <span style={{ color: T.sub }}>✎</span>
             </button>
           )}
-          <button onClick={() => setHideToday(todayStr())} title="Hide the coach until tomorrow" style={{ background: "none", border: "none", color: T.sub, fontSize: 15, lineHeight: 1, padding: "4px 5px", cursor: "pointer" }}>➖</button>
+          <button onClick={() => setMinimized(true)} title="Minimize AI Coach" style={{ background: "none", border: "none", color: T.sub, fontSize: 15, lineHeight: 1, padding: "4px 5px", cursor: "pointer" }}>➖</button>
         </div>
       </div>
 
@@ -6542,7 +6582,7 @@ function StepFactsModal({ name, isMe, map, rank, onClose }) {
   );
 }
 
-function FriendsTab({ user, exMap = {}, nutritionOn, streaksOn, isPro, openPro }) {
+function FriendsTab({ user, data, setData, exMap = {}, nutritionOn, streaksOn, isPro, openPro }) {
   const units = useUnit();
   const [groups, setGroups] = useState(null);        // null = loading
   const [active, setActive] = useState(null);        // selected group
@@ -7317,7 +7357,9 @@ function FriendsTab({ user, exMap = {}, nutritionOn, streaksOn, isPro, openPro }
         </div>
 
         {isPro
-          ? <DuelsCard user={user} all={memberSteps} nameOf={Object.fromEntries((members||[]).map(m=>[m.user_id,m.username]))} myId={user.id} myName={myName} proIds={proIds} />
+          ? <DuelsCard user={user} all={memberSteps} nameOf={Object.fromEntries((members||[]).map(m=>[m.user_id,m.username]))} myId={user.id} myName={myName} proIds={proIds}
+              minimized={!!data.profile?.minimizedSections?.stepDuels}
+              onMinimizedChange={value=>setData(d=>({ ...d, profile:{ ...(d.profile||{}), minimizedSections:{ ...(d.profile?.minimizedSections||{}), stepDuels:value } } }))} />
           : <ProTeaser icon="👟" title="Join the steps game" onGoPro={openPro}
               desc="You can see the squad's steps here — go Pro to auto-track your own, climb the board, and challenge friends to head-to-head step duels ⚔️" />}
 
