@@ -6657,9 +6657,10 @@ function FriendsTab({ user, data, setData, exMap = {}, nutritionOn, streaksOn, i
       <span style={{ display: "inline-flex", alignItems: "center", gap: 4, minWidth: 0, maxWidth: "100%", verticalAlign: "bottom" }}>
         <span role="button" tabIndex={0} data-member-name aria-haspopup="menu" aria-expanded={memberMenu?.uid===uid}
           title={`Open ${name}'s profile menu`}
+          onMouseDown={e=>{ if (e.detail > 1) e.preventDefault(); }}
           onClick={e=>openMemberMenu(e, uid, name)}
           onKeyDown={e=>{ if (e.key==="Enter" || e.key===" ") { e.preventDefault(); openMemberMenu(e, uid, name); } }}
-          style={{ color:T.green, cursor:"pointer", fontWeight:weight ?? (you ? 800 : 650), fontSize:size, minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", textDecoration:"underline", textDecorationColor:"rgba(var(--accent-rgb),.38)", textUnderlineOffset:3 }}>
+          style={{ color:T.green, cursor:"pointer", userSelect:"none", WebkitUserSelect:"none", fontWeight:weight ?? (you ? 800 : 650), fontSize:size, minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", textDecoration:"underline", textDecorationColor:"rgba(var(--accent-rgb),.38)", textUnderlineOffset:3 }}>
           {name}{you ? " (you)" : ""}
         </span>
         {pro && <span style={{ flexShrink: 0, display: "inline-flex" }}><ProBadge small /></span>}
