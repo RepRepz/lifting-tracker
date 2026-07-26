@@ -124,6 +124,17 @@ const fromEquip = (eq) => eq === "Bodyweight" ? { type: "Bodyweight", barbell: f
   : eq === "Barbell (plates)" ? { type: "Weighted", barbell: true }
   : { type: "Weighted", barbell: false };
 const MUSCLES = ["Chest","Triceps","Shoulders","Back","Biceps","Legs","Abs"];
+/* Quick workouts store one compact row per muscle instead of one row per set. These
+   helpers make those rows behave like normal working sets everywhere volume matters,
+   while `quick:true` keeps them out of weight/reps/PR and estimated-1RM features. */
+const setCountOf = (entry) => entry?.muscleOnly ? Math.max(1, parseInt(entry.sets) || 1) : 1;
+const entryMuscleCredits = (entry, exMap) => entry?.muscleOnly && MUSCLES.includes(entry.muscle)
+  ? [[entry.muscle, 1]]
+  : muscleCredits(exMap?.[entry?.exercise]);
+const entryPrimaryMuscles = (entry, exMap) => entry?.muscleOnly && MUSCLES.includes(entry.muscle)
+  ? [entry.muscle]
+  : musclesOf(exMap?.[entry?.exercise]);
+const entryLabel = (entry) => entry?.muscleOnly ? `${entry.muscle} (quick workout)` : (entry?.exercise || "Workout");
 const MUSCLE_COLORS = ["#009E04","#3D7FD9","#C08A1E","#9C4DE0","#D94F00","#17ABA0","#A83277"];
 const EFFORTS = ["Warm-up","Could've done more","Right amount","To failure"];
 const MET = { Light: 4, Moderate: 6, Vigorous: 9, "Max Effort": 12 };
@@ -491,7 +502,7 @@ export default function LiftingTracker({ user }) {
   // deletes never come close to triggering it.
   const [shrinkWarn, setShrinkWarn] = useState(null); // { prev, next } while a save is held
   const allowShrink = useRef(false);
-  const entryCount = (d) => (d.log||[]).length + (d.bodyweight||[]).length + (d.cardio||[]).length;
+  const entryCount = (d) => (d.log||[]).reduce((sum,e)=>sum+setCountOf(e),0) + (d.bodyweight||[]).length + (d.cardio||[]).length;
   useEffect(() => { if (!loaded) return;
     let prevN = null;
     try { const raw = localStorage.getItem(cacheKey); if (raw) prevN = entryCount(JSON.parse(raw)); } catch {}
@@ -1070,7 +1081,7 @@ function GymPicker({ gyms, value, onChange, onCreate }) {
 
 function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
   const sorted = useMemo(()=>[...data.log].sort((a,b)=>a.date.localeCompare(b.date)||a.id-b.id),[data.log]);
-  const last = sorted[sorted.length-1];
+  const last = [...sorted].reverse().find(e=>!e.muscleOnly && exMap[e.exercise]);
   // date defaults to the "gym day" (before your Settings day-start hour = still yesterday);
   // exercise only carries over from that same day
   const gymDay = gymDayStr();
@@ -1222,6 +1233,18 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
     }));
     setData(d => ({ ...d, log: [...d.log, ...rows] }));
   };
+  const addQuickWorkout = (quickDate, counts) => {
+    const picked = MUSCLES.filter(m => (counts[m] || 0) > 0);
+    if (!picked.length) return;
+    const safeDate = quickDate > todayStr() ? todayStr() : quickDate;
+    const base = Date.now();
+    const sessionId = `quick-${base}`;
+    const rows = picked.map((muscle, i) => ({
+      id: base + i, date: safeDate, exercise: muscle, muscle, sets: counts[muscle], set: 1,
+      weight: null, reps: null, effort: "", notes: "", quick: true, muscleOnly: true, quickSessionId: sessionId,
+    }));
+    setData(d => ({ ...d, log: [...d.log, ...rows] }));
+  };
   const sameAgain = () => {
     if (!justSaved) return;
     setReps(String(justSaved.reps));
@@ -1289,7 +1312,7 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
   const [histLimit, setHistLimit] = useState(50); // show newest 50, "Show more" reveals the rest
   const histFull = useMemo(() => {
     const q = histQ.trim().toLowerCase();
-    const src = q ? sorted.filter(e => e.exercise.toLowerCase().includes(q)) : sorted;
+    const src = q ? sorted.filter(e => entryLabel(e).toLowerCase().includes(q)) : sorted;
     return [...src].reverse(); // full history, newest first — nothing dropped
   }, [sorted, histQ]);
   const searching = histQ.trim() !== "";
@@ -1299,15 +1322,20 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
   const [edit, setEdit] = useState(null); // copy of the set being edited
   const editIsBW = edit ? exMap[edit.exercise]?.type === "Bodyweight" : false;
   const editIsMachine = edit ? (multiGymOn && machineOf(exMap[edit.exercise])) : false;
-  const editValid = edit && edit.reps !== "" && edit.exercise && (editIsBW || edit.weight !== "");
+  const editValid = edit && (edit.muscleOnly
+    ? MUSCLES.includes(edit.muscle) && (parseInt(edit.sets) || 0) > 0
+    : edit.reps !== "" && edit.exercise && (editIsBW || edit.weight !== ""));
   const saveEdit = () => {
     if (!editValid) return;
-    setData(d => ({ ...d, log: d.log.map(x => x.id === edit.id ? {
+    setData(d => ({ ...d, log: d.log.map(x => x.id === edit.id ? (edit.muscleOnly ? {
+      ...x, date: edit.date > todayStr() ? todayStr() : edit.date, exercise: edit.muscle,
+      muscle: edit.muscle, sets: Math.max(1, Math.min(50, parseInt(edit.sets) || 1)),
+    } : {
       ...x, date: edit.date > todayStr() ? todayStr() : edit.date, exercise: edit.exercise, set: parseInt(edit.set) || 1,
       weight: editIsBW ? (edit.weight !== "" ? toLb(parseFloat(edit.weight), units) : null) : toLb(parseFloat(edit.weight), units), reps: parseInt(edit.reps),
       effort: edit.effort, notes: edit.notes,
       ...(editIsMachine ? { gym: edit.gym || null } : {}),
-    } : x) }));
+    }) : x) }));
     setEdit(null);
   };
 
@@ -1334,6 +1362,7 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
       </div>
     )}
     {routinesOn && <RoutinesPanel data={data} setData={setData} onPick={pickFromRoutine} />}
+    <QuickWorkoutLogger defaultDate={gymDay} exercises={data.exercises} onSave={addQuickWorkout} onAddExercise={addQuickSets} />
     <div className="card">
       <div className="h" style={{fontSize:19, color:T.tealDk, marginBottom:10}}>Log a set</div>
       <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:10}}>
@@ -1515,22 +1544,16 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
     </div>
 
     <div className="card">
-      <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:4}}>Add sets manually</div>
-      <div style={{fontSize:12, color:T.sub, marginBottom:10}}>For work you did without logging weight and reps. These sets count in your calendar, charts, streak, and weekly targets.</div>
-      <QuickAddSets exercises={data.exercises} onAdd={addQuickSets} />
-    </div>
-
-    <div className="card">
       <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:8}}>Set history</div>
-      <input value={histQ} onChange={e=>{setHistQ(e.target.value); setHistLimit(50);}} placeholder="🔍 Filter by exercise…"
+      <input value={histQ} onChange={e=>{setHistQ(e.target.value); setHistLimit(50);}} placeholder="🔍 Filter by exercise or muscle…"
         autoCapitalize="none" autoCorrect="off" spellCheck={false} style={{marginBottom:10}} />
       <div style={{overflowX:"auto"}}>
         <table><thead><tr><th>Date</th><th>Exercise</th><th style={{textAlign:"center"}}>Set</th><th style={{textAlign:"center"}}>Weight ({uLabel(units)})</th><th style={{textAlign:"center"}}>Reps</th><th>Effort</th><th></th></tr></thead>
-          <tbody>{recent.map(e => { const isToday = e.date === todayStr(); return (<Fragment key={e.id}>
+          <tbody>{recent.map(e => { const isToday = e.date === todayStr(); const muscleQuick = !!e.muscleOnly; return (<Fragment key={e.id}>
             <tr style={isToday ? {background:"rgba(var(--accent-rgb),.05)"} : undefined}>
-              <td>{isToday ? <span style={{color:"#00A804", fontWeight:800}}>Today</span> : fmtDate(e.date)}</td><td>{e.exercise}</td><td style={{textAlign:"center"}}>{e.set}</td>
+              <td>{isToday ? <span style={{color:"#00A804", fontWeight:800}}>Today</span> : fmtDate(e.date)}</td><td>{muscleQuick ? <span><b style={{color:T.green}}>⚡ {e.muscle}</b><span style={{display:"block", fontSize:10, color:T.sub}}>muscle-only</span></span> : e.exercise}</td><td style={{textAlign:"center"}}>{muscleQuick ? `${setCountOf(e)} total` : e.set}</td>
               <td style={{textAlign:"center"}}>{e.quick ? "—" : e.weight==null ? "BW" : dispW(e.weight, units)}{e.drops?.length ? <span style={{color:T.sub}}>{" ↘ "}{e.drops.map(dr=>dispW(dr.weight, units)).join(" ↘ ")}</span> : null}</td>
-              <td style={{textAlign:"center"}}>{e.quick ? <span title="Added as a quick tally — no reps tracked" style={{color:T.sub}}>🧮 quick</span> : <>{e.reps}{e.drops?.length ? <span style={{color:T.sub}}>{" / "}{e.drops.map(dr=>dr.reps).join(" / ")}</span> : null}</>}</td>
+              <td style={{textAlign:"center"}}>{e.quick ? <span title="Quick workout — no weight or reps tracked" style={{color:T.sub}}>{muscleQuick ? "quick" : "🧮 quick"}</span> : <>{e.reps}{e.drops?.length ? <span style={{color:T.sub}}>{" / "}{e.drops.map(dr=>dr.reps).join(" / ")}</span> : null}</>}</td>
               <td style={{color:T.sub}}>{e.effort||""}</td>
               <td style={{whiteSpace:"nowrap"}}>
                 {String(e.notes||"").trim() && (
@@ -1539,7 +1562,9 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
                     <span className="note-caret" style={{display:"inline-block", transform: noteOpen===e.id?"rotate(90deg)":"none"}}>▸</span> Note
                   </button>
                 )}
-                <PencilBtn onClick={()=>setEdit({ id:e.id, date:e.date, exercise:e.exercise, set:e.set, weight:e.weight==null ? "" : dispW(e.weight, units), reps:e.reps, effort:e.effort||"", notes:e.notes||"", gym:e.gym||"" })} />
+                <PencilBtn onClick={()=>setEdit(muscleQuick
+                  ? { id:e.id, date:e.date, exercise:e.exercise, muscle:e.muscle, sets:setCountOf(e), muscleOnly:true }
+                  : { id:e.id, date:e.date, exercise:e.exercise, set:e.set, weight:e.weight==null ? "" : dispW(e.weight, units), reps:e.reps, effort:e.effort||"", notes:e.notes||"", gym:e.gym||"" })} />
                 <ConfirmX onConfirm={()=>setData(d=>({...d, log:d.log.filter(x=>x.id!==e.id)}))} />
               </td>
             </tr>
@@ -1551,6 +1576,19 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
             {edit?.id === e.id && (
               <tr><td colSpan={7} style={{padding:"6px 4px"}}>
                 <div style={editBox}>
+                  {edit.muscleOnly ? <>
+                    <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:10}}>
+                      <DateField label="Date" value={edit.date} max={todayStr()} onChange={v=>setEdit(s=>({...s, date:v}))} />
+                      <label style={lbl}>Sets<input type="number" inputMode="numeric" min="1" max="50" value={edit.sets} onChange={ev=>setEdit(s=>({...s, sets:ev.target.value}))} /></label>
+                    </div>
+                    <label style={{...lbl, marginBottom:10, display:"block"}}>Muscle group
+                      <select value={edit.muscle} onChange={ev=>setEdit(s=>({...s, muscle:ev.target.value}))}>{MUSCLES.map(m=><option key={m}>{m}</option>)}</select>
+                    </label>
+                    <div style={{display:"flex", gap:8}}>
+                      <button onClick={saveEdit} disabled={!editValid} style={{...saveSm, opacity:editValid?1:0.45}}>Save changes</button>
+                      <button onClick={()=>setEdit(null)} style={cancelSm}>Cancel</button>
+                    </div>
+                  </> : <>
                   <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:8}}>
                     <DateField label="Date" value={edit.date} max={todayStr()} onChange={v=>setEdit(s=>({...s, date:v}))} />
                     <label style={lbl}>Set #<input type="number" min="1" value={edit.set} onChange={ev=>setEdit(s=>({...s, set:ev.target.value}))} /></label>
@@ -1589,6 +1627,7 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
                     <button onClick={saveEdit} disabled={!editValid} style={{...saveSm, opacity:editValid?1:0.45}}>Save changes</button>
                     <button onClick={()=>setEdit(null)} style={cancelSm}>Cancel</button>
                   </div>
+                  </>}
                 </div>
               </td></tr>
             )}
@@ -1628,6 +1667,62 @@ function Spark({ pts, w = 88, h = 26 }) {
 }
 
 /* Horizontal progress bar with a highlighted target zone (weekly sets). */
+function QuickWorkoutLogger({ defaultDate, exercises, onSave, onAddExercise }) {
+  const [open, setOpen] = useState(() => localStorage.getItem("lt-quick-workout-open") !== "0");
+  const [date, setDate] = useState(defaultDate || todayStr());
+  const [counts, setCounts] = useState(() => Object.fromEntries(MUSCLES.map(m=>[m,0])));
+  const [saved, setSaved] = useState(false);
+  const total = MUSCLES.reduce((sum,m)=>sum+(counts[m]||0),0);
+  const selected = MUSCLES.filter(m=>(counts[m]||0)>0);
+  const setOpenSaved = (value) => { setOpen(value); localStorage.setItem("lt-quick-workout-open", value ? "1" : "0"); };
+  const bump = (muscle, delta) => {
+    setSaved(false);
+    setCounts(cur => {
+      const current = cur[muscle]||0;
+      const next = delta > 0 && current === 0 ? 3 : current + delta;
+      return { ...cur, [muscle]:Math.max(0, Math.min(50, next)) };
+    });
+  };
+  const save = () => {
+    if (!total) return;
+    onSave(date, counts);
+    setCounts(Object.fromEntries(MUSCLES.map(m=>[m,0])));
+    setSaved(true);
+  };
+  return (
+    <div className="card" style={{borderColor:open?"rgba(var(--accent-rgb),.38)":T.line}}>
+      <div style={{display:"flex", alignItems:"center", gap:10}}>
+        <div style={{minWidth:0, flex:1}}>
+          <div className="h" style={{fontSize:18, color:T.tealDk}}>⚡ Quick workout</div>
+          {!open && <div style={{fontSize:11.5, color:T.sub, marginTop:2}}>Muscles + set counts. No exercises, weight, or reps.</div>}
+        </div>
+        <button onClick={()=>setOpenSaved(!open)} title={open?"Minimize quick workout":"Open quick workout"} aria-expanded={open} style={{background:T.input, border:`1px solid ${T.line}`, color:T.sub, width:34, height:30, borderRadius:9, padding:0, fontSize:open?15:12, fontWeight:800, flexShrink:0}}>{open?"−":"Show"}</button>
+      </div>
+      {open && <>
+        <div style={{fontSize:12, color:T.sub, lineHeight:1.45, margin:"5px 0 12px"}}>For days you only want to track what you trained. It fills your calendar, streak, muscle charts, weekly goals, and group activity—never strength records.</div>
+        <div style={{maxWidth:230, marginBottom:11}}><DateField label="Workout date" value={date} max={todayStr()} onChange={v=>{setDate(v);setSaved(false);}} /></div>
+        <div style={{display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))", gap:8}}>
+          {MUSCLES.map((muscle,i)=>{
+            const n=counts[muscle]||0, active=n>0;
+            return <div key={muscle} style={{display:"grid", gridTemplateColumns:"minmax(0,1fr) 30px 30px 30px", alignItems:"center", gap:3, padding:"8px 8px 8px 10px", background:active?"rgba(var(--accent-rgb),.11)":T.input, border:`1px solid ${active?MUSCLE_COLORS[i]:T.line}`, borderRadius:11}}>
+              <span style={{fontSize:12.5, fontWeight:800, color:active?T.ink:T.sub, overflow:"hidden", textOverflow:"ellipsis"}}>{muscle}</span>
+              <button onClick={()=>bump(muscle,-1)} disabled={!active} aria-label={`Remove one ${muscle} set`} style={{width:28,height:28,padding:0,borderRadius:8,background:T.card,color:active?T.ink:T.line,border:`1px solid ${T.line}`,fontSize:16}}>−</button>
+              <span style={{textAlign:"center",fontSize:14,fontWeight:900,color:active?T.green:T.sub,fontVariantNumeric:"tabular-nums"}}>{n}</span>
+              <button onClick={()=>bump(muscle,1)} aria-label={`Add or increase ${muscle} sets`} style={{width:28,height:28,padding:0,borderRadius:8,background:active?T.mint:T.card,color:T.green,border:`1px solid ${active?T.green:T.line}`,fontSize:16}}>+</button>
+            </div>;
+          })}
+        </div>
+        <button onClick={save} disabled={!total} className="btn-primary" style={{width:"100%", padding:"13px", marginTop:11, fontSize:14.5, opacity:total?1:.45}}>Save {total || ""} set{total===1?"":"s"}{selected.length?` · ${selected.length<=2?selected.join(" + "):`${selected.length} muscle groups`}`:""}</button>
+        {saved && <div style={{fontSize:12.5,color:T.green,fontWeight:800,textAlign:"center",marginTop:8}}>✓ Quick workout saved everywhere</div>}
+        <details style={{marginTop:11}}>
+          <summary style={{cursor:"pointer",color:T.sub,fontSize:11.5,fontWeight:750,listStyle:"none"}}>Know the exercises? Add by exercise instead ▾</summary>
+          <div style={{marginTop:8}}><QuickAddSets exercises={exercises} onAdd={onAddExercise} /></div>
+        </details>
+      </>}
+    </div>
+  );
+}
+
 /* Dropdown-only "quick add sets" — pick the exercise, pick how many, tap Add. No typing,
    no separate flow: it writes real log entries (flagged `quick`) so it automatically
    shows up everywhere the Log tab's sets do — the calendar, 30-day chart, streaks, this
@@ -1685,7 +1780,7 @@ function TargetBreakdown({ muscle, rows, count, goal, color }) {
       </div>
       {rows.length ? <div style={{display:"flex", flexDirection:"column", gap:0, maxHeight:190, overflowY:"auto"}}>
         {rows.map(row => <div key={`${row.exercise}-${row.credit}`} style={{display:"grid", gridTemplateColumns:"minmax(0,1fr) auto", gap:10, alignItems:"center", padding:"7px 0", borderTop:`1px solid ${T.line}`}}>
-          <div style={{minWidth:0}}><div style={{fontSize:12, color:T.ink, fontWeight:700, lineHeight:1.25, overflowWrap:"anywhere"}}>{row.exercise}</div><div style={{fontSize:10, color:T.sub, marginTop:2}}>{row.credit===0.5?"Secondary muscle · ½ set credit each":"Main muscle · full set credit each"}</div></div>
+          <div style={{minWidth:0}}><div style={{fontSize:12, color:T.ink, fontWeight:700, lineHeight:1.25, overflowWrap:"anywhere"}}>{row.exercise}</div><div style={{fontSize:10, color:T.sub, marginTop:2}}>{row.muscleOnly?"Quick workout · full set credit each":row.credit===0.5?"Secondary muscle · ½ set credit each":"Main muscle · full set credit each"}</div></div>
           <div style={{textAlign:"right", whiteSpace:"nowrap"}}><b style={{fontSize:12.5, color:T.ink}}>{fmtSets(row.total)}</b><div style={{fontSize:9.5, color:T.sub}}>{row.logged} logged × {row.credit===0.5?"½":"1"}</div></div>
         </div>)}
       </div> : <div style={{fontSize:11.5, color:T.sub}}>No working sets for {muscle.toLowerCase()} have been logged this week.</div>}
@@ -2091,9 +2186,9 @@ function WorkoutHeatmap({ log, cardio, exMap = {} }) {
     const info = {}; // date -> { n (sets), ms (muscles), ex {name:sets}, cd [cardio lines] }
     for (const e of (log||[])) if (e.effort !== "Warm-up") {
       const d = (info[e.date] ||= { n:0, ms:new Set(), ex:{}, cd:[] });
-      d.n++; d.ex[e.exercise] = (d.ex[e.exercise]||0) + 1;
-      for (const m of musclesOf(exMap[e.exercise])) d.ms.add(m);
-      for (const m of secondariesOf(exMap[e.exercise])) d.ms.add(m);
+      const sets = setCountOf(e), label = entryLabel(e);
+      d.n += sets; d.ex[label] = (d.ex[label]||0) + sets;
+      for (const [m] of entryMuscleCredits(e, exMap)) d.ms.add(m);
     }
     for (const c of (cardio||[])) {
       const d = (info[c.date] ||= { n:0, ms:new Set(), ex:{}, cd:[] });
@@ -2240,19 +2335,19 @@ function YearRecap({ data }) {
     const log = (data.log||[]).filter(e => e.date.startsWith(String(year)));
     const cardio = (data.cardio||[]).filter(c => c.date.startsWith(String(year)));
     const days = new Set([...log.map(e=>e.date), ...cardio.map(c=>c.date)]);
-    const volume = log.reduce((s,e)=>s + (e.weight||0)*e.reps, 0);
+    const volume = log.reduce((s,e)=>s + (e.weight||0)*(e.reps||0), 0);
     const byMuscle = {};
     const exCred = Object.fromEntries((data.exercises||[]).map(x=>[x.name,muscleCredits(x)]));
-    for (const e of log) { if (e.effort==="Warm-up") continue; for (const [m,w] of exCred[e.exercise]||[]) byMuscle[m]=(byMuscle[m]||0)+w; }
+    for (const e of log) { if (e.effort==="Warm-up") continue; for (const [m,w] of (e.muscleOnly ? [[e.muscle,1]] : exCred[e.exercise]||[])) byMuscle[m]=(byMuscle[m]||0)+w*setCountOf(e); }
     const topMuscle = Object.entries(byMuscle).sort((a,b)=>b[1]-a[1])[0];
     let bigPR = null;
     for (const e of log) {
-      if (e.weight==null) continue;
+      if (e.quick || e.weight==null || !e.reps) continue;
       const est = e1rm(e.weight, e.reps);
       if (!bigPR || est > bigPR.est) bigPR = { est, text:`${dispW(e.weight,units)}×${e.reps} ${e.exercise}` };
     }
     const cardioMin = cardio.reduce((s,c)=>s+(c.duration||0),0);
-    return { sets: log.length, days: days.size, volume: Math.round(dispW(volume,units)), topMuscle, bigPR, cardioMin, empty: !log.length && !cardio.length };
+    return { sets: log.reduce((s,e)=>s+setCountOf(e),0), days: days.size, volume: Math.round(dispW(volume,units)), topMuscle, bigPR, cardioMin, empty: !log.length && !cardio.length };
   }, [data, year, units]);
 
   if (stats.empty) return null;
@@ -2306,6 +2401,8 @@ function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled
   const units = useUnit();
   const [researchMode, setResearchMode] = useState(() => goalModeOf(data));
   const [targetDetail, setTargetDetail] = useState(null); // { muscle, pinned }
+  const [targetMinimized, setTargetMinimized] = useState(() => localStorage.getItem("lt-target-minimized") === "1");
+  const minimizeTarget = (value) => { setTargetMinimized(value); localStorage.setItem("lt-target-minimized", value ? "1" : "0"); if (value) setTargetDetail(null); };
   const targetCardRef = useRef(null);
   useEffect(() => { setResearchMode(goalModeOf(data)); }, [data.profile?.setGoalMode]);
   useEffect(() => {
@@ -2454,7 +2551,7 @@ function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled
     for (const e of data.log) {
       if (e.effort==="Warm-up") continue;
       if (weekStart(e.date)!==wkStart) continue;
-      for (const [m,w] of muscleCredits(exMap[e.exercise])) if (m in c) c[m]+=w;
+      for (const [m,w] of entryMuscleCredits(e, exMap)) if (m in c) c[m]+=w*setCountOf(e);
     }
     return c;
   }, [data.log, exMap, wkStart]);
@@ -2462,11 +2559,11 @@ function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled
     const grouped = Object.fromEntries(MUSCLES.map(m=>[m,{}]));
     for (const e of data.log) {
       if (e.effort==="Warm-up" || weekStart(e.date)!==wkStart) continue;
-      for (const [m, credit] of muscleCredits(exMap[e.exercise])) {
+      for (const [m, credit] of entryMuscleCredits(e, exMap)) {
         if (!(m in grouped)) continue;
-        const key = `${e.exercise}|${credit}`;
-        const row = grouped[m][key] || { exercise:e.exercise, credit, logged:0, total:0 };
-        row.logged += 1; row.total += credit; grouped[m][key] = row;
+        const label = entryLabel(e), key = `${label}|${credit}`;
+        const row = grouped[m][key] || { exercise:label, credit, logged:0, total:0, muscleOnly:!!e.muscleOnly };
+        row.logged += setCountOf(e); row.total += credit*setCountOf(e); grouped[m][key] = row;
       }
     }
     return Object.fromEntries(MUSCLES.map(m=>[m,Object.values(grouped[m]).sort((a,b)=>b.total-a.total || a.exercise.localeCompare(b.exercise))]));
@@ -2479,7 +2576,7 @@ function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled
     for (const e of data.log) {
       if (e.effort==="Warm-up") continue;
       if (new Date(e.date+"T00:00") < cutoff) continue;
-      for (const [m,w] of muscleCredits(exMap[e.exercise])) if (m in c) c[m]+=w;
+      for (const [m,w] of entryMuscleCredits(e, exMap)) if (m in c) c[m]+=w*setCountOf(e);
     }
     return MUSCLES.map((m,i)=>({name:m, value:Math.round(c[m]*10)/10, fill:MUSCLE_COLORS[i]})).filter(x=>x.value>0);
   }, [data.log, exMap]);
@@ -2621,9 +2718,20 @@ function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled
     const leaveTargetDetail = (muscle) => setTargetDetail(cur => cur?.muscle===muscle && !cur.pinned ? null : cur);
     const activeTargetMuscle = targetDetail?.muscle;
     const dropdownSummary = { fontSize:12.5, color:T.green, fontWeight:700, cursor:"pointer", listStyle:"none", display:"inline-flex", alignItems:"center", gap:6, background:T.input, border:`1px solid ${T.line}`, borderRadius:99, padding:"6px 13px" };
-    widgets.target = (
+    const targetDone = Object.values(weekSets).reduce((sum,n)=>sum+n,0);
+    const targetGoal = Object.values(targets).reduce((sum,n)=>sum+n,0);
+    widgets.target = targetMinimized ? (
+      <div className="card" style={{display:"flex", alignItems:"center", gap:10, padding:"11px 14px"}}>
+        <span style={{fontSize:17}}>🎯</span>
+        <div style={{minWidth:0, flex:1}}><div className="h" style={{fontSize:14, color:T.tealDk}}>Weekly set target</div><div style={{fontSize:11, color:T.sub}}>{fmtSets(targetDone)} / {targetGoal} credited sets this week</div></div>
+        <button onClick={()=>minimizeTarget(false)} style={{flexShrink:0, background:T.input, border:`1px solid ${T.line}`, color:T.green, fontWeight:800, fontSize:12, padding:"6px 12px", borderRadius:99}}>Show</button>
+      </div>
+    ) : (
       <div className="card" ref={targetCardRef}>
-        <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:2}}>Weekly set target</div>
+        <div style={{display:"flex", alignItems:"center", gap:8, marginBottom:2}}>
+          <div className="h" style={{fontSize:17, color:T.tealDk, flex:1}}>Weekly set target</div>
+          <button onClick={()=>minimizeTarget(true)} title="Minimize weekly targets" aria-label="Minimize weekly targets" style={{background:"none", border:"none", color:T.sub, fontSize:15, lineHeight:1, padding:"4px 5px", cursor:"pointer"}}>➖</button>
+        </div>
         <div style={{display:"flex", alignItems:"center", gap:6, margin:"8px 0 7px", flexWrap:"wrap"}}>
           <span style={{fontSize:11.5, color:T.sub, marginRight:2}}>Goal type</span>
           {Object.entries(GOAL_MODES).map(([mode, info]) => <button key={mode} type="button" onClick={()=>setGoalMode(mode)} aria-pressed={goalMode===mode} style={{background:goalMode===mode ? T.mint : T.input, color:goalMode===mode ? T.green : T.sub, border:`1px solid ${goalMode===mode ? T.green : T.line}`, borderRadius:99, padding:"5px 10px", fontSize:11.5, fontWeight:800}}>{info.label}</button>)}
@@ -4133,9 +4241,9 @@ function ExercisesTab({ data, setData }) {
   const exMuscle = Object.fromEntries(data.exercises.map(x => [x.name, muscleLabel(x)]));
   const stamp = todayStr();
   const exportLog = () => download(`workout-log-${stamp}.csv`, "﻿" + [
-    "date,exercise,muscle,set,weight_lb,reps,effort,notes",
+    "date,exercise,muscle,set,sets_count,weight_lb,reps,effort,quick_workout,notes",
     ...[...data.log].sort((a,b)=>a.date.localeCompare(b.date)||a.id-b.id)
-      .map(e => [e.date, e.exercise, exMuscle[e.exercise]||"", e.set, e.weight ?? "BW", e.reps, e.effort||"", e.notes||""].map(csvEsc).join(",")),
+      .map(e => [e.date, entryLabel(e), e.muscleOnly?e.muscle:(exMuscle[e.exercise]||""), e.set, setCountOf(e), e.quick?"":(e.weight ?? "BW"), e.reps??"", e.effort||"", e.muscleOnly?"yes":"no", e.notes||""].map(csvEsc).join(",")),
   ].join("\n"), "text/csv");
   const exportBW = () => download(`body-weight-${stamp}.csv`, "﻿" + [
     "date,weight_lb,creatine",
@@ -5593,7 +5701,7 @@ const dayTitle = (day) => day?.rest ? "Rest day" : dayLabel(day?.muscles);
 /* Muscle groups actually logged on a given date. */
 const groupsLoggedOn = (log, exMap, date) => {
   const s = new Set();
-  for (const e of log) if (e.date === date) { const m = exMap[e.exercise]?.muscle; if (m) s.add(m); }
+  for (const e of log) if (e.date === date && e.effort !== "Warm-up") for (const m of entryPrimaryMuscles(e, exMap)) s.add(m);
   return s;
 };
 /* Where you are in a custom rotation TODAY. Rather than blindly counting days from a
@@ -5689,7 +5797,7 @@ function coachTips(data, exMap, units) {
   const trainedToday = todayGroups.size > 0;
   const todayList = [...todayGroups].join(" & ");
   const lastByGroup = { push: null, pull: null, legs: null };
-  for (const e of log) { const g = MUSCLE_GROUP(exMap[e.exercise]?.muscle); if (g in lastByGroup && (!lastByGroup[g] || e.date > lastByGroup[g])) lastByGroup[g] = e.date; }
+  for (const e of log) for (const muscle of entryPrimaryMuscles(e, exMap)) { const g = MUSCLE_GROUP(muscle); if (g in lastByGroup && (!lastByGroup[g] || e.date > lastByGroup[g])) lastByGroup[g] = e.date; }
   const pushTrain = (key, text, icon = "📅") => tips.push({ key, icon, cat: "Train today", text });
   // the muscles the coach is steering you toward today (or the next training day) —
   // insights below are filtered/ranked so they stay relevant to this, not stale work.
@@ -5840,8 +5948,8 @@ function coachTips(data, exMap, units) {
   const creditedToday = new Set();
   for (const e of log) {
     if (e.effort === "Warm-up" || weekStart(e.date) !== wk) continue;
-    for (const [m, c] of muscleCredits(exMap[e.exercise])) {
-      wsets[m] = (wsets[m] || 0) + c;
+    for (const [m, c] of entryMuscleCredits(e, exMap)) {
+      wsets[m] = (wsets[m] || 0) + c*setCountOf(e);
       if (e.date === today) creditedToday.add(m);
     }
   }
@@ -5870,7 +5978,8 @@ function coachTips(data, exMap, units) {
   const recentTrainingDates = new Set();
   for (const e of log) {
     if (e.date < since || e.effort === "Warm-up") continue;
-    const g = MUSCLE_GROUP(exMap[e.exercise]?.muscle); vol[g]++; recentTrainingDates.add(e.date);
+    for (const muscle of entryPrimaryMuscles(e, exMap)) vol[MUSCLE_GROUP(muscle)] += setCountOf(e);
+    recentTrainingDates.add(e.date);
   }
   if (vol.push + vol.pull >= 8) {
     if (vol.push >= vol.pull * 1.75 && vol.push-vol.pull >= 6) tips.push({ key: `bal-pp-${wk}`, icon: "⚖️", cat: "Balance", text: `4 weeks: ${vol.push} push vs ${vol.pull} pull sets. Add rows or pulldowns for better balance.`, basis:"Four-week primary-muscle comparison · warm-ups excluded" });
@@ -6298,7 +6407,7 @@ function MemberLog({ pdata, who }) {
   const full = useMemo(() => {
     const sortedL = [...(pdata.log || [])].sort((a,b)=>a.date.localeCompare(b.date)||(a.id||0)-(b.id||0)).reverse();
     const qq = q.trim().toLowerCase();
-    return qq ? sortedL.filter(e => e.exercise.toLowerCase().includes(qq)) : sortedL;
+    return qq ? sortedL.filter(e => entryLabel(e).toLowerCase().includes(qq)) : sortedL;
   }, [pdata.log, q]);
   const searching = q.trim() !== "";
   const shown = searching ? full : full.slice(0, limit);
@@ -6306,16 +6415,16 @@ function MemberLog({ pdata, who }) {
   return (
     <div className="card">
       <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:8}}>📝 {who}'s set history</div>
-      <input value={q} onChange={e=>{setQ(e.target.value); setLimit(30);}} placeholder="🔍 Filter by exercise…"
+      <input value={q} onChange={e=>{setQ(e.target.value); setLimit(30);}} placeholder="🔍 Filter by exercise or muscle…"
         autoCapitalize="none" autoCorrect="off" spellCheck={false} style={{marginBottom:10}} />
       <div style={{overflowX:"auto"}}>
         <table><thead><tr><th>Date</th><th>Exercise</th><th>Set</th><th>Weight ({uLabel(units)})</th><th>Reps</th><th>Effort</th></tr></thead>
           <tbody>{shown.map(e => (
             <tr key={e.id || `${e.date}-${e.exercise}-${e.set}`}>
               <td>{e.date === todayStr() ? <span style={{color:"#00A804", fontWeight:800}}>Today</span> : fmtDate(e.date)}</td>
-              <td>{e.exercise}</td><td>{e.set}</td>
-              <td>{e.weight==null ? "BW" : dispW(e.weight, units)}{e.drops?.length ? <span style={{color:T.sub}}>{" ↘ "}{e.drops.map(dr=>dispW(dr.weight, units)).join(" ↘ ")}</span> : null}</td>
-              <td>{e.reps}{e.drops?.length ? <span style={{color:T.sub}}>{" / "}{e.drops.map(dr=>dr.reps).join(" / ")}</span> : null}</td>
+              <td>{e.muscleOnly ? <b style={{color:T.green}}>⚡ {e.muscle}</b> : e.exercise}</td><td>{e.muscleOnly ? `${setCountOf(e)} total` : e.set}</td>
+              <td>{e.quick ? "—" : e.weight==null ? "BW" : dispW(e.weight, units)}{e.drops?.length ? <span style={{color:T.sub}}>{" ↘ "}{e.drops.map(dr=>dispW(dr.weight, units)).join(" ↘ ")}</span> : null}</td>
+              <td>{e.quick ? "quick" : e.reps}{e.drops?.length ? <span style={{color:T.sub}}>{" / "}{e.drops.map(dr=>dr.reps).join(" / ")}</span> : null}</td>
               <td style={{color:T.sub}}>{e.effort||""}</td>
             </tr>
           ))}
@@ -6432,7 +6541,7 @@ function FriendsTab({ user, exMap = {}, nutritionOn, streaksOn, isPro, openPro }
   // every exercise the owner can point a column at: the big lifts + anything anyone's logged
   const liftOptions = useMemo(() => {
     const s = new Set([...BIG_LIFTS, ...recordLifts]);
-    for (const m of (members || [])) for (const e of (states[m.user_id]?.log || [])) if (e.exercise) s.add(e.exercise);
+    for (const m of (members || [])) for (const e of (states[m.user_id]?.log || [])) if (e.exercise && !e.quick && !e.muscleOnly) s.add(e.exercise);
     return [...s].sort();
   }, [members, states, recordLifts]);
   // owner-only: persist the column set (optimistic + server). null → back to default big lifts.
@@ -6675,6 +6784,7 @@ function FriendsTab({ user, exMap = {}, nutritionOn, streaksOn, isPro, openPro }
       const bestSoFar = {}; const prsByDate = {}; const byDate = {}; const seenCount = {};
       for (const e of sorted) {
         (byDate[e.date] ||= []).push(e);
+        if (e.quick || e.muscleOnly || !e.reps) continue;
         const isBW = exType[e.exercise] === "Bodyweight";
         const score = isBW ? e.reps : e1rm(e.weight || 0, e.reps);
         // PRs only get celebrated once a lift is established (first 5 sets don't count —
@@ -6686,10 +6796,20 @@ function FriendsTab({ user, exMap = {}, nutritionOn, streaksOn, isPro, openPro }
         seenCount[e.exercise] = (seenCount[e.exercise] || 0) + 1;
       }
       for (const [date, entries] of Object.entries(byDate)) {
-        const names = [...new Set(entries.map(e=>e.exercise))];
-        evs.push({ key:`${m.user_id}-${date}-lift`, date, user:m.username, uid:m.user_id, kind:"lift",
-          sets: entries.length, names: names.slice(0,3), more: Math.max(0, names.length-3),
-          prs: Object.values((prsByDate[date] || []).reduce((acc,p)=>{ acc[p.ex] = { ...p, note: st.prNotes?.[p.ex] || "" }; return acc; }, {})) });
+        const quick = entries.filter(e=>e.muscleOnly);
+        const detailed = entries.filter(e=>!e.muscleOnly);
+        if (detailed.length) {
+          const names = [...new Set(detailed.map(e=>e.exercise))];
+          evs.push({ key:`${m.user_id}-${date}-lift`, date, user:m.username, uid:m.user_id, kind:"lift",
+            sets: detailed.reduce((sum,e)=>sum+setCountOf(e),0), names: names.slice(0,3), more: Math.max(0, names.length-3),
+            prs: Object.values((prsByDate[date] || []).reduce((acc,p)=>{ acc[p.ex] = { ...p, note: st.prNotes?.[p.ex] || "" }; return acc; }, {})) });
+        }
+        if (quick.length) {
+          const totals = {};
+          for (const e of quick) totals[e.muscle] = (totals[e.muscle]||0)+setCountOf(e);
+          evs.push({ key:`${m.user_id}-${date}-quick-lift`, date, user:m.username, uid:m.user_id, kind:"quick-lift",
+            sets:Object.values(totals).reduce((sum,n)=>sum+n,0), muscles:Object.entries(totals) });
+        }
       }
       for (const c of (st.cardio || [])) {
         const txt = c.steps ? `${c.steps.toLocaleString()} steps — ${c.activity}` : `${c.duration} min ${c.activity}`;
@@ -6803,7 +6923,7 @@ function FriendsTab({ user, exMap = {}, nutritionOn, streaksOn, isPro, openPro }
       const trainDays = new Set([...(st.log||[]).map(e=>e.date), ...(st.cardio||[]).map(e=>e.date)]);
       if (trainDays.size > 0 && (!sessionsBest || trainDays.size > sessionsBest.v))
         sessionsBest = { v:trainDays.size, text:`${trainDays.size} sessions`, who:m.username };
-      const setCount = (st.log || []).length;
+      const setCount = (st.log || []).reduce((sum,e)=>sum+setCountOf(e),0);
       if (setCount > 0 && (!setsBest || setCount > setsBest.v))
         setsBest = { v:setCount, text:`${setCount.toLocaleString()} sets`, who:m.username };
       // biggest all-time estimated-1RM across the big lifts (progress, not just who's heaviest today).
@@ -7034,6 +7154,7 @@ function FriendsTab({ user, exMap = {}, nutritionOn, streaksOn, isPro, openPro }
                   : <>{nameEl(ev.uid, ev.user, { you: ev.uid===user.id, weight:700 })}{" "}
                       {ev.kind==="step" ? <>{ev.icon} {ev.text}</>
                         : ev.kind==="cardio" ? <>{ev.icon||"🏃"} {ev.text}</>
+                        : ev.kind==="quick-lift" ? <>⚡ logged a quick workout — {ev.muscles.map(([muscle,sets])=>`${muscle} ×${sets}`).join(" · ")}</>
                         : <>logged {ev.sets} set{ev.sets===1?"":"s"} — {ev.names.join(", ")}{ev.more>0?` +${ev.more} more`:""}</>}
                     </>}
                 {ev.prs?.map(pr=>(
