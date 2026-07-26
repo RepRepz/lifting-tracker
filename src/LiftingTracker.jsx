@@ -6179,8 +6179,27 @@ function CoachCard({ data, exMap, user, setData }) {
   const toggleMuscle = (id, m) => setCustom(days => days.map(x => x.id === id ? { ...x, muscles: x.muscles.includes(m) ? x.muscles.filter(z => z !== m) : [...x.muscles, m] } : x));
   const removeDay = (id) => setCustom(days => days.filter(x => x.id !== id));
   // Explicitly put Day 1 back at the front and ignore workouts logged before this click.
-  // The next new session becomes the rotation's fresh log-driven anchor.
-  const restartRotation = () => setData(d => ({ ...d, profile: { ...(d.profile || {}), cycleStart: todayStr(), cycleRestartAt: Date.now() } }));
+  // Save the exact prior cursor fields so the action is completely reversible.
+  const restartRotation = () => setData(d => {
+    const profile = d.profile || {};
+    const undo = profile.cycleRestartUndo || {
+      hadStart: Object.prototype.hasOwnProperty.call(profile, "cycleStart"),
+      start: profile.cycleStart ?? null,
+      hadRestartAt: Object.prototype.hasOwnProperty.call(profile, "cycleRestartAt"),
+      restartAt: profile.cycleRestartAt ?? null,
+    };
+    return { ...d, profile: { ...profile, cycleStart: todayStr(), cycleRestartAt: Date.now(), cycleRestartUndo: undo } };
+  });
+  const undoRestartRotation = () => setData(d => {
+    const profile = { ...(d.profile || {}) };
+    const undo = profile.cycleRestartUndo;
+    if (!undo) return d;
+    if (undo.hadStart) profile.cycleStart = undo.start; else delete profile.cycleStart;
+    if (undo.hadRestartAt) profile.cycleRestartAt = undo.restartAt; else delete profile.cycleRestartAt;
+    delete profile.cycleRestartUndo;
+    return { ...d, profile };
+  });
+  const canUndoRestart = !!data.profile?.cycleRestartUndo;
   // position is read from your logs (same logic the coach uses), so the builder agrees with the tips
   const { cycle, idx: cyPos } = customCyclePosition(data, data.log || [], exMap);
   const todayDayId = cyPos >= 0 ? cycle[cyPos].id : null;
@@ -6280,8 +6299,10 @@ function CoachCard({ data, exMap, user, setData }) {
         )}
         {split === "custom" && cycle.length > 0 && !editing && (
           <div style={{display:"flex", alignItems:"center", gap:8, marginTop:11, paddingTop:10, borderTop:`1px solid ${T.line}`, flexWrap:"wrap"}}>
-            <button onClick={restartRotation} title="Make Day 1 your next workout" style={{background:T.input, color:T.green, border:`1px solid ${T.line}`, borderRadius:99, padding:"7px 12px", fontSize:11.5, fontWeight:850}}>↺ Restart at Day 1</button>
-            <span style={{fontSize:10.5, color:T.sub}}>Use only when you want to begin the rotation again.</span>
+            {canUndoRestart
+              ? <button onClick={undoRestartRotation} title="Restore your previous rotation position" style={{background:T.mint, color:T.green, border:`1px solid ${T.green}`, borderRadius:99, padding:"7px 12px", fontSize:11.5, fontWeight:850}}>↶ Undo restart</button>
+              : <button onClick={restartRotation} title="Make Day 1 your next workout" style={{background:T.input, color:T.green, border:`1px solid ${T.line}`, borderRadius:99, padding:"7px 12px", fontSize:11.5, fontWeight:850}}>↺ Restart at Day 1</button>}
+            <span style={{fontSize:10.5, color:T.sub}}>{canUndoRestart ? "Restores your exact previous split position." : "Use only when you want to begin the rotation again."}</span>
           </div>
         )}
       </div>
@@ -6364,7 +6385,9 @@ function CoachCard({ data, exMap, user, setData }) {
                   <div style={{ fontSize: 11.5, color: T.sub, lineHeight: 1.5, marginTop: 4 }}>
                     Missed training days stay queued until you log them.
                   </div>
-                  <button onClick={restartRotation} style={{ marginTop: 9, background: T.input, border: `1px solid ${T.line}`, color: T.green, fontWeight: 800, fontSize: 12.5, padding: "8px 14px", borderRadius: 99 }}>↺ Restart at Day 1</button>
+                  {canUndoRestart
+                    ? <button onClick={undoRestartRotation} style={{ marginTop: 9, background:T.mint, border:`1px solid ${T.green}`, color:T.green, fontWeight:800, fontSize:12.5, padding:"8px 14px", borderRadius:99 }}>↶ Undo restart</button>
+                    : <button onClick={restartRotation} style={{ marginTop: 9, background: T.input, border: `1px solid ${T.line}`, color: T.green, fontWeight: 800, fontSize: 12.5, padding: "8px 14px", borderRadius: 99 }}>↺ Restart at Day 1</button>}
                 </div>
               )}
             </div>
