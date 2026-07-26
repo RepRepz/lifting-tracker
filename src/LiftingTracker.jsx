@@ -5825,6 +5825,7 @@ function coachTips(data, exMap, units) {
     const pickWorst = (pool) => pool.map(behind).filter(Boolean).sort((a, b) => b.deficit - a.deficit)[0] || null;
     const worst = (focusMuscles && focusMuscles.length && pickWorst(focusMuscles)) || pickWorst(MUSCLES);
     if (worst) {
+      const usesCustomGoal = customSetTargetsOf(data)[worst.m] != null;
       const mondayIndex = (new Date(today + "T12:00:00").getDay() + 6) % 7;
       const daysLeft = 6 - mondayIndex;
       const remaining = fmtSets(worst.deficit);
@@ -5833,8 +5834,8 @@ function coachTips(data, exMap, units) {
         : `${remaining} remain${daysLeft ? ` across ${daysLeft + 1} calendar days` : " today"}; distribute them across normal sessions instead of one marathon workout.`;
       const modeNote = goalMode === "strength" ? "Keep the main lift work heavy and technically specific." : "Quality hard sets matter more than chasing the number while fatigued.";
       tips.push({ key: `vol-${worst.m}-${wk}`, icon: "📊", cat: "Volume",
-        text: `${worst.m}: ${fmtSets(worst.got)} / ${worst.tgt} credited sets this week. ${timing} ${modeNote}`,
-        basis: "Main muscle = 1 · secondary muscle = ½ · warm-ups excluded" });
+        text: `${worst.m}: ${fmtSets(worst.got)} / ${worst.tgt} credited sets toward your ${usesCustomGoal?"custom ":""}${goalMode} goal. ${timing} ${modeNote}`,
+        basis: `${usesCustomGoal?"Saved custom target":"Research starting target"} · main muscle = 1 · secondary muscle = ½ · warm-ups excluded` });
     }
   }
 
@@ -5906,9 +5907,11 @@ function CoachCard({ data, exMap, user, setData }) {
   const goalModeInfo = GOAL_MODES[goalMode];
   const trainingLevel = data.profile?.trainingLevel || "beginner";
   const setTrainingLevel = (level) => setData(d=>({...d, profile:{...(d.profile||{}), trainingLevel:level}}));
+  const customTargetCount = Object.keys(customSetTargetsOf(data)).length;
   const targets = setTargetsOf(data);
   const bumpTarget = (m, delta) => setData(d => { const cur = setTargetsOf(d); const key = targetOverrideKeyOf(d); return { ...d, profile: { ...(d.profile || {}), [key]: { ...(d.profile?.[key] || {}), [m]: Math.max(0, Math.min(40, (cur[m] || 0) + delta)) } } }; });
   const [showTargets, setShowTargets] = useState(false);
+  const [coachInfoTab, setCoachInfoTab] = useState("logic");
   // the split setup collapses once you've chosen one; expands again via the ✎ chip
   const [editing, setEditing] = useState(!split);
 
@@ -5984,6 +5987,7 @@ function CoachCard({ data, exMap, user, setData }) {
       <div style={{display:"flex", alignItems:"center", gap:6, flexWrap:"wrap", margin:"-5px 0 11px", fontSize:10.5, color:T.sub}}>
         <span style={{padding:"3px 7px", borderRadius:99, background:T.input, border:`1px solid ${T.line}`, color:T.green, fontWeight:800}}>{goalModeInfo.label}</span>
         <span style={{padding:"3px 7px", borderRadius:99, background:T.input, border:`1px solid ${T.line}`, textTransform:"capitalize", fontWeight:700}}>{trainingLevel}</span>
+        {customTargetCount>0 && <span style={{padding:"3px 7px", borderRadius:99, background:T.mint, border:`1px solid ${T.green}`, color:T.green, fontWeight:800}}>{customTargetCount} custom goal{customTargetCount===1?"":"s"}</span>}
         <span>Uses your split, recent sessions, effort, frequency, and fractional set credits.</span>
       </div>
 
@@ -6140,10 +6144,22 @@ function CoachCard({ data, exMap, user, setData }) {
       <details style={{marginTop:10, borderTop:`1px solid ${T.line}`, paddingTop:9}}>
         <summary style={{cursor:"pointer", color:T.sub, fontSize:10.5, fontWeight:800, listStyle:"none"}}>🧪 Research & signals used <span style={{fontSize:8}}>▾</span></summary>
         <div style={{marginTop:8, padding:"10px 11px", background:T.input, border:`1px solid ${T.line}`, borderRadius:11, fontSize:10.5, color:T.sub, lineHeight:1.55}}>
-          <div style={{color:T.ink, fontWeight:750, marginBottom:4}}>Your coach analyzes logs locally using:</div>
-          <div>Goal mode · experience · split/rotation · recent loads and reps · effort · exercise-specific strength trends · training frequency · machine gym · full and half-set muscle credits.</div>
-          <div style={{marginTop:6}}>Evidence base: Pelland et al. 2026 (volume, frequency, fractional sets); Currier et al. 2023 (load, sets, frequency); Hickmott et al. 2022 (autoregulation); Grgic et al. 2022 (failure vs non-failure); Refalo et al. 2021 (load and specificity); Schoenfeld et al. 2019 (frequency); Ramos-Campo et al. 2024 (split vs full-body).</div>
-          <div style={{marginTop:6, fontStyle:"italic"}}>Recommendations are planning guidance, not medical advice. Missing effort data produces conditional advice instead of pretending the coach knows how hard a set felt.</div>
+          <div style={{display:"flex", gap:5, marginBottom:9, padding:3, background:T.card, borderRadius:9}}>
+            {[['logic','Coach logic'],['legs','Why legs matter']].map(([value,label])=><button key={value} type="button" onClick={()=>setCoachInfoTab(value)} aria-pressed={coachInfoTab===value} style={{flex:1, background:coachInfoTab===value?T.mint:"transparent", color:coachInfoTab===value?T.green:T.sub, border:`1px solid ${coachInfoTab===value?T.green:"transparent"}`, borderRadius:7, padding:"6px 7px", fontSize:10.5, fontWeight:800}}>{label}</button>)}
+          </div>
+          {coachInfoTab==="logic" ? <>
+            <div style={{color:T.ink, fontWeight:750, marginBottom:4}}>Your coach analyzes logs locally using:</div>
+            <div>Goal mode · exact saved custom set targets · experience · split/rotation · recent loads and reps · effort · exercise-specific strength trends · training frequency · machine gym · full and half-set muscle credits.</div>
+            <div style={{marginTop:6, padding:"7px 8px", borderRadius:8, background:T.card, border:`1px solid ${customTargetCount?T.green:T.line}`}}><b style={{color:customTargetCount?T.green:T.ink}}>Weekly goals:</b> {customTargetCount ? `The coach is currently using your ${customTargetCount} custom ${goalModeInfo.label.toLowerCase()} target${customTargetCount===1?"":"s"}; all other muscles use their research starting values.` : `No custom ${goalModeInfo.label.toLowerCase()} targets are active, so the coach is using the research starting values.`}</div>
+            <div style={{marginTop:6}}>Evidence base: Pelland et al. 2026 (volume, frequency, fractional sets); Currier et al. 2023 (load, sets, frequency); Hickmott et al. 2022 (autoregulation); Grgic et al. 2022 (failure vs non-failure); Refalo et al. 2021 (load and specificity); Schoenfeld et al. 2019 (frequency); Ramos-Campo et al. 2024 (split vs full-body).</div>
+            <div style={{marginTop:6, fontStyle:"italic"}}>Recommendations are planning guidance, not medical advice. Missing effort data produces conditional advice instead of pretending the coach knows how hard a set felt.</div>
+          </> : <>
+            <div style={{color:T.ink, fontWeight:800, fontSize:12, marginBottom:5}}>Leg training is valuable—but not because it magically boosts testosterone.</div>
+            <div>Your legs contain several of the body's largest muscle groups: glutes, quadriceps, hamstrings, and calves. Building them supports squatting, hinging, walking, stairs, balance, athletic movement, and overall lower-body strength. Resistance training also provides useful loading for muscle and bone health.</div>
+            <div style={{marginTop:7, padding:"7px 8px", borderRadius:8, background:T.card, border:`1px solid ${T.line}`}}><b style={{color:T.green}}>Testosterone reality:</b> A demanding leg workout can cause a short-lived hormone change, but research does not show that this temporary spike makes unrelated muscles grow. Training produces primarily local adaptations in the muscles doing the work.</div>
+            <div style={{marginTop:7}}><b style={{color:T.ink}}>Cover the whole group:</b> squats/lunges emphasize quads and glutes; hinges emphasize glutes and hamstrings; leg curls train knee-flexing hamstrings; calf raises train calves. One leg exercise does not fully cover every area.</div>
+            <div style={{marginTop:7, fontStyle:"italic"}}>Evidence: West et al. 2006 (PMID 16972050); Laurentino et al. 2022 (PMID 36157947); García-Hermoso et al. 2018 (PMID 29425700); Momma et al. 2022 (PMID 35228201).</div>
+          </>}
         </div>
       </details>
     </div>
