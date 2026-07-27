@@ -1088,6 +1088,7 @@ function GymPicker({ gyms, value, onChange, onCreate }) {
 }
 
 function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
+  const entryFormRef = useRef(null);
   const sorted = useMemo(()=>[...data.log].sort((a,b)=>a.date.localeCompare(b.date)||a.id-b.id),[data.log]);
   const last = [...sorted].reverse().find(e=>!e.muscleOnly && exMap[e.exercise]);
   // date defaults to the "gym day" (before your Settings day-start hour = still yesterday);
@@ -1282,10 +1283,17 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
   };
   const startNewExercise = (name) => {
     const w = lastWeightFor(name);
-    setExName(name); setSetNum(1);
+    const already = data.log.filter(e => e.exercise === name && e.date === date).length;
+    setExName(name); setSetNum(already + 1);
     setWeight(w != null ? String(dispW(w, units)) : ""); // pre-fill the last weight used for this exercise
     setGymId(lastGymFor(name));
-    setReps(""); setJustSaved(null); setDrops([]);
+    setReps(""); setJustSaved(null); setDrops([]); setBuilt([]);
+  };
+  const pickFromHistory = (entry) => {
+    if (entry.muscleOnly || !exMap[entry.exercise]) return;
+    startNewExercise(entry.exercise);
+    setExQ(""); setEdit(null); setNoteOpen(null);
+    requestAnimationFrame(() => entryFormRef.current?.scrollIntoView({ behavior:"smooth", block:"start" }));
   };
   // on reopen: if an exercise carried over from the current gym-day, pre-fill its last weight too
   useEffect(() => {
@@ -1373,7 +1381,7 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
     <QuickWorkoutLogger defaultDate={gymDay} exercises={data.exercises} onSave={addQuickWorkout} onAddExercise={addQuickSets}
       minimized={!!data.profile?.minimizedSections?.quickWorkout}
       onMinimizedChange={value=>setData(d=>({ ...d, profile:{ ...(d.profile||{}), minimizedSections:{ ...(d.profile?.minimizedSections||{}), quickWorkout:value } } }))} />
-    <div className="card">
+    <div className="card" ref={entryFormRef}>
       <div className="h" style={{fontSize:19, color:T.tealDk, marginBottom:10}}>Log a set</div>
       <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:10}}>
         <div>
@@ -1558,17 +1566,21 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
 
     <div className="card">
       <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:8}}>Set history</div>
+      <div style={{fontSize:12,color:T.sub,marginBottom:9}}>Tap any tracked set to load that exercise and its latest weight. Reps stay blank.</div>
       <input value={histQ} onChange={e=>{setHistQ(e.target.value); setHistLimit(50);}} placeholder="🔍 Filter by exercise or muscle…"
         autoCapitalize="none" autoCorrect="off" spellCheck={false} style={{marginBottom:10}} />
       <div style={{overflowX:"auto"}}>
         <table><thead><tr><th>Date</th><th>Exercise</th><th style={{textAlign:"center"}}>Set</th><th style={{textAlign:"center"}}>Weight ({uLabel(units)})</th><th style={{textAlign:"center"}}>Reps</th><th>Effort</th><th></th></tr></thead>
           <tbody>{recent.map(e => { const isToday = e.date === todayStr(); const muscleQuick = !!e.muscleOnly; return (<Fragment key={e.id}>
-            <tr style={isToday ? {background:"rgba(var(--accent-rgb),.05)"} : undefined}>
+            <tr onClick={()=>pickFromHistory(e)} onKeyDown={ev=>{if(!muscleQuick&&(ev.key==="Enter"||ev.key===" ")){ev.preventDefault();pickFromHistory(e);}}}
+              role={muscleQuick?undefined:"button"} tabIndex={muscleQuick?undefined:0}
+              title={muscleQuick?undefined:"Load exercise and latest weight"}
+              style={{...(isToday ? {background:"rgba(var(--accent-rgb),.05)"} : {}),cursor:muscleQuick?"default":"pointer"}}>
               <td>{isToday ? <span style={{color:"#00A804", fontWeight:800}}>Today</span> : fmtDate(e.date)}</td><td>{muscleQuick ? <span><b style={{color:T.green}}>⚡ {e.muscle}</b><span style={{display:"block", fontSize:10, color:T.sub}}>muscle-only</span></span> : e.exercise}</td><td style={{textAlign:"center"}}>{muscleQuick ? `${setCountOf(e)} total` : e.set}</td>
               <td style={{textAlign:"center"}}>{e.quick ? "—" : e.weight==null ? "BW" : dispW(e.weight, units)}{e.drops?.length ? <span style={{color:T.sub}}>{" ↘ "}{e.drops.map(dr=>dispW(dr.weight, units)).join(" ↘ ")}</span> : null}</td>
               <td style={{textAlign:"center"}}>{e.quick ? <span title="Quick workout — no weight or reps tracked" style={{color:T.sub}}>{muscleQuick ? "quick" : "🧮 quick"}</span> : <>{e.reps}{e.drops?.length ? <span style={{color:T.sub}}>{" / "}{e.drops.map(dr=>dr.reps).join(" / ")}</span> : null}</>}</td>
               <td style={{color:T.sub}}>{e.effort||""}</td>
-              <td style={{whiteSpace:"nowrap"}}>
+              <td onClick={ev=>ev.stopPropagation()} onKeyDown={ev=>ev.stopPropagation()} style={{whiteSpace:"nowrap"}}>
                 {String(e.notes||"").trim() && (
                   <button className="note-btn" onClick={()=>setNoteOpen(o=>o===e.id?null:e.id)}
                     style={{background:"none", color:T.green, fontSize:12.5, fontWeight:700, padding:"4px 6px"}}>
