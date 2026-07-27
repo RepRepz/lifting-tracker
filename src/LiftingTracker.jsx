@@ -36,7 +36,8 @@ const SEED_EXERCISES = [
   ["Archer Push-Up",["Chest"],["Triceps"]],["Clap Push-Up",["Chest"],["Triceps"]],
   ["One-Arm Push-Up",["Chest","Triceps"],["Abs"]],
   // triceps
-  ["Triceps Pushdown",["Triceps"]],["Overhead Triceps Extension",["Triceps"]],["Skullcrusher",["Triceps"]],
+  ["Triceps Pushdown",["Triceps"]],["Overhead Triceps Extension",["Triceps"]],
+  ["Dumbbell Overhead Triceps Extension",["Triceps"]],["Skullcrusher",["Triceps"]],
   ["Close-Grip Bench Press",["Triceps"],["Chest"]],["Triceps Dip",["Triceps"],["Chest"]],
   // shoulders
   ["Overhead Press",["Shoulders"],["Triceps"]],["Dumbbell Shoulder Press",["Shoulders"],["Triceps"]],
@@ -232,7 +233,7 @@ const defaultData = {
   journal: {}, // { "YYYY-MM-DD": { mood, sleep, text } } — daily notes
   profile: {}, // heightIn (inches) lives here once set
   pins: [],    // pinned dashboard charts (exercise names)
-  libraryV: 11, // bumped when the seed library changes, so existing users get the update once
+  libraryV: 12, // bumped when the seed library changes, so existing users get the update once
 };
 
 /* One-time upgrade of previously saved data: pull in newly added seed exercises and
@@ -267,6 +268,10 @@ function migrateData(d, uname) {
   let log = (d.log || []).map(e => isOldSideRaise(e.exercise) ? { ...e, exercise: "Single-Arm Cable Side Raise" }
     : isOldInclineSmith(e.exercise) ? { ...e, exercise: "Smith Machine Incline Bench Press" } : e);
   const cleanedExercises = exercises.filter(x => !isOldSideRaise(x.name) && !isOldInclineSmith(x.name));
+  if (uname === "dimi" && !cleanedExercises.some(x => x.name === "Dumbbell Overhead Triceps Extension (Adjustables)")) {
+    cleanedExercises.push({ name:"Dumbbell Overhead Triceps Extension (Adjustables)", muscle:"Triceps",
+      muscles:["Triceps"], muscles2:[], type:"Weighted", barbell:false, machine:false });
+  }
   // one-off: dimi's 7/20 decline ab session, logged for him by request (runs once — the
   // libraryV gate above plus this duplicate check keep it from ever doubling up)
   if (uname === "dimi" && !log.some(e => e.exercise === "Decline Ab Crunch" && e.date === "2026-07-20")) {
