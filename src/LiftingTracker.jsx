@@ -1871,6 +1871,19 @@ function DateField({ label, value, onChange, max, min }) {
   const wrapRef = useRef(null);
   const pad = (n) => String(n).padStart(2,"0");
 
+  // Each animated .card is its own stacking context. iOS Safari was painting the next
+  // card over the portion of this popover that extends below its owning card, so lift
+  // the entire card while the calendar is open (the popover's own z-index cannot escape
+  // its parent stacking context). Restore the original inline value on close/unmount.
+  useEffect(() => {
+    if (!open) return;
+    const card = wrapRef.current?.closest(".card");
+    if (!card) return;
+    const previous = card.style.zIndex;
+    card.style.zIndex = "45";
+    return () => { card.style.zIndex = previous; };
+  }, [open]);
+
   useEffect(() => { if (open) setView((value || todayStr()).slice(0,7)); }, [open]); // reopen on the selected month
   useEffect(() => {
     if (!open) return;
@@ -1901,7 +1914,7 @@ function DateField({ label, value, onChange, max, min }) {
   for (let d=1;d<=nDays;d++) cells.push(d);
 
   return (
-    <div ref={wrapRef} style={{ position:"relative" }}>
+    <div ref={wrapRef} style={{ position:"relative", zIndex:open?46:"auto" }}>
       {label && <div style={{...lbl, marginBottom:4}}>{label}</div>}
       <button type="button" onClick={()=>setOpen(o=>!o)} style={{
         display:"flex", alignItems:"center", gap:8, width:"100%", minHeight:44,
