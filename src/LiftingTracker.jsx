@@ -1720,7 +1720,7 @@ function QuickWorkoutLogger({ defaultDate, exercises, onSave, onAddExercise, min
           <div className="h" style={{fontSize:18, color:T.tealDk}}>⚡ Quick workout</div>
           {!open && <div style={{fontSize:11.5, color:T.sub, marginTop:2}}>Muscles + set counts. No exercises, weight, or reps.</div>}
         </div>
-        <button onClick={()=>onMinimizedChange?.(open)} title={open?"Minimize quick workout":"Open quick workout"} aria-expanded={open} style={{background:T.input, border:`1px solid ${T.line}`, color:T.sub, width:34, height:30, borderRadius:9, padding:0, fontSize:open?15:12, fontWeight:800, flexShrink:0}}>{open?"−":"Show"}</button>
+        <button onClick={()=>onMinimizedChange?.(open)} title={open?"Minimize quick workout":"Open quick workout"} aria-label={open?"Minimize quick workout":"Open quick workout"} aria-expanded={open} style={{background:T.input, border:`1px solid ${T.line}`, color:open?T.sub:T.green, minWidth:36, height:36, borderRadius:9, padding:"0 9px", fontSize:open?15:12, fontWeight:800, flexShrink:0}}>{open?"−":"Show"}</button>
       </div>
       {open && <>
         <div style={{fontSize:12, color:T.sub, lineHeight:1.45, margin:"5px 0 12px"}}>For days you only want to track what you trained. It fills your calendar, streak, muscle charts, weekly goals, and group activity—never strength records.</div>
@@ -1972,6 +1972,8 @@ function DateField({ label, value, onChange, max, min }) {
 }
 const saveSm = { background:T.green, color:"#000", fontWeight:700, padding:"9px 18px", fontSize:13.5 };
 const cancelSm = { background:"none", border:`1px solid ${T.line}`, color:T.sub, padding:"9px 14px", fontSize:13.5 };
+const minimizeBtn = { background:"none", border:"1px solid transparent", color:T.sub, fontSize:15, lineHeight:1, width:36, height:36, padding:0, borderRadius:9, flexShrink:0 };
+const showSectionBtn = { flexShrink:0, background:T.input, border:`1px solid ${T.line}`, color:T.green, fontWeight:800, fontSize:12, minHeight:36, padding:"6px 13px", borderRadius:99 };
 const editBox = { background:T.cream, border:`1px solid ${T.creamLine}`, borderRadius:10, padding:12 };
 const noteInput = { display:"block", width:"100%", marginTop:5, resize:"vertical", minHeight:44,
   background:T.input, color:T.ink, border:`1px solid ${T.line}`, borderRadius:10, padding:"9px 11px",
@@ -1988,15 +1990,19 @@ function ConfirmX({ onConfirm, label }) {
     const t = setTimeout(() => setArmed(false), 3500);
     return () => clearTimeout(t);
   }, [armed]);
+  const action = label || "Delete";
   if (armed) return (
-    <button onClick={onConfirm} style={{ background:T.danger, color:"#fff", fontSize:12, fontWeight:800, padding:"6px 14px", borderRadius:99, whiteSpace:"nowrap", boxShadow:"0 6px 16px -6px rgba(255,70,70,.55)" }}>
-      ✓ Confirm
-    </button>
+    <span role="group" aria-label={`${action} confirmation`} style={{display:"inline-flex",alignItems:"center",gap:5,whiteSpace:"nowrap"}}>
+      <button type="button" onClick={()=>setArmed(false)} style={{background:T.input,border:`1px solid ${T.line}`,color:T.sub,fontSize:12,fontWeight:750,minHeight:36,padding:"7px 11px",borderRadius:99}}>Back</button>
+      <button type="button" onClick={()=>{setArmed(false);onConfirm?.();}} style={{background:T.danger,color:"#fff",fontSize:12,fontWeight:850,minHeight:36,padding:"7px 13px",borderRadius:99,boxShadow:"0 6px 16px -6px rgba(255,70,70,.55)"}}>
+        {label ? `Confirm ${label.toLowerCase()}` : "Delete"}
+      </button>
+    </span>
   );
   return (
-    <button onClick={()=>setArmed(true)} style={ label
-      ? { background:"none", border:`1px solid ${T.line}`, color:T.sub, fontSize:12, fontWeight:700, padding:"5px 13px", borderRadius:99, whiteSpace:"nowrap" }
-      : { background:"none", border:"none", color:T.sub, fontSize:15, lineHeight:1, padding:"2px 5px" } }>
+    <button type="button" onClick={()=>setArmed(true)} aria-label={action} title={`${action}…`} style={ label
+      ? { background:"none", border:`1px solid ${T.line}`, color:T.sub, fontSize:12, fontWeight:700, minHeight:36, padding:"6px 13px", borderRadius:99, whiteSpace:"nowrap" }
+      : { background:"none", border:`1px solid transparent`, color:T.sub, fontSize:16, lineHeight:1, width:36, height:36, padding:0, borderRadius:9 } }>
       {label || "✕"}
     </button>
   );
@@ -2431,7 +2437,7 @@ function YearRecap({ data, setData }) {
     <div className="card" style={{display:"flex", alignItems:"center", gap:10, padding:"11px 14px", background:"linear-gradient(160deg,#0C1A0E,#0C0D0D 60%)"}}>
       <span style={{fontSize:17}}>✨</span>
       <div style={{minWidth:0, flex:1}}><div className="h" style={{fontSize:14, color:T.green}}>{year} in review</div><div style={{fontSize:11, color:T.sub}}>{stats.sets} sets · {stats.days} workout day{stats.days===1?"":"s"}</div></div>
-      <button onClick={()=>setMinimizedSaved(false)} style={{flexShrink:0, background:T.input, border:`1px solid ${T.line}`, color:T.green, fontWeight:800, fontSize:12, padding:"6px 12px", borderRadius:99}}>Show</button>
+      <button onClick={()=>setMinimizedSaved(false)} style={showSectionBtn}>Show</button>
     </div>
   );
   const Item = ({ big, label }) => (
@@ -2444,7 +2450,7 @@ function YearRecap({ data, setData }) {
     <div className="card" style={{ background:"linear-gradient(160deg,#0C1A0E,#0C0D0D 60%)", border:`1px solid ${T.creamLine}` }}>
       <div style={{display:"flex", alignItems:"center", gap:8, marginBottom:2}}>
         <div className="h" style={{ fontSize:19, color:T.green, flex:1 }}>✨ {year} in review</div>
-        {canMinimize && <button onClick={()=>setMinimizedSaved(true)} title="Minimize yearly review" aria-label="Minimize yearly review" style={{background:"none", border:"none", color:T.sub, fontSize:15, lineHeight:1, padding:"4px 5px"}}>➖</button>}
+        {canMinimize && <button onClick={()=>setMinimizedSaved(true)} title="Minimize yearly review" aria-label="Minimize yearly review" style={minimizeBtn}>➖</button>}
       </div>
       <div style={{ fontSize:12.5, color:T.sub, marginBottom:12 }}>Your year so far.</div>
       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:6 }}>
@@ -2713,7 +2719,7 @@ function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled
         return <div className="card" key={p} style={{display:"flex", alignItems:"center", gap:10, padding:"11px 14px"}}>
           <span style={{fontSize:17}}>📈</span>
           <div style={{minWidth:0, flex:1}}><div className="h" style={{fontSize:14, color:T.tealDk, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{p}</div><div style={{fontSize:11, color:T.sub}}>{latest ? `Latest: ${latest.value}${isBW?" reps":` ${uLabel(units)}`}` : "No chart data yet"}</div></div>
-          <button onClick={()=>minimizeChart(p,false)} style={{flexShrink:0, background:T.input, border:`1px solid ${T.line}`, color:T.green, fontWeight:800, fontSize:12, padding:"6px 12px", borderRadius:99}}>Show</button>
+          <button onClick={()=>minimizeChart(p,false)} style={showSectionBtn}>Show</button>
         </div>;
       }
       /* latest session totals for this exercise (working sets only) */
@@ -2739,7 +2745,7 @@ function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled
             {pinned ? "📌 Pinned" : "📌 Pin"}
           </button>
           )}
-          {own && <button onClick={()=>minimizeChart(p,true)} title={`Minimize ${p} graph`} aria-label={`Minimize ${p} graph`} style={{flexShrink:0, background:"none", border:"none", color:T.sub, fontSize:15, lineHeight:1, padding:"4px 5px"}}>➖</button>}
+          {own && <button onClick={()=>minimizeChart(p,true)} title={`Minimize ${p} graph`} aria-label={`Minimize ${p} graph`} style={minimizeBtn}>➖</button>}
         </div>
         {exGyms.length > 0 && (
           <div style={{display:"flex", gap:6, flexWrap:"wrap", marginBottom:8}}>
@@ -2825,13 +2831,13 @@ function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled
       <div className="card" style={{display:"flex", alignItems:"center", gap:10, padding:"11px 14px"}}>
         <span style={{fontSize:17}}>🎯</span>
         <div style={{minWidth:0, flex:1}}><div className="h" style={{fontSize:14, color:T.tealDk}}>Weekly set target</div><div style={{fontSize:11, color:T.sub}}>{fmtSets(targetDone)} / {targetGoal} credited sets this week</div></div>
-        <button onClick={()=>minimizeTarget(false)} style={{flexShrink:0, background:T.input, border:`1px solid ${T.line}`, color:T.green, fontWeight:800, fontSize:12, padding:"6px 12px", borderRadius:99}}>Show</button>
+        <button onClick={()=>minimizeTarget(false)} style={showSectionBtn}>Show</button>
       </div>
     ) : (
       <div className="card" ref={targetCardRef}>
         <div style={{display:"flex", alignItems:"center", gap:8, marginBottom:2}}>
           <div className="h" style={{fontSize:17, color:T.tealDk, flex:1}}>Weekly set target</div>
-          {own && <button onClick={()=>minimizeTarget(true)} title="Minimize weekly targets" aria-label="Minimize weekly targets" style={{background:"none", border:"none", color:T.sub, fontSize:15, lineHeight:1, padding:"4px 5px", cursor:"pointer"}}>➖</button>}
+          {own && <button onClick={()=>minimizeTarget(true)} title="Minimize weekly targets" aria-label="Minimize weekly targets" style={minimizeBtn}>➖</button>}
         </div>
         <div style={{display:"flex", alignItems:"center", gap:6, margin:"8px 0 7px", flexWrap:"wrap"}}>
           <span style={{fontSize:11.5, color:T.sub, marginRight:2}}>Goal type</span>
@@ -2928,13 +2934,13 @@ function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled
     <div className="card" style={{display:"flex", alignItems:"center", gap:10, padding:"11px 14px"}}>
       <span style={{fontSize:17}}>🥧</span>
       <div style={{minWidth:0, flex:1}}><div className="h" style={{fontSize:14, color:T.tealDk}}>Last 30 days — work by muscle</div><div style={{fontSize:11, color:T.sub}}>{fmtSets(muscleTotal)} credited sets · {pieData.length} muscle group{pieData.length===1?"":"s"}</div></div>
-      <button onClick={()=>minimizeMuscle(false)} style={{flexShrink:0, background:T.input, border:`1px solid ${T.line}`, color:T.green, fontWeight:800, fontSize:12, padding:"6px 12px", borderRadius:99}}>Show</button>
+      <button onClick={()=>minimizeMuscle(false)} style={showSectionBtn}>Show</button>
     </div>
   ) : (
     <div className="card">
       <div style={{display:"flex", alignItems:"center", gap:8, marginBottom:4}}>
         <div className="h" style={{fontSize:17, color:T.tealDk, flex:1}}>Last 30 days — work by muscle</div>
-        {own && <button onClick={()=>minimizeMuscle(true)} title="Minimize muscle chart" aria-label="Minimize muscle chart" style={{background:"none", border:"none", color:T.sub, fontSize:15, lineHeight:1, padding:"4px 5px"}}>➖</button>}
+        {own && <button onClick={()=>minimizeMuscle(true)} title="Minimize muscle chart" aria-label="Minimize muscle chart" style={minimizeBtn}>➖</button>}
       </div>
       <div style={{fontSize:12, color:T.sub, marginBottom:4}}>Main muscles get full credit, secondaries half — a bench set counts 1 for chest, ½ for triceps.</div>
       {pieData.length ? (
@@ -3043,7 +3049,7 @@ function RecordsTab({ data, exMap, setData }) {
     <div className="card" style={{display:"flex", alignItems:"center", gap:10, padding:"11px 14px"}}>
       <span style={{fontSize:17}}>🏆</span>
       <div style={{minWidth:0, flex:1}}><div className="h" style={{fontSize:14, color:T.tealDk}}>Personal records</div><div style={{fontSize:11, color:T.sub}}>{logged.length} lift{logged.length===1?"":"s"} with saved records</div></div>
-      <button onClick={()=>setMinimizedSaved(false)} style={{flexShrink:0, background:T.input, border:`1px solid ${T.line}`, color:T.green, fontWeight:800, fontSize:12, padding:"6px 12px", borderRadius:99}}>Show</button>
+      <button onClick={()=>setMinimizedSaved(false)} style={showSectionBtn}>Show</button>
     </div>
   );
 
@@ -3055,7 +3061,7 @@ function RecordsTab({ data, exMap, setData }) {
     <div className="card">
       <div style={{display:"flex", alignItems:"center", gap:8, marginBottom:2}}>
         <div className="h" style={{fontSize:19, color:T.tealDk, flex:1}}>🏆 Personal records</div>
-        {canMinimize && <button onClick={()=>setMinimizedSaved(true)} title="Minimize personal records" aria-label="Minimize personal records" style={{background:"none", border:"none", color:T.sub, fontSize:15, lineHeight:1, padding:"4px 5px"}}>➖</button>}
+        {canMinimize && <button onClick={()=>setMinimizedSaved(true)} title="Minimize personal records" aria-label="Minimize personal records" style={minimizeBtn}>➖</button>}
       </div>
       <div style={{fontSize:12.5, color:T.sub, marginBottom:12}}>Best-ever numbers per lift, in {uLabel(units)} — freshest first. Tap a lift for the full breakdown.</div>
       <input value={recQ} onChange={e=>setRecQ(e.target.value)} placeholder="🔍 Search lifts…"
@@ -3769,7 +3775,7 @@ function DuelsCard({ user, all, nameOf, myId, myName, proIds = [], minimized = f
     <div className="card" style={{display:"flex", alignItems:"center", gap:10, padding:"11px 14px"}}>
       <span style={{fontSize:17}}>⚔️</span>
       <div style={{minWidth:0, flex:1}}><div className="h" style={{fontSize:14, color:T.tealDk}}>Step duels</div><div style={{fontSize:11, color:T.sub}}>{currentCount} current duel{currentCount===1?"":"s"}{mine.length>currentCount?` · ${mine.length} total`:""}</div></div>
-      <button onClick={()=>onMinimizedChange?.(false)} style={{flexShrink:0, background:T.input, border:`1px solid ${T.line}`, color:T.green, fontWeight:800, fontSize:12, padding:"6px 12px", borderRadius:99}}>Show</button>
+      <button onClick={()=>onMinimizedChange?.(false)} style={showSectionBtn}>Show</button>
     </div>
   );
 
@@ -3779,7 +3785,7 @@ function DuelsCard({ user, all, nameOf, myId, myName, proIds = [], minimized = f
         <div className="h" style={{fontSize:16, color:T.tealDk}}>⚔️ Step duels</div>
         <div style={{display:"flex", alignItems:"center", gap:7}}>
           {!open && <button onClick={()=>setOpen(true)} style={{background:T.green, color:"#000", fontWeight:800, fontSize:12.5, padding:"6px 13px", borderRadius:99}}>+ New</button>}
-          <button onClick={()=>{setOpen(false);onMinimizedChange?.(true);}} title="Minimize step duels" aria-label="Minimize step duels" style={{background:"none", border:"none", color:T.sub, fontSize:15, lineHeight:1, padding:"4px 5px"}}>➖</button>
+          <button onClick={()=>{setOpen(false);onMinimizedChange?.(true);}} title="Minimize step duels" aria-label="Minimize step duels" style={minimizeBtn}>➖</button>
         </div>
       </div>
 
@@ -4047,7 +4053,7 @@ function CardioStepsRecap({ user }) {
 }
 
 const CARDIO_RANGES = ["1D","1M","1Y","All"];
-function CardioOverview({ cardio }) {
+function CardioOverview({ cardio, minimized=false, onMinimizedChange }) {
   const [range,setRange]=useState("1M");
   const [metric,setMetric]=useState("minutes");
   const [selected,setSelected]=useState(null);
@@ -4071,14 +4077,21 @@ function CardioOverview({ cardio }) {
   useEffect(()=>{if(!bins.some(b=>b.key===selected))setSelected(bins.at(-1)?.key||null);},[bins,selected]);
   const picked=bins.find(b=>b.key===selected)||bins.at(-1);
   const totals=useMemo(()=>({sessions:bins.reduce((s,b)=>s+b.sessions.length,0),minutes:bins.reduce((s,b)=>s+b.minutes,0),calories:bins.reduce((s,b)=>s+b.calories,0),calKnown:bins.some(b=>b.calKnown)}),[bins]);
+  const allTotals=useMemo(()=>({sessions:(cardio||[]).length,minutes:(cardio||[]).reduce((s,c)=>s+(c.duration||0),0)}),[cardio]);
   const max=Math.max(1,...bins.map(b=>metric==="minutes"?b.minutes:b.calories));
   const rangeText=range==="1D"?"today":range==="1M"?"the last 30 days":range==="1Y"?"the last 12 months":"all time";
+  if(minimized) return <div className="card" style={{display:"flex",alignItems:"center",gap:10,padding:"11px 14px"}}>
+    <span style={{fontSize:18}}>🏃</span>
+    <div style={{minWidth:0,flex:1}}><div className="h" style={{fontSize:14,color:T.tealDk}}>Cardio activity</div><div style={{fontSize:11,color:T.sub}}>{allTotals.sessions} session{allTotals.sessions===1?"":"s"} · {allTotals.minutes} min</div></div>
+    <button type="button" onClick={()=>onMinimizedChange?.(false)} aria-label="Show cardio activity chart" style={showSectionBtn}>Show</button>
+  </div>;
   return <div className="card">
     <div style={{display:"flex",alignItems:"flex-start",gap:10,marginBottom:10}}>
       <div style={{flex:1,minWidth:0}}><div className="h" style={{fontSize:18,color:T.tealDk}}>Cardio activity</div><div style={{fontSize:12,color:T.sub,marginTop:2}}>Only periods with logged cardio appear.</div></div>
-      <div className="seg"><button className={`seg-btn ${metric==="minutes"?"on":""}`} onClick={()=>setMetric("minutes")}>Minutes</button><button className={`seg-btn ${metric==="calories"?"on":""}`} onClick={()=>setMetric("calories")}>Calories</button></div>
+      <div style={{display:"flex",alignItems:"center",gap:6}}><div className="seg"><button type="button" aria-pressed={metric==="minutes"} className={`seg-btn ${metric==="minutes"?"on":""}`} onClick={()=>setMetric("minutes")}>Minutes</button><button type="button" aria-pressed={metric==="calories"} className={`seg-btn ${metric==="calories"?"on":""}`} onClick={()=>setMetric("calories")}>Calories</button></div>
+      <button type="button" onClick={()=>onMinimizedChange?.(true)} title="Minimize cardio activity" aria-label="Minimize cardio activity" style={minimizeBtn}>➖</button></div>
     </div>
-    <div style={{display:"flex",gap:2,marginBottom:12,borderBottom:`1px solid ${T.line}`}}>{CARDIO_RANGES.map(v=><button key={v} onClick={()=>setRange(v)} style={{flex:1,background:"none",padding:"7px 4px",fontSize:12.5,color:range===v?T.green:T.sub,borderBottom:range===v?`2px solid ${T.green}`:"2px solid transparent",borderRadius:0,fontWeight:800}}>{v}</button>)}</div>
+    <div style={{display:"flex",gap:2,marginBottom:12,borderBottom:`1px solid ${T.line}`}}>{CARDIO_RANGES.map(v=><button type="button" aria-pressed={range===v} key={v} onClick={()=>setRange(v)} style={{flex:1,background:"none",padding:"9px 4px",fontSize:12.5,color:range===v?T.green:T.sub,borderBottom:range===v?`2px solid ${T.green}`:"2px solid transparent",borderRadius:0,fontWeight:800}}>{v}</button>)}</div>
     <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:7,marginBottom:13}}>
       {[[totals.sessions,"sessions"],[totals.minutes,"minutes"],[totals.calKnown?totals.calories.toLocaleString():"—","calories"]].map(([v,l])=><div key={l} style={{background:T.input,border:`1px solid ${T.line}`,borderRadius:10,padding:"9px 6px",textAlign:"center"}}><div style={{fontSize:19,fontWeight:850,color:l===(metric==="minutes"?"minutes":"calories")?T.green:T.ink,fontVariantNumeric:"tabular-nums"}}>{v}</div><div style={{fontSize:10.5,color:T.sub}}>{l}</div></div>)}
     </div>
@@ -4100,6 +4113,8 @@ function CardioOverview({ cardio }) {
 
 function CardioTab({ data, setData, latestBW, user, stepsOn }) {
   const units = useUnit();
+  const minimizedSections=data.profile?.minimizedSections||{};
+  const setCardioMinimized=(key,value)=>setData(d=>({...d,profile:{...(d.profile||{}),minimizedSections:{...(d.profile?.minimizedSections||{}),[key]:value}}}));
   const [date, setDate] = useState(todayStr());
   const [activity, setActivity] = useState("");
   const [duration, setDuration] = useState("");
@@ -4115,7 +4130,7 @@ function CardioTab({ data, setData, latestBW, user, stepsOn }) {
 
   const estCal = isSteps ? stepsCal(parseInt(steps)||0, kg)
     : (!isMachine && duration && intensity) ? Math.round(MET[intensity]*kg*(duration/60)) : null;
-  const canSave = activity && (isSteps ? steps : duration);
+  const canSave = activity && (isSteps ? steps : duration) && (isMachine || isSteps || intensity);
 
   const add = () => {
     if (!canSave) return;
@@ -4149,6 +4164,7 @@ function CardioTab({ data, setData, latestBW, user, stepsOn }) {
     }
     return { any, today, week, total };
   }, [data.cardio]);
+  const cardioSummary=useMemo(()=>({sessions:data.cardio.length,days:new Set(data.cardio.map(c=>c.date)).size}),[data.cardio]);
 
   const [editAct, setEditAct] = useState(null); // { orig, name, type }
   const actValid = editAct && editAct.name.trim() &&
@@ -4221,6 +4237,7 @@ function CardioTab({ data, setData, latestBW, user, stepsOn }) {
           <span>Your Apple Health steps are already <b style={{color:T.ink}}>synced in the Steps tab</b> through your Shortcut. Logging a step count here too will double-count — skip it unless you specifically want a separate manual entry.</span>
         </div>
       )}
+      {!isMachine && !isSteps && activity && duration && !intensity && <div style={{background:T.input,border:`1px solid ${T.line}`,borderRadius:10,padding:"8px 12px",marginBottom:10,fontSize:12.5,color:T.sub}}>Choose an intensity so calories can be estimated.</div>}
       {estCal!=null && <div style={{background:T.cream, borderRadius:10, padding:"8px 12px", marginBottom:10, fontSize:14}}>Estimated: <b>{estCal} cal</b>{isSteps && steps && <span style={{color:T.sub}}> · about {stepsMiles(parseInt(steps)||0)} mi</span>}</div>}
       <button onClick={add} disabled={!canSave} className="btn-primary" style={{width:"100%", padding:"14px", fontSize:16}}>Save session</button>
     </div>
@@ -4233,22 +4250,26 @@ function CardioTab({ data, setData, latestBW, user, stepsOn }) {
       </div>
     )}
 
-    <CardioOverview cardio={data.cardio} />
+    <CardioOverview cardio={data.cardio} minimized={!!minimizedSections.cardioActivity} onMinimizedChange={value=>setCardioMinimized("cardioActivity",value)} />
 
-    <div className="card">
-      <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:2}}>Cardio calendar</div>
-      <div style={{fontSize:12, color:T.sub, marginBottom:10}}>Your cardio days at a glance. Tap a day to see every session, its duration, and calories.</div>
+    {minimizedSections.cardioCalendar ? <div className="card" style={{display:"flex",alignItems:"center",gap:10,padding:"11px 14px"}}>
+      <span style={{fontSize:18}}>🗓️</span>
+      <div style={{minWidth:0,flex:1}}><div className="h" style={{fontSize:14,color:T.tealDk}}>Cardio calendar</div><div style={{fontSize:11,color:T.sub}}>{cardioSummary.days} active day{cardioSummary.days===1?"":"s"}</div></div>
+      <button type="button" onClick={()=>setCardioMinimized("cardioCalendar",false)} aria-label="Show cardio calendar" style={showSectionBtn}>Show</button>
+    </div> : <div className="card">
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2}}><div className="h" style={{fontSize:17,color:T.tealDk,flex:1}}>Cardio calendar</div><button type="button" onClick={()=>setCardioMinimized("cardioCalendar",true)} title="Minimize cardio calendar" aria-label="Minimize cardio calendar" style={minimizeBtn}>➖</button></div>
+      <div style={{fontSize:12,color:T.sub,marginBottom:10}}>Your cardio days at a glance. Tap a day to see every session, its duration, and calories.</div>
       <WorkoutHeatmap log={[]} cardio={data.cardio} storageKey="lt-cardio-cal-view" emptyPast="no cardio logged" />
-    </div>
+    </div>}
 
     <div className="card">
       <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:6}}>Activity library</div>
       <div style={{fontSize:12.5, color:T.sub, marginBottom:8}}>Add your own (Basketball, Elliptical, whatever you do). Sport = we estimate calories. Machine = you type them in. Steps = enter a step count (calories estimated from your bodyweight).</div>
-      <div style={{display:"flex", gap:8, marginBottom:10}}>
+      <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) 108px",gap:8,marginBottom:10}}>
         <input value={newAct} onChange={e=>setNewAct(e.target.value)} placeholder="Activity name" />
-        <select value={newType} onChange={e=>setNewType(e.target.value)} style={{width:120}}><option>Sport</option><option>Machine</option><option>Steps</option></select>
+        <select value={newType} onChange={e=>setNewType(e.target.value)} style={{width:"100%"}}><option>Sport</option><option>Machine</option><option>Steps</option></select>
         <button onClick={()=>{ if(!newAct.trim())return; setData(d=>({...d, cardioActivities:[...d.cardioActivities.filter(a=>a.name!==newAct.trim()), {name:newAct.trim(), type:newType}]})); setNewAct(""); }}
-          style={{background:T.green, color:"#000", padding:"0 16px", fontWeight:700}}>Add</button>
+          style={{gridColumn:"1 / -1",background:T.green,color:"#000",padding:"11px 16px",fontWeight:800}}>Add activity</button>
       </div>
       {data.cardioActivities.map(a=>(
         <span key={a.name} className="chip" style={{background:T.mint, color:T.green, marginRight:6, marginBottom:6}}>
@@ -6322,7 +6343,7 @@ function CoachCard({ data, exMap, user, setData }) {
       <div className="card" style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 14px" }}>
         <span style={{ fontSize: 16 }}>💪</span>
         <span style={{ fontSize: 13, color: T.sub, fontWeight: 600, flex: 1, minWidth: 0 }}>Lab's AI Coach minimized{trainTip ? " — today's focus is ready" : ""}.</span>
-        <button onClick={() => setMinimized(false)} style={{ flexShrink: 0, background: T.input, border: `1px solid ${T.line}`, color: T.green, fontWeight: 800, fontSize: 12.5, padding: "6px 14px", borderRadius: 99 }}>Show</button>
+        <button onClick={() => setMinimized(false)} style={showSectionBtn}>Show</button>
       </div>
     );
   }
@@ -6338,7 +6359,7 @@ function CoachCard({ data, exMap, user, setData }) {
               {SPLITS[split].icon} {SPLITS[split].short}{split === "custom" && customDays.length ? ` · ${customDays.length}d` : ""} <span style={{ color: T.sub }}>✎</span>
             </button>
           )}
-          <button onClick={() => setMinimized(true)} title="Minimize AI Coach" style={{ background: "none", border: "none", color: T.sub, fontSize: 15, lineHeight: 1, padding: "4px 5px", cursor: "pointer" }}>➖</button>
+          <button onClick={() => setMinimized(true)} title="Minimize AI Coach" aria-label="Minimize AI Coach" style={minimizeBtn}>➖</button>
         </div>
       </div>
 
