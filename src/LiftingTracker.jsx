@@ -1437,12 +1437,12 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
 
       {isMachine && (
         <div style={{ marginBottom:10 }}>
-          <label style={lbl}>🏢 Gym <span style={{fontWeight:400, color:T.sub}}>(this move's resistance varies by gym)</span>
+          <label style={lbl}>🏢 Gym <span style={{fontWeight:400, color:T.sub}}>(optional)</span>
             <GymPicker gyms={gyms} value={gymId} onChange={setGymId} onCreate={addGym} />
           </label>
           {!gymId && <div style={{fontSize:11.5, color:AMBER, marginTop:4, lineHeight:1.45}}>
-            Pick (or add) a gym so this set compares fairly against others at the same place.
-            <span style={{display:"block", color:T.sub, marginTop:2}}>Don’t want gym tracking? Remove it anytime in <b style={{color:T.ink}}>Settings → Features → I train at more than one gym</b>.</span>
+            Choose a gym only if you use this machine at different locations.
+            <span style={{display:"block", color:T.sub, marginTop:2}}>Turn this off in <b style={{color:T.ink}}>Settings → Features</b>.</span>
           </div>}
         </div>
       )}
@@ -4265,11 +4265,11 @@ function CardioTab({ data, setData, latestBW, user, stepsOn }) {
     <div className="card">
       <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:6}}>Activity library</div>
       <div style={{fontSize:12.5, color:T.sub, marginBottom:8}}>Add your own (Basketball, Elliptical, whatever you do). Sport = we estimate calories. Machine = you type them in. Steps = enter a step count (calories estimated from your bodyweight).</div>
-      <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) 108px",gap:8,marginBottom:10}}>
+      <div style={{display:"flex",gap:8,marginBottom:10}}>
         <input value={newAct} onChange={e=>setNewAct(e.target.value)} placeholder="Activity name" />
-        <select value={newType} onChange={e=>setNewType(e.target.value)} style={{width:"100%"}}><option>Sport</option><option>Machine</option><option>Steps</option></select>
+        <select value={newType} onChange={e=>setNewType(e.target.value)} style={{width:120}}><option>Sport</option><option>Machine</option><option>Steps</option></select>
         <button onClick={()=>{ if(!newAct.trim())return; setData(d=>({...d, cardioActivities:[...d.cardioActivities.filter(a=>a.name!==newAct.trim()), {name:newAct.trim(), type:newType}]})); setNewAct(""); }}
-          style={{gridColumn:"1 / -1",background:T.green,color:"#000",padding:"11px 16px",fontWeight:800}}>Add activity</button>
+          style={{background:T.green,color:"#000",padding:"0 16px",fontWeight:700}}>Add</button>
       </div>
       {data.cardioActivities.map(a=>(
         <span key={a.name} className="chip" style={{background:T.mint, color:T.green, marginRight:6, marginBottom:6}}>
@@ -4462,7 +4462,7 @@ function ExercisesTab({ data, setData }) {
       {equip !== "Bodyweight" && (
         <label style={{display:"flex", alignItems:"center", gap:8, fontSize:13, color:T.ink, marginBottom:10, cursor:"pointer"}}>
           <input type="checkbox" checked={machine} onChange={e=>setMachine(e.target.checked)} style={{width:17, height:17, minHeight:0}} />
-          🏢 Machine / cable — resistance varies gym to gym (lets you tag which gym a set was at)
+          🏢 Compare this machine separately at each gym
         </label>
       )}
       <div style={{fontSize:12, color:T.sub, marginBottom:6}}>Muscle groups: tap once = <b style={{color:T.green}}>✓ main</b> (full set credit) · tap again = <b style={{color:AMBER}}>½ secondary</b> (half credit) · third tap clears. First main pick decides where it sorts.</div>
@@ -4493,7 +4493,7 @@ function ExercisesTab({ data, setData }) {
       <div style={{overflowX:"auto"}}>
         <table><thead><tr><th>Exercise</th><th>Muscle</th><th>Equipment</th><th></th></tr></thead>
           <tbody>{shownEx.map(x=>(<Fragment key={x.name}>
-            <tr><td>{x.name}</td><td>{muscleLabel(x)}</td><td>{equipOf(x)}{machineOf(x) && <span title="Machine/cable — resistance varies by gym" style={{marginLeft:5}}>🏢</span>}</td>
+            <tr><td>{x.name}</td><td>{muscleLabel(x)}</td><td>{equipOf(x)}{machineOf(x) && <span title="Compared separately by gym" style={{marginLeft:5}}>🏢</span>}</td>
               <td style={{whiteSpace:"nowrap"}}>
                 <PencilBtn onClick={()=>{ setEdit({ orig:x.name, name:x.name, muscles:musclesOf(x), muscles2:secondariesOf(x), equip:equipOf(x), machine:machineOf(x) }); setMergeTo(""); }} />
                 <ConfirmX onConfirm={()=>setData(d=>({...d, exercises:d.exercises.filter(e=>e.name!==x.name)}))} />
@@ -4509,7 +4509,7 @@ function ExercisesTab({ data, setData }) {
                   {edit.equip !== "Bodyweight" && (
                     <label style={{display:"flex", alignItems:"center", gap:8, fontSize:13, color:T.ink, marginBottom:10, cursor:"pointer"}}>
                       <input type="checkbox" checked={edit.machine} onChange={ev=>setEdit(s=>({...s, machine:ev.target.checked}))} style={{width:17, height:17, minHeight:0}} />
-                      🏢 Machine / cable — resistance varies gym to gym
+                      🏢 Compare this machine separately at each gym
                     </label>
                   )}
                   <div style={{fontSize:12, color:T.sub, marginBottom:6}}>Tap once = ✓ main (full credit) · again = ½ secondary (half credit) · again = off:</div>
@@ -4895,8 +4895,8 @@ function SettingsModal({ user, username, data, setData, startTab, setStartTab, t
         <SettingsSection icon="🧩" title="Features" desc="Optional parts of the app — on or off">
           <FeatureToggle label="Workout routines" on={routinesOn} setOn={setRoutinesOn}
             desc="Adds a Routines section to the Log tab: build templates like “Push Day,” then tap Start to log them exercise-by-exercise. Off by default. Turning it off just hides it — your saved routines stay." />
-          <FeatureToggle label="I train at more than one gym" on={multiGymOn} setOn={setMultiGymOn}
-            desc="Off by default. Turn it on only if you want machine/cable sets tagged by location, since the same stack can feel different at another gym. Turn this switch back off anytime to remove every gym prompt and filter; your lifting history stays safe. Barbell, dumbbell, and bodyweight moves are never affected." />
+          <FeatureToggle label="Compare machines by gym" on={multiGymOn} setOn={setMultiGymOn}
+            desc="Optional. Turn this on if you use machines at different gyms. The app will compare each machine only with sets from the same gym. Leave it off otherwise." />
         </SettingsSection>
 
         <SettingsSection icon="🎨" title="Themes" desc={isPro ? "Recolor the app your way" : "Accent colors + palettes · Pro"} defaultOpen={false}>
