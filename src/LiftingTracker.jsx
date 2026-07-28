@@ -2247,14 +2247,14 @@ const download = (name, content, type) => {
 /* Workout calendar: last 90 days, built for thumbs — the 13-week grid fits the
    screen with no sideways scrolling, and TAPPING a day shows its details below. */
 const CAL_VIEWS = { "1M": 5, "3M": 13, "6M": 26, "1Y": 52 }; // label -> weeks shown
-function WorkoutHeatmap({ log, cardio, exMap = {} }) {
+function WorkoutHeatmap({ log, cardio, exMap = {}, storageKey="lt-cal-view", emptyPast="rest day 😴" }) {
   const [sel, setSel] = useState(todayStr());
   // view choice sticks (remembered on this device)
   const [view, setView] = useState(() => {
-    const v = localStorage.getItem("lt-cal-view");
+    const v = localStorage.getItem(storageKey);
     return CAL_VIEWS[v] ? v : "3M";
   });
-  useEffect(() => { localStorage.setItem("lt-cal-view", view); }, [view]);
+  useEffect(() => { localStorage.setItem(storageKey, view); }, [view, storageKey]);
   const { cols, monthMarks, info } = useMemo(() => {
     const info = {}; // date -> { n (sets), ms (muscles), ex {name:sets}, cd [cardio lines] }
     for (const e of (log||[])) if (e.effort !== "Warm-up") {
@@ -2265,7 +2265,7 @@ function WorkoutHeatmap({ log, cardio, exMap = {} }) {
     }
     for (const c of (cardio||[])) {
       const d = (info[c.date] ||= { n:0, ms:new Set(), ex:{}, cd:[] });
-      d.cd.push(`${c.activity} · ${c.duration} min`);
+      d.cd.push(`${c.activity} · ${c.duration || 0} min${c.calories!=null?` · ${c.calories} cal`:""}`);
     }
     const WEEKS = CAL_VIEWS[view];
     const end = new Date(todayStr() + "T00:00");
@@ -2374,7 +2374,7 @@ function WorkoutHeatmap({ log, cardio, exMap = {} }) {
         <div style={{ fontSize:13.5, fontWeight:700, marginBottom: day ? 4 : 0 }}>
           {fmtDate(sel)}{sel===todayStr() ? " (today)" : ""}
           {!day && (sel < todayStr()
-            ? <span style={{ color:T.sub, fontWeight:500 }}> — rest day 😴</span>
+            ? <span style={{ color:T.sub, fontWeight:500 }}> — {emptyPast}</span>
             : <span style={{ color:T.sub, fontWeight:500 }}> — nothing logged yet</span>)}
         </div>
         {day && (
@@ -4046,6 +4046,58 @@ function CardioStepsRecap({ user }) {
   );
 }
 
+const CARDIO_RANGES = ["1D","1M","1Y","All"];
+function CardioOverview({ cardio }) {
+  const [range,setRange]=useState("1M");
+  const [metric,setMetric]=useState("minutes");
+  const [selected,setSelected]=useState(null);
+  const bins=useMemo(()=>{
+    const today=todayStr();
+    const since=range==="1D"?today:range==="1M"?dAdd(today,-29):range==="1Y"?dAdd(today,-364):"0000-00-00";
+    const sessions=[...(cardio||[])].filter(c=>c.date>=since&&c.date<=today).sort((a,b)=>a.date.localeCompare(b.date)||(a.id||0)-(b.id||0));
+    if(range==="1D") return sessions.map((c,i)=>({key:String(c.id??i),label:c.activity.length>10?c.activity.slice(0,9)+"…":c.activity,title:c.activity,sessions:[c],minutes:c.duration||0,calories:c.calories||0,calKnown:c.calories!=null}));
+    const grouped={};
+    for(const c of sessions){
+      const key=(range==="1Y"||range==="All")?c.date.slice(0,7):c.date;
+      (grouped[key]||=[]).push(c);
+    }
+    return Object.entries(grouped).map(([key,list])=>{
+      const dt=new Date(key+(key.length===7?"-01":"")+"T00:00");
+      const label=key.length===7?(range==="All"?dt.toLocaleString("en-US",{month:"short",year:"2-digit"}):dt.toLocaleString("en-US",{month:"short"})):`${dt.getMonth()+1}/${dt.getDate()}`;
+      return {key,label,title:key.length===7?dt.toLocaleString("en-US",{month:"long",year:"numeric"}):fmtDate(key),sessions:list,
+        minutes:list.reduce((s,c)=>s+(c.duration||0),0),calories:list.reduce((s,c)=>s+(c.calories||0),0),calKnown:list.some(c=>c.calories!=null)};
+    });
+  },[cardio,range]);
+  useEffect(()=>{if(!bins.some(b=>b.key===selected))setSelected(bins.at(-1)?.key||null);},[bins,selected]);
+  const picked=bins.find(b=>b.key===selected)||bins.at(-1);
+  const totals=useMemo(()=>({sessions:bins.reduce((s,b)=>s+b.sessions.length,0),minutes:bins.reduce((s,b)=>s+b.minutes,0),calories:bins.reduce((s,b)=>s+b.calories,0),calKnown:bins.some(b=>b.calKnown)}),[bins]);
+  const max=Math.max(1,...bins.map(b=>metric==="minutes"?b.minutes:b.calories));
+  const rangeText=range==="1D"?"today":range==="1M"?"the last 30 days":range==="1Y"?"the last 12 months":"all time";
+  return <div className="card">
+    <div style={{display:"flex",alignItems:"flex-start",gap:10,marginBottom:10}}>
+      <div style={{flex:1,minWidth:0}}><div className="h" style={{fontSize:18,color:T.tealDk}}>Cardio activity</div><div style={{fontSize:12,color:T.sub,marginTop:2}}>Only periods with logged cardio appear.</div></div>
+      <div className="seg"><button className={`seg-btn ${metric==="minutes"?"on":""}`} onClick={()=>setMetric("minutes")}>Minutes</button><button className={`seg-btn ${metric==="calories"?"on":""}`} onClick={()=>setMetric("calories")}>Calories</button></div>
+    </div>
+    <div style={{display:"flex",gap:2,marginBottom:12,borderBottom:`1px solid ${T.line}`}}>{CARDIO_RANGES.map(v=><button key={v} onClick={()=>setRange(v)} style={{flex:1,background:"none",padding:"7px 4px",fontSize:12.5,color:range===v?T.green:T.sub,borderBottom:range===v?`2px solid ${T.green}`:"2px solid transparent",borderRadius:0,fontWeight:800}}>{v}</button>)}</div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:7,marginBottom:13}}>
+      {[[totals.sessions,"sessions"],[totals.minutes,"minutes"],[totals.calKnown?totals.calories.toLocaleString():"—","calories"]].map(([v,l])=><div key={l} style={{background:T.input,border:`1px solid ${T.line}`,borderRadius:10,padding:"9px 6px",textAlign:"center"}}><div style={{fontSize:19,fontWeight:850,color:l===(metric==="minutes"?"minutes":"calories")?T.green:T.ink,fontVariantNumeric:"tabular-nums"}}>{v}</div><div style={{fontSize:10.5,color:T.sub}}>{l}</div></div>)}
+    </div>
+    {!bins.length?<div style={{minHeight:110,display:"grid",placeItems:"center",textAlign:"center",color:T.sub,fontSize:13}}>No cardio logged {rangeText}.</div>:<>
+      <div style={{overflowX:"auto",padding:"4px 1px 8px",WebkitOverflowScrolling:"touch"}}>
+        <div style={{display:"flex",alignItems:"flex-end",gap:7,height:132,minWidth:`max(100%, ${bins.length*48}px)`}}>{bins.map((b,i)=>{const val=metric==="minutes"?b.minutes:b.calories;const active=b.key===(picked?.key);return <button key={b.key} onClick={()=>setSelected(b.key)} aria-label={`${b.title}: ${b.minutes} minutes, ${b.calKnown?`${b.calories} calories`:"calories unavailable"}`} style={{flex:"1 0 40px",height:"100%",minWidth:40,padding:0,background:"none",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"flex-end",gap:5,borderRadius:8}}>
+          <span style={{fontSize:10.5,fontWeight:800,color:active?T.green:T.sub}}>{val>0?val:""}</span>
+          <span className="vbar" style={{width:"70%",maxWidth:32,minHeight:5,height:Math.max(5,val/max*82),borderRadius:"7px 7px 3px 3px",background:active?T.green:"rgba(var(--accent-rgb),.48)",boxShadow:active?"0 0 16px rgba(var(--accent-rgb),.45)":"none",animationDelay:`${Math.min(i,12)*.025}s`}} />
+          <span style={{fontSize:9.5,color:active?T.ink:T.sub,whiteSpace:"nowrap",maxWidth:46,overflow:"hidden",textOverflow:"ellipsis"}}>{b.label}</span>
+        </button>;})}</div>
+      </div>
+      {picked&&<div key={picked.key} style={{marginTop:6,background:T.input,border:`1px solid ${T.green}`,borderRadius:12,padding:"11px 12px",animation:"fadeSwap .2s ease-out both"}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}><div style={{fontSize:13.5,fontWeight:800,flex:1}}>{picked.title}</div><span style={{fontSize:12,color:T.green,fontWeight:800}}>{picked.minutes} min</span><span style={{fontSize:12,color:T.ink,fontWeight:800}}>{picked.calKnown?`${picked.calories} cal`:"— cal"}</span></div>
+        <div style={{display:"grid",gap:6}}>{picked.sessions.map((c,i)=><div key={c.id??i} style={{display:"flex",alignItems:"center",gap:8,fontSize:12.5}}><span style={{width:6,height:6,borderRadius:99,background:T.green,flexShrink:0}}/><span style={{flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontWeight:650}}>{c.activity}</span><span style={{color:T.sub}}>{c.duration||0} min</span><span style={{color:T.sub,minWidth:48,textAlign:"right"}}>{c.calories!=null?`${c.calories} cal`:"—"}</span></div>)}</div>
+      </div>}
+    </>}
+  </div>;
+}
+
 function CardioTab({ data, setData, latestBW, user, stepsOn }) {
   const units = useUnit();
   const [date, setDate] = useState(todayStr());
@@ -4078,27 +4130,13 @@ function CardioTab({ data, setData, latestBW, user, stepsOn }) {
   };
 
   const [cardQ, setCardQ] = useState("");
+  const [cardSort,setCardSort]=useState("newest");
   const rows = useMemo(() => {
     const q = cardQ.trim().toLowerCase();
-    return [...data.cardio].filter(e => !q || e.activity.toLowerCase().includes(q))
-      .sort((a,b)=>b.date.localeCompare(a.date)).slice(0,40);
-  }, [data.cardio, cardQ]);
-
-  /* minutes per week, last 8 weeks (current week last) */
-  const weeks = useMemo(() => {
-    const mins = {};
-    for (const c of data.cardio) { const w = weekStart(c.date); mins[w] = (mins[w]||0) + (c.duration||0); }
-    const out = [];
-    const d = new Date(weekStart(todayStr()) + "T00:00");
-    d.setDate(d.getDate() - 7*7);
-    for (let i=0;i<8;i++) {
-      const k = d.toISOString().slice(0,10);
-      out.push({ k, label:`${d.getMonth()+1}/${d.getDate()}`, min:mins[k]||0 });
-      d.setDate(d.getDate()+7);
-    }
-    return out;
-  }, [data.cardio]);
-  const weekMax = Math.max(...weeks.map(w=>w.min), 1);
+    const out=[...data.cardio].filter(e => !q || e.activity.toLowerCase().includes(q));
+    out.sort(cardSort==="duration"?(a,b)=>(b.duration||0)-(a.duration||0)||b.date.localeCompare(a.date):cardSort==="calories"?(a,b)=>(b.calories??-1)-(a.calories??-1)||b.date.localeCompare(a.date):(a,b)=>b.date.localeCompare(a.date)||(b.id||0)-(a.id||0));
+    return out.slice(0,80);
+  }, [data.cardio, cardQ, cardSort]);
 
   const stepStats = useMemo(() => {
     const wk = weekStart(todayStr());
@@ -4195,29 +4233,16 @@ function CardioTab({ data, setData, latestBW, user, stepsOn }) {
       </div>
     )}
 
-    {data.cardio.length > 0 && (
-      <div className="card">
-        <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:2}}>Cardio minutes — last 8 weeks</div>
-        <div style={{fontSize:12, color:T.sub, marginBottom:10}}>Each bar is one week (Mon–Sun). The last bar is this week.</div>
-        <div style={{display:"flex", alignItems:"flex-end", gap:8, height:110}}>
-          {weeks.map((w,i)=>(
-            <div key={w.k} style={{flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:4, minWidth:0}}>
-              <span style={{fontSize:11, fontWeight:700, color:w.min>0?T.green:T.sub}}>{w.min>0?w.min:""}</span>
-              <div className="vbar" style={{
-                width:"100%", maxWidth:34, borderRadius:"5px 5px 2px 2px",
-                height: w.min>0 ? Math.max(6, w.min/weekMax*70) : 3,
-                background: w.min>0 ? (i===weeks.length-1 ? T.green : "rgba(var(--accent-rgb),.55)") : T.line,
-                animationDelay: `${i*0.04}s`,
-              }} />
-              <span style={{fontSize:10, color:T.sub}}>{w.label}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    )}
+    <CardioOverview cardio={data.cardio} />
 
     <div className="card">
-      <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:6}}>Your activities</div>
+      <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:2}}>Cardio calendar</div>
+      <div style={{fontSize:12, color:T.sub, marginBottom:10}}>Your cardio days at a glance. Tap a day to see every session, its duration, and calories.</div>
+      <WorkoutHeatmap log={[]} cardio={data.cardio} storageKey="lt-cardio-cal-view" emptyPast="no cardio logged" />
+    </div>
+
+    <div className="card">
+      <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:6}}>Activity library</div>
       <div style={{fontSize:12.5, color:T.sub, marginBottom:8}}>Add your own (Basketball, Elliptical, whatever you do). Sport = we estimate calories. Machine = you type them in. Steps = enter a step count (calories estimated from your bodyweight).</div>
       <div style={{display:"flex", gap:8, marginBottom:10}}>
         <input value={newAct} onChange={e=>setNewAct(e.target.value)} placeholder="Activity name" />
@@ -4252,10 +4277,17 @@ function CardioTab({ data, setData, latestBW, user, stepsOn }) {
     </div>
 
     <div className="card">
-      <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:8}}>Recent cardio</div>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+        <div className="h" style={{fontSize:17,color:T.tealDk,flex:1}}>Recent cardio</div>
+        <select aria-label="Sort cardio history" value={cardSort} onChange={e=>setCardSort(e.target.value)} style={{width:138,minHeight:38,fontSize:12.5,padding:"7px 30px 7px 10px"}}>
+          <option value="newest">Newest</option>
+          <option value="duration">Longest</option>
+          <option value="calories">Most calories</option>
+        </select>
+      </div>
       <input value={cardQ} onChange={e=>setCardQ(e.target.value)} placeholder="🔍 Filter by activity…"
         autoCapitalize="none" autoCorrect="off" spellCheck={false} style={{marginBottom:10}} />
-      <table><thead><tr><th>Date</th><th>Activity</th><th>Min</th><th>Intensity</th><th>Cal</th><th></th></tr></thead>
+      <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch"}}><table><thead><tr><th>Date</th><th>Activity</th><th>Min</th><th>Intensity</th><th>Cal</th><th></th></tr></thead>
         <tbody>{rows.map(e=>(<Fragment key={e.id}>
           <tr><td>{fmtDate(e.date)}</td><td>{e.activity}</td><td>{e.duration||"—"}</td><td>{e.steps ? `${e.steps.toLocaleString()} steps` : (e.intensity||"machine")}</td><td>{e.calories??"—"}</td>
             <td style={{whiteSpace:"nowrap"}}>
@@ -4301,7 +4333,7 @@ function CardioTab({ data, setData, latestBW, user, stepsOn }) {
           )}
         </Fragment>))}
         {!rows.length && <tr><td colSpan={6} style={{color:T.sub}}>No cardio logged yet.</td></tr>}
-        </tbody></table>
+        </tbody></table></div>
     </div>
   </>);
 }
