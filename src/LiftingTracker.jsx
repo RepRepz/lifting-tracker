@@ -1984,9 +1984,10 @@ const noteBox = { display:"flex", gap:9, alignItems:"flex-start",
 
 /* Destructive actions confirm in a fixed popover. Keeping the trigger in place avoids
    resizing table rows on desktop or widening horizontally-scrolled tables on phones. */
-function ConfirmX({ onConfirm, label }) {
+function ConfirmX({ onConfirm, label, subject }) {
   const [armed, setArmed] = useState(false);
   const [pos, setPos] = useState(null);
+  const [target, setTarget] = useState("");
   const btnRef = useRef(null);
   useEffect(() => {
     if (!armed) return;
@@ -2004,19 +2005,34 @@ function ConfirmX({ onConfirm, label }) {
     const width = Math.min(300, window.innerWidth - 24);
     const left = Math.max(12, Math.min((r?.right || window.innerWidth/2) - width, window.innerWidth - width - 12));
     const below = (r?.bottom || window.innerHeight/2) + 8;
-    const top = below + 112 <= window.innerHeight - 12 ? below : Math.max(12, (r?.top || window.innerHeight/2) - 120);
-    setPos({left, top, width}); setArmed(true);
+    const above = below + 132 > window.innerHeight - 12;
+    const top = above ? null : below;
+    const bottom = above ? Math.max(12, window.innerHeight-(r?.top||window.innerHeight/2)+8) : null;
+    const anchorX = Math.max(18, Math.min(width-18, ((r?.left||0)+(r?.width||0)/2)-left));
+    let inferred = subject || "";
+    if (!inferred) {
+      const row = btnRef.current?.closest("tr");
+      if (row) inferred = [...row.children].slice(0,-1).map(c=>c.innerText.trim().replace(/\s+/g," ")).filter(Boolean).join(" · ");
+      else {
+        const chip = btnRef.current?.closest(".chip");
+        if (chip) inferred = chip.innerText.replace(/[✕✎✏]/g,"").trim().replace(/\s+/g," ");
+      }
+    }
+    setTarget(inferred); setPos({left, top, bottom, width, above, anchorX}); setArmed(true);
   };
   return (<>
     <button ref={btnRef} type="button" onClick={open} aria-label={action} aria-expanded={armed} title={`${action}…`} style={ label
-      ? { background:"none", border:`1px solid ${T.line}`, color:T.sub, fontSize:12, fontWeight:700, minHeight:36, padding:"6px 13px", borderRadius:99, whiteSpace:"nowrap" }
-      : { background:"none", border:`1px solid transparent`, color:T.sub, fontSize:16, lineHeight:1, width:36, height:36, padding:0, borderRadius:9 } }>
+      ? { background:armed?"rgba(255,70,70,.12)":"none", border:`1px solid ${armed?T.danger:T.line}`, color:armed?T.danger:T.sub, fontSize:12, fontWeight:700, minHeight:36, padding:"6px 13px", borderRadius:99, whiteSpace:"nowrap" }
+      : { background:armed?"rgba(255,70,70,.12)":"none", border:`1px solid ${armed?T.danger:"transparent"}`, color:armed?T.danger:T.sub, fontSize:16, lineHeight:1, width:36, height:36, padding:0, borderRadius:9 } }>
       {label || "✕"}
     </button>
     {armed && pos && createPortal(
       <div onPointerDown={()=>setArmed(false)} style={{position:"fixed",inset:0,zIndex:12000,background:"transparent"}}>
-        <div role="dialog" aria-label={`${action} confirmation`} onPointerDown={e=>e.stopPropagation()} style={{position:"fixed",left:pos.left,top:pos.top,width:pos.width,boxSizing:"border-box",background:T.card,border:`1px solid ${T.line}`,borderRadius:14,padding:12,boxShadow:"0 16px 42px rgba(0,0,0,.58)",animation:"fadeSwap .15s ease-out both"}}>
-          <div style={{fontSize:13.5,fontWeight:800,color:T.ink,marginBottom:10}}>{action === "Delete" ? "Delete this item?" : `${action}?`}</div>
+        <div role="dialog" aria-label={`${action} confirmation`} onPointerDown={e=>e.stopPropagation()} style={{position:"fixed",left:pos.left,top:pos.top??"auto",bottom:pos.bottom??"auto",width:pos.width,boxSizing:"border-box",background:T.card,border:`1px solid ${T.line}`,borderRadius:14,padding:12,boxShadow:"0 16px 42px rgba(0,0,0,.58)",animation:"fadeSwap .15s ease-out both"}}>
+          <span aria-hidden="true" style={{position:"absolute",left:pos.anchorX-6,[pos.above?"bottom":"top"]:-7,width:12,height:12,background:T.card,transform:"rotate(45deg)",borderLeft:pos.above?"none":`1px solid ${T.line}`,borderTop:pos.above?"none":`1px solid ${T.line}`,borderRight:pos.above?`1px solid ${T.line}`:"none",borderBottom:pos.above?`1px solid ${T.line}`:"none"}} />
+          <div style={{fontSize:13.5,fontWeight:800,color:T.ink}}>{action === "Delete" ? "Delete this entry?" : `${action}?`}</div>
+          {target && <div style={{fontSize:11.5,color:T.sub,lineHeight:1.4,margin:"3px 0 10px",overflowWrap:"anywhere"}}>{target}</div>}
+          {!target && <div style={{height:10}} />}
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
             <button type="button" onClick={()=>setArmed(false)} style={{background:T.input,border:`1px solid ${T.line}`,color:T.ink,fontSize:13,fontWeight:750,minHeight:40,padding:"8px 10px",borderRadius:10}}>Back</button>
             <button type="button" onClick={()=>{setArmed(false);onConfirm?.();}} style={{background:T.danger,color:"#fff",fontSize:13,fontWeight:850,minHeight:40,padding:"8px 10px",borderRadius:10,overflow:"hidden",textOverflow:"ellipsis"}}>{action}</button>
