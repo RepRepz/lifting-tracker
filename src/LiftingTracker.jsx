@@ -2287,7 +2287,7 @@ const download = (name, content, type) => {
 /* Workout calendar: last 90 days, built for thumbs — the 13-week grid fits the
    screen with no sideways scrolling, and TAPPING a day shows its details below. */
 const CAL_VIEWS = { "1M": 5, "3M": 13, "6M": 26, "1Y": 52 }; // label -> weeks shown
-function WorkoutHeatmap({ log, cardio, exMap = {}, storageKey="lt-cal-view", emptyPast="rest day 😴" }) {
+function WorkoutHeatmap({ log, cardio, exMap = {}, storageKey="lt-cal-view", emptyPast="rest day 😴", steps = null, stepGoal = 10000, rewardMode = false }) {
   const [sel, setSel] = useState(todayStr());
   // view choice sticks (remembered on this device)
   const [view, setView] = useState(() => {
@@ -2296,16 +2296,21 @@ function WorkoutHeatmap({ log, cardio, exMap = {}, storageKey="lt-cal-view", emp
   });
   useEffect(() => { localStorage.setItem(storageKey, view); }, [view, storageKey]);
   const { cols, monthMarks, info } = useMemo(() => {
-    const info = {}; // date -> { n (sets), ms (muscles), ex {name:sets}, cd [cardio lines] }
+    const info = {}; // date -> lifting, cardio and optional step details
     for (const e of (log||[])) if (e.effort !== "Warm-up") {
-      const d = (info[e.date] ||= { n:0, ms:new Set(), ex:{}, cd:[] });
+      const d = (info[e.date] ||= { n:0, ms:new Set(), ex:{}, cd:[], cardioMin:0, cardioCal:0, steps:null });
       const sets = setCountOf(e), label = entryLabel(e);
       d.n += sets; d.ex[label] = (d.ex[label]||0) + sets;
       for (const [m] of entryMuscleCredits(e, exMap)) d.ms.add(m);
     }
     for (const c of (cardio||[])) {
-      const d = (info[c.date] ||= { n:0, ms:new Set(), ex:{}, cd:[] });
+      const d = (info[c.date] ||= { n:0, ms:new Set(), ex:{}, cd:[], cardioMin:0, cardioCal:0, steps:null });
       d.cd.push(`${c.activity} · ${c.duration || 0} min${c.calories!=null?` · ${c.calories} cal`:""}`);
+      d.cardioMin += c.duration || 0; d.cardioCal += c.calories || 0;
+    }
+    for (const [date,count] of Object.entries(steps||{})) {
+      const d = (info[date] ||= { n:0, ms:new Set(), ex:{}, cd:[], cardioMin:0, cardioCal:0, steps:null });
+      d.steps = Math.max(d.steps||0, Number(count)||0);
     }
     const WEEKS = CAL_VIEWS[view];
     const end = new Date(todayStr() + "T00:00");
@@ -2325,7 +2330,7 @@ function WorkoutHeatmap({ log, cardio, exMap = {}, storageKey="lt-cal-view", emp
       cols.push(days);
     }
     return { cols, monthMarks, info };
-  }, [log, cardio, exMap, view]);
+  }, [log, cardio, exMap, steps, view]);
 
   const shade = (n, future) => {
     if (future) return "transparent";
@@ -2336,8 +2341,28 @@ function WorkoutHeatmap({ log, cardio, exMap = {}, storageKey="lt-cal-view", emp
     return T.green;
   };
 
+  const rewardOf = (day) => {
+    if (!rewardMode || !day) return null;
+    const lifted = day.n > 0;
+    const cardioHit = day.cardioMin >= 30 || day.cardioCal >= 200;
+    const stepHit = (day.steps||0) >= stepGoal;
+    const wins = Number(lifted) + Number(cardioHit) + Number(stepHit);
+    if (wins === 3) return {key:"gold",label:"Full activity day",color:"#FFC83D"};
+    if (wins >= 2) return {key:"purple",label:"Combo day",color:"#A66BFF"};
+    if (cardioHit || stepHit) return {key:"blue",label:cardioHit?"Cardio goal":"Step goal",color:"#3D8BFF"};
+    if (lifted) return {key:"green",label:"Lift day",color:T.green};
+    if (day.cd.length) return {key:"blueLow",label:"Cardio logged",color:"rgba(61,139,255,.48)"};
+    return null;
+  };
+  const cellStyle = (d) => {
+    const reward = rewardOf(info[d.key]);
+    if (!reward) return {background:shade(d.n,d.future),color:d.n>4?"#000":T.sub};
+    return {background:reward.color,color:reward.key==="gold"||reward.key==="green"?"#080A08":"#fff",boxShadow:reward.key==="gold"?"0 0 0 1px rgba(255,200,61,.65), 0 0 15px rgba(255,200,61,.48)":reward.key==="purple"?"0 0 11px rgba(166,107,255,.32)":"none"};
+  };
+
   const order = [...MUSCLES, "Cardio"];
   const day = info[sel];
+  const reward = rewardOf(day);
   const muscles = day ? [...day.ms].sort((a,b)=>order.indexOf(a)-order.indexOf(b)) : [];
 
   const weeks = CAL_VIEWS[view];
@@ -2360,10 +2385,10 @@ function WorkoutHeatmap({ log, cardio, exMap = {}, storageKey="lt-cal-view", emp
           const hidden = d.future || d.key < cutKey;
           return (
             <div key={d.key} onClick={()=>pick(d)} onMouseEnter={()=>pick(d)}
-              style={{ aspectRatio:"1", borderRadius:8, background:shade(d.n, d.future),
+              style={{ aspectRatio:"1", borderRadius:8, ...cellStyle(d),
                 visibility: hidden ? "hidden" : "visible", cursor:"pointer",
                 display:"flex", alignItems:"center", justifyContent:"center",
-                fontSize:12.5, fontWeight:600, color: d.n > 4 ? "#000" : T.sub,
+                fontSize:12.5, fontWeight:600,
                 outline: outlineFor(d), outlineOffset:-1 }}>
               {Number(d.key.slice(8))}
             </div>
@@ -2386,7 +2411,7 @@ function WorkoutHeatmap({ log, cardio, exMap = {}, storageKey="lt-cal-view", emp
           <div key={wi} style={{ display:"flex", flexDirection:"column", gap }}>
             {week.map(d=>(
               <div key={d.key} onClick={()=>pick(d)} onMouseEnter={()=>pick(d)}
-                style={{ aspectRatio:"1", borderRadius: weeks > 26 ? 2 : 4, background:shade(d.n, d.future),
+                style={{ aspectRatio:"1", borderRadius: weeks > 26 ? 2 : 4, ...cellStyle(d),
                   cursor: d.future ? "default" : "pointer",
                   outline: outlineFor(d), outlineOffset:-1 }} />
             ))}
@@ -2409,6 +2434,10 @@ function WorkoutHeatmap({ log, cardio, exMap = {}, storageKey="lt-cal-view", emp
       </div>
       {view === "1M" ? monthGrid() : weekGrid()}
 
+      {rewardMode && <div style={{display:"flex",justifyContent:"center",flexWrap:"wrap",gap:"6px 12px",marginTop:10,fontSize:10.5,color:T.sub}}>
+        {[[T.green,"Lift"],["#3D8BFF","Cardio / steps"],["#A66BFF","Combo"],["#FFC83D","Full day"]].map(([c,l])=><span key={l} style={{display:"inline-flex",alignItems:"center",gap:5}}><i style={{width:8,height:8,borderRadius:3,background:c,boxShadow:l==="Full day"?"0 0 8px rgba(255,200,61,.55)":"none"}} />{l}</span>)}
+      </div>}
+
       {/* tapped-day details */}
       <div style={{ marginTop:12, background:T.input, border:`1px solid ${T.line}`, borderRadius:10, padding:"10px 13px" }} key={sel}>
         <div style={{ fontSize:13.5, fontWeight:700, marginBottom: day ? 4 : 0 }}>
@@ -2419,6 +2448,7 @@ function WorkoutHeatmap({ log, cardio, exMap = {}, storageKey="lt-cal-view", emp
         </div>
         {day && (
           <>
+            {reward && <div style={{display:"inline-flex",alignItems:"center",gap:5,background:`color-mix(in srgb, ${reward.color} 16%, transparent)`,border:`1px solid ${reward.color}`,color:reward.color,borderRadius:99,padding:"3px 8px",fontSize:10.5,fontWeight:850,marginBottom:6}}>{reward.key==="gold"?"✨":reward.key==="purple"?"⚡":"●"} {reward.label}</div>}
             {day.n > 0 && (
               <div style={{ fontSize:12.5, marginBottom:4 }}>
                 <b style={{ color:T.green }}>{day.n} set{day.n===1?"":"s"}</b>
@@ -2433,6 +2463,7 @@ function WorkoutHeatmap({ log, cardio, exMap = {}, storageKey="lt-cal-view", emp
             {day.cd.map((c,i)=>(
               <div key={i} style={{ fontSize:12, color:T.sub }}>🏃 {c}</div>
             ))}
+            {day.steps!=null && <div style={{fontSize:12,color:(day.steps>=stepGoal)?"#3D8BFF":T.sub}}>👟 {day.steps.toLocaleString()} steps{rewardMode?` / ${stepGoal.toLocaleString()} goal`:""}{day.steps>=stepGoal?" ✓":""}</div>}
           </>
         )}
       </div>
@@ -2525,6 +2556,9 @@ function StatTile({ icon, value, label, hero }) {
 
 function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled, stepsEnabled, nutritionOn, multiGymOn, openSettings, setTab }) {
   const units = useUnit();
+  const syncedDashSteps = useOwnSteps(user, 370, own && stepsEnabled);
+  const dashStepData = useMemo(()=>mergeSteps(syncedDashSteps, data.cardio),[syncedDashSteps,data.cardio]);
+  const dashStepGoal = data.profile?.stepGoal || 10000;
   const [researchMode, setResearchMode] = useState(() => goalModeOf(data));
   const [targetDetail, setTargetDetail] = useState(null); // { muscle, pinned }
   const minimizedSections = data.profile?.minimizedSections || {};
@@ -2958,8 +2992,8 @@ function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled
   widgets.calendar = (
     <div className="card">
       <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:2}}>Workout calendar</div>
-      <div style={{fontSize:12, color:T.sub, marginBottom:10}}>Greener means more sets. Tap a day (hover works on a computer) to see what you did.</div>
-      <WorkoutHeatmap log={data.log} cardio={data.cardio} exMap={exMap} />
+      <div style={{fontSize:12, color:T.sub, marginBottom:10}}>Build combo days with lifting, 30+ cardio minutes (or 200+ calories), and your {dashStepGoal.toLocaleString()}-step goal. Tap a day for details.</div>
+      <WorkoutHeatmap log={data.log} cardio={data.cardio} exMap={exMap} steps={own&&stepsEnabled?dashStepData.map:null} stepGoal={dashStepGoal} rewardMode={own} />
     </div>
   );
 
@@ -3586,6 +3620,19 @@ function computeStepChart(m, range) {
   }
   const wd = bars.filter(b=>b.has);
   return { bars, avg: stepAvg(wd.map(b=>b.value)), max: Math.max(1, ...bars.map(b=>b.value)), every, isAvg };
+}
+
+/* Lightweight dashboard loader: only the signed-in user's steps. */
+function useOwnSteps(user, sinceDays, enabled=true) {
+  const [mine,setMine]=useState({});
+  useEffect(()=>{
+    let alive=true;
+    if(!enabled){setMine({});return ()=>{alive=false;};}
+    const load=()=>stepsFor([user.id],dAdd(todayStr(),-sinceDays)).then(s=>{if(alive)setMine(s[user.id]||{});}).catch(()=>{});
+    load(); window.addEventListener("focus",load);
+    return ()=>{alive=false;window.removeEventListener("focus",load);};
+  },[user.id,sinceDays,enabled]);
+  return mine;
 }
 
 /* Shared loader: returns everyone's step maps (yourself + groupmates) plus a yesterday
