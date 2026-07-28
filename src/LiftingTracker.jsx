@@ -1982,30 +1982,48 @@ const noteBox = { display:"flex", gap:9, alignItems:"flex-start",
   background:"rgba(var(--accent-rgb),.06)", border:`1px solid ${T.creamLine}`,
   borderLeft:`3px solid ${T.green}`, borderRadius:10, padding:"10px 12px" };
 
-/* Two-tap delete: first tap arms it ("Sure?"), second tap confirms; disarms itself. */
+/* Destructive actions confirm in a fixed popover. Keeping the trigger in place avoids
+   resizing table rows on desktop or widening horizontally-scrolled tables on phones. */
 function ConfirmX({ onConfirm, label }) {
   const [armed, setArmed] = useState(false);
+  const [pos, setPos] = useState(null);
+  const btnRef = useRef(null);
   useEffect(() => {
     if (!armed) return;
-    const t = setTimeout(() => setArmed(false), 3500);
-    return () => clearTimeout(t);
+    const close = () => setArmed(false);
+    const onKey = e => { if (e.key === "Escape") close(); };
+    const t = setTimeout(close, 8000);
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("resize", close);
+    window.addEventListener("scroll", close, true);
+    return () => { clearTimeout(t); window.removeEventListener("keydown", onKey); window.removeEventListener("resize", close); window.removeEventListener("scroll", close, true); };
   }, [armed]);
   const action = label || "Delete";
-  if (armed) return (
-    <span role="group" aria-label={`${action} confirmation`} style={{display:"inline-flex",alignItems:"center",gap:5,whiteSpace:"nowrap"}}>
-      <button type="button" onClick={()=>setArmed(false)} style={{background:T.input,border:`1px solid ${T.line}`,color:T.sub,fontSize:12,fontWeight:750,minHeight:36,padding:"7px 11px",borderRadius:99}}>Back</button>
-      <button type="button" onClick={()=>{setArmed(false);onConfirm?.();}} style={{background:T.danger,color:"#fff",fontSize:12,fontWeight:850,minHeight:36,padding:"7px 13px",borderRadius:99,boxShadow:"0 6px 16px -6px rgba(255,70,70,.55)"}}>
-        {label ? `Confirm ${label.toLowerCase()}` : "Delete"}
-      </button>
-    </span>
-  );
-  return (
-    <button type="button" onClick={()=>setArmed(true)} aria-label={action} title={`${action}…`} style={ label
+  const open = () => {
+    const r = btnRef.current?.getBoundingClientRect();
+    const width = Math.min(300, window.innerWidth - 24);
+    const left = Math.max(12, Math.min((r?.right || window.innerWidth/2) - width, window.innerWidth - width - 12));
+    const below = (r?.bottom || window.innerHeight/2) + 8;
+    const top = below + 112 <= window.innerHeight - 12 ? below : Math.max(12, (r?.top || window.innerHeight/2) - 120);
+    setPos({left, top, width}); setArmed(true);
+  };
+  return (<>
+    <button ref={btnRef} type="button" onClick={open} aria-label={action} aria-expanded={armed} title={`${action}…`} style={ label
       ? { background:"none", border:`1px solid ${T.line}`, color:T.sub, fontSize:12, fontWeight:700, minHeight:36, padding:"6px 13px", borderRadius:99, whiteSpace:"nowrap" }
       : { background:"none", border:`1px solid transparent`, color:T.sub, fontSize:16, lineHeight:1, width:36, height:36, padding:0, borderRadius:9 } }>
       {label || "✕"}
     </button>
-  );
+    {armed && pos && createPortal(
+      <div onPointerDown={()=>setArmed(false)} style={{position:"fixed",inset:0,zIndex:12000,background:"transparent"}}>
+        <div role="dialog" aria-label={`${action} confirmation`} onPointerDown={e=>e.stopPropagation()} style={{position:"fixed",left:pos.left,top:pos.top,width:pos.width,boxSizing:"border-box",background:T.card,border:`1px solid ${T.line}`,borderRadius:14,padding:12,boxShadow:"0 16px 42px rgba(0,0,0,.58)",animation:"fadeSwap .15s ease-out both"}}>
+          <div style={{fontSize:13.5,fontWeight:800,color:T.ink,marginBottom:10}}>{action === "Delete" ? "Delete this item?" : `${action}?`}</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+            <button type="button" onClick={()=>setArmed(false)} style={{background:T.input,border:`1px solid ${T.line}`,color:T.ink,fontSize:13,fontWeight:750,minHeight:40,padding:"8px 10px",borderRadius:10}}>Back</button>
+            <button type="button" onClick={()=>{setArmed(false);onConfirm?.();}} style={{background:T.danger,color:"#fff",fontSize:13,fontWeight:850,minHeight:40,padding:"8px 10px",borderRadius:10,overflow:"hidden",textOverflow:"ellipsis"}}>{action}</button>
+          </div>
+        </div>
+      </div>, document.body)}
+  </>);
 }
 
 /* Reusable searchable dropdown. Renders its own trigger via `renderButton` and a
