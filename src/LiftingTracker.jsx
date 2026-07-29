@@ -2554,11 +2554,13 @@ function StatTile({ icon, value, label, hero }) {
   );
 }
 
-function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled, stepsEnabled, nutritionOn, multiGymOn, openSettings, setTab }) {
+function Dashboard({ data, exMap, setData, own = true, user, sharedSteps = null, isPro, coachEnabled, stepsEnabled, nutritionOn, multiGymOn, openSettings, setTab }) {
   const units = useUnit();
-  const syncedDashSteps = useOwnSteps(user, 370, own && stepsEnabled);
-  const dashStepData = useMemo(()=>mergeSteps(syncedDashSteps, data.cardio),[syncedDashSteps,data.cardio]);
+  const syncedDashSteps = useOwnSteps(user, 370, !!(own && stepsEnabled && user?.id));
+  const stepSource = own ? syncedDashSteps : (sharedSteps || {});
+  const dashStepData = useMemo(()=>mergeSteps(stepSource, data.cardio),[stepSource,data.cardio]);
   const dashStepGoal = data.profile?.stepGoal || 10000;
+  const showDashSteps = own ? !!stepsEnabled : sharedSteps != null;
   const [researchMode, setResearchMode] = useState(() => goalModeOf(data));
   const [targetDetail, setTargetDetail] = useState(null); // { muscle, pinned }
   const minimizedSections = data.profile?.minimizedSections || {};
@@ -2993,7 +2995,7 @@ function Dashboard({ data, exMap, setData, own = true, user, isPro, coachEnabled
     <div className="card">
       <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:2}}>Workout calendar</div>
       <div style={{fontSize:12, color:T.sub, marginBottom:10}}>Build combo days with lifting, 30+ cardio minutes (or 200+ calories), and your {dashStepGoal.toLocaleString()}-step goal. Tap a day for details.</div>
-      <WorkoutHeatmap log={data.log} cardio={data.cardio} exMap={exMap} steps={own&&stepsEnabled?dashStepData.map:null} stepGoal={dashStepGoal} rewardMode={own} />
+      <WorkoutHeatmap log={data.log} cardio={data.cardio} exMap={exMap} steps={showDashSteps?dashStepData.map:null} stepGoal={dashStepGoal} rewardMode />
     </div>
   );
 
@@ -3627,11 +3629,12 @@ function useOwnSteps(user, sinceDays, enabled=true) {
   const [mine,setMine]=useState({});
   useEffect(()=>{
     let alive=true;
-    if(!enabled){setMine({});return ()=>{alive=false;};}
-    const load=()=>stepsFor([user.id],dAdd(todayStr(),-sinceDays)).then(s=>{if(alive)setMine(s[user.id]||{});}).catch(()=>{});
+    const uid=user?.id;
+    if(!enabled||!uid){setMine({});return ()=>{alive=false;};}
+    const load=()=>stepsFor([uid],dAdd(todayStr(),-sinceDays)).then(s=>{if(alive)setMine(s[uid]||{});}).catch(()=>{});
     load(); window.addEventListener("focus",load);
     return ()=>{alive=false;window.removeEventListener("focus",load);};
-  },[user.id,sinceDays,enabled]);
+  },[user?.id,sinceDays,enabled]);
   return mine;
 }
 
@@ -7387,7 +7390,7 @@ function FriendsTab({ user, data, setData, exMap = {}, nutritionOn, streaksOn, i
           </div>
 
           {tab==="lifting" && (<>
-            <Dashboard data={pdata} exMap={pexMap} setData={()=>{}} own={false} />
+            <Dashboard data={pdata} exMap={pexMap} setData={()=>{}} own={false} sharedSteps={profileSteps} />
             <RecordsTab data={pdata} exMap={pexMap} />
             <MemberLog pdata={pdata} who={profile.username} />
             <GoalCard data={pdata} setData={()=>{}} current={bw.length ? bw[bw.length-1] : null} rows={bw}
