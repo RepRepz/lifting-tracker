@@ -137,6 +137,55 @@ const entryPrimaryMuscles = (entry, exMap) => entry?.muscleOnly && MUSCLES.inclu
   : musclesOf(exMap?.[entry?.exercise]);
 const entryLabel = (entry) => entry?.muscleOnly ? `${entry.muscle} (quick workout)` : (entry?.exercise || "Workout");
 const MUSCLE_COLORS = ["#009E04","#3D7FD9","#C08A1E","#9C4DE0","#D94F00","#17ABA0","#A83277"];
+const MUSCLE_SHORT = { Chest:"CH", Triceps:"TR", Shoulders:"SH", Back:"BA", Biceps:"BI", Legs:"LE", Abs:"AB" };
+
+/* Curated, exact exercise illustrations. These stay outside saved user data, so the
+   feature is easy to remove/replace without a migration. wger's exercise media is
+   licensed per image; attribution is shown in ExerciseVisualModal. We intentionally
+   leave an exercise unmatched instead of showing a similar-but-different variation. */
+const VISUAL_LICENSES = {
+  "CC BY-SA 3.0": "https://creativecommons.org/licenses/by-sa/3.0/",
+  "CC BY-SA 4.0": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "CC0 1.0": "https://creativecommons.org/publicdomain/zero/1.0/",
+};
+const EXERCISE_VISUALS = {
+  "Bench Press": ["https://wger.de/media/exercise-images/192/Bench-press-1.png.200x200_q85.png", "CC BY-SA 3.0", "sistab2"],
+  "Incline Bench Press": ["https://wger.de/media/exercise-images/41/Incline-bench-press-1.png.200x200_q85.jpg", "CC BY-SA 3.0", "wger.de"],
+  "Dumbbell Bench Press": ["https://wger.de/media/exercise-images/97/Dumbbell-bench-press-1.png.200x200_q85.jpg", "CC BY-SA 3.0", "wger.de"],
+  "Incline Dumbbell Press": ["https://wger.de/media/exercise-images/16/Incline-press-1.png.200x200_q85.png", "CC BY-SA 3.0", "wger.de"],
+  "Chest Fly": ["https://wger.de/media/exercise-images/926/ae9deb5d-a1e9-4c30-b1e3-c128ba5d4969.png.200x200_q85.png", "CC BY-SA 4.0", "novadani"],
+  "Cable Crossover": ["https://wger.de/media/exercise-images/71/Cable-crossover-2.png.200x200_q85.jpg", "CC BY-SA 3.0", "Everkinetic"],
+  "Dips": ["https://wger.de/media/exercise-images/194/34600351-8b0b-4cb0-8daa-583537be15b0.png.200x200_q85.png", "CC0 1.0", "BFad07"],
+  "Triceps Dip": ["https://wger.de/media/exercise-images/194/34600351-8b0b-4cb0-8daa-583537be15b0.png.200x200_q85.png", "CC0 1.0", "BFad07"],
+  "Triceps Pushdown": ["https://wger.de/media/exercise-images/1185/c5ca283d-8958-4fd8-9d59-a3f52a3ac66b.jpg.200x200_q85.jpg", "CC BY-SA 4.0", "anto.kreegyr"],
+  "Overhead Press": ["https://wger.de/media/exercise-images/1893/7dbad19e-0616-41fd-9d7d-3e21649c0eea.png.200x200_q85.png", "CC BY-SA 4.0", "nishant0712"],
+  "Single-Arm Cable Side Raise": ["https://wger.de/media/exercise-images/1378/7c1fcf34-fb7e-45e7-a0c1-51f296235315.jpg.200x200_q85.jpg", "CC BY-SA 4.0", "carlos3c"],
+  "Pull-Up": ["https://wger.de/media/exercise-images/475/b0554016-16fd-4dbe-be47-a2a17d16ae0e.jpg.200x200_q85.jpg", "CC BY-SA 3.0", "wger.de"],
+  "Chin-Up": ["https://wger.de/media/exercise-images/152/6c1a7459-266d-491a-bd50-7cbaea2bc771.png.200x200_q85.png", "CC0 1.0", "Everkinetic"],
+  "Push-Up": ["https://wger.de/media/exercise-images/1551/a6a9e561-3965-45c6-9f2b-ee671e1a3a45.png.200x200_q85.jpg", "CC BY-SA 4.0", "Settebello"],
+  "Clap Push-Up": ["https://wger.de/media/exercise-images/1554/49207a62-8799-4b47-8c0b-7bde02926f3d.png.200x200_q85.jpg", "CC BY-SA 4.0", "Settebello"],
+  "Seated Cable Row": ["https://wger.de/media/exercise-images/1117/2555c4c3-a84d-47db-b83b-cbf721f12e45.png.200x200_q85.jpg", "CC BY-SA 4.0", "Franpol"],
+  "Dumbbell Row": ["https://wger.de/media/exercise-images/81/a751a438-ae2d-4751-8d61-cef0e9292174.png.200x200_q85.jpg", "CC BY-SA 4.0", "sebk"],
+  "Barbell Curl": ["https://wger.de/media/exercise-images/74/Bicep-curls-1.png.200x200_q85.png", "CC BY-SA 3.0", "wger.de"],
+  "Dumbbell Curl": ["https://wger.de/media/exercise-images/1192/651a4535-8210-4dbd-8f06-61d95fdd9963.png.200x200_q85.jpg", "CC BY-SA 4.0", "Franpol"],
+  "Leg Extension": ["https://wger.de/media/exercise-images/369/78c915d1-e46d-4d30-8124-65d68664c3ef.png.200x200_q85.jpg", "CC0 1.0", "BFad07"],
+  "Lying Leg Curl": ["https://wger.de/media/exercise-images/154/lying-leg-curl-machine-large-1.png.200x200_q85.jpg", "CC BY-SA 3.0", "wger.de"],
+  "Seated Leg Curl": ["https://wger.de/media/exercise-images/117/seated-leg-curl-large-1.png.200x200_q85.jpg", "CC BY-SA 3.0", "wger.de"],
+  "Leg Press": ["https://wger.de/media/exercise-images/371/d2136f96-3a43-4d4c-9944-1919c4ca1ce1.webp.200x200_q85.png", "CC0 1.0", "wger contributor"],
+  "Smith Machine Squat": ["https://wger.de/media/exercise-images/1747/af9647dd-04ec-4adf-9c07-4e33edb77277.jpg.200x200_q85.jpg", "CC BY-SA 4.0", "wger contributor"],
+  "Sumo Deadlift": ["https://wger.de/media/exercise-images/630/b0f0c7d8-5878-4d9e-b820-21acc013741d.webp.200x200_q85.png", "CC BY-SA 4.0", "wger contributor"],
+  "Good Morning": ["https://wger.de/media/exercise-images/1392/a02c9c7d-f42d-43e0-9946-1b99b014daee.png.200x200_q85.png", "CC BY-SA 4.0", "Everkinetic"],
+  "Kettlebell Swing": ["https://wger.de/media/exercise-images/960/da4d0560-da89-4bb5-b91f-746458fb04ad.png.200x200_q85.png", "CC BY-SA 4.0", "wger contributor"],
+  "Standing Calf Raise": ["https://wger.de/media/exercise-images/622/9a429bd0-afd3-4ad0-8043-e9beec901c81.jpeg.200x200_q85.jpg", "CC BY-SA 3.0", "wger.de"],
+  "Plank": ["https://wger.de/media/exercise-images/458/b7bd9c28-9f1d-4647-bd17-ab6a3adf5770.png.200x200_q85.png", "CC BY-SA 3.0", "YYCfit / BFad07"],
+  "Crunch": ["https://wger.de/media/exercise-images/91/Crunches-1.png.200x200_q85.png", "CC BY-SA 3.0", "wger.de"],
+  "Russian Twist": ["https://wger.de/media/exercise-images/1193/70ca5d80-3847-4a8c-8882-c6e9e485e29e.png.200x200_q85.png", "CC BY-SA 4.0", "lion"],
+  "Ab Wheel": ["https://wger.de/media/exercise-images/1573/a9ab402b-61ef-4d60-b91a-df52bf7f41a9.jpg.200x200_q85.png", "CC BY-SA 4.0", "wger contributor"],
+};
+const exerciseVisualOf = (name) => {
+  const row = EXERCISE_VISUALS[name];
+  return row ? { src:row[0], largeSrc:row[0].replace(".200x200_q85", ".400x400_q85"), license:row[1], author:row[2] } : null;
+};
 const EFFORTS = ["Warm-up","Could've done more","Right amount","To failure"];
 const MET = { Light: 4, Moderate: 6, Vigorous: 9, "Max Effort": 12 };
 const INTENSITY_FEEL = {
@@ -206,6 +255,77 @@ function platesPerSide(total, bar, plates) {
   const out = [];
   for (const p of plates) while (side >= p - 1e-9) { out.push(p); side = Math.round((side - p) * 100) / 100; }
   return { plates: out, leftover: side };
+}
+
+function ExerciseThumb({ exercise, size = 46, onOpen = null, showFallback = true }) {
+  const visual = exerciseVisualOf(exercise?.name);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [visual?.src]);
+  if (!visual && !showFallback) return null;
+  const muscle = muscleOf(exercise) || "Exercise";
+  const color = MUSCLE_COLORS[Math.max(0, MUSCLES.indexOf(muscle))] || T.green;
+  const content = visual && !failed
+    ? <img src={visual.src} alt={`Illustration of ${exercise.name}`} loading="lazy" decoding="async" onError={()=>setFailed(true)}
+        style={{width:"100%", height:"100%", display:"block", objectFit:"contain", background:"#f1f3f0"}} />
+    : <span aria-hidden="true" style={{width:"100%", height:"100%", display:"grid", placeItems:"center", color, fontSize:Math.max(10,size*.25), fontWeight:900, letterSpacing:".6px", background:`radial-gradient(circle at 35% 25%, color-mix(in srgb, ${color} 23%, transparent), transparent 58%), ${T.input}`}}>{MUSCLE_SHORT[muscle] || "EX"}</span>;
+  const shared = {
+    width:size, height:size, minWidth:size, borderRadius:Math.max(9, size*.2), overflow:"hidden",
+    border:`1px solid ${visual && !failed ? "color-mix(in srgb, var(--accent) 34%, var(--line))" : T.line}`,
+    boxShadow:visual && !failed ? "0 7px 18px -10px rgba(var(--accent-rgb),.75)" : "none",
+  };
+  if (!onOpen) return <span style={{...shared, display:"inline-flex"}}>{content}</span>;
+  return <button type="button" onClick={onOpen} aria-label={`Open ${exercise.name} movement preview`} title="View movement"
+    style={{...shared, display:"inline-flex", padding:0, background:T.input, flexShrink:0}}>{content}</button>;
+}
+
+function ExerciseVisualModal({ exercise, onClose }) {
+  const visual = exerciseVisualOf(exercise?.name);
+  useEffect(() => {
+    if (!exercise) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const key = (e) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", key);
+    return () => { document.body.style.overflow = prev; document.removeEventListener("keydown", key); };
+  }, [exercise, onClose]);
+  if (!exercise) return null;
+  const primary = musclesOf(exercise);
+  const secondary = secondariesOf(exercise);
+  return createPortal(
+    <div role="presentation" onPointerDown={e=>{ if (e.target===e.currentTarget) onClose(); }} style={{position:"fixed", inset:0, zIndex:15000, display:"grid", placeItems:"center", padding:14, background:"rgba(0,0,0,.76)", WebkitBackdropFilter:"blur(10px)", backdropFilter:"blur(10px)", overflowY:"auto"}}>
+      <div role="dialog" aria-modal="true" aria-label={`${exercise.name} movement preview`} className="exercise-visual-dialog" onPointerDown={e=>e.stopPropagation()}>
+        <div style={{display:"flex", alignItems:"center", gap:10, padding:"14px 15px", borderBottom:`1px solid ${T.line}`}}>
+          <div style={{minWidth:0, flex:1}}>
+            <div className="eyebrow" style={{color:T.green, marginBottom:3}}>Movement preview</div>
+            <div className="h" style={{fontSize:19, color:T.ink, overflowWrap:"anywhere"}}>{exercise.name}</div>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close movement preview" style={{width:38, height:38, minWidth:38, padding:0, background:T.input, border:`1px solid ${T.line}`, color:T.ink, fontSize:16}}>✕</button>
+        </div>
+        <div className="exercise-visual-body">
+          <div style={{minWidth:0}}>
+            {visual
+              ? <div style={{borderRadius:15, overflow:"hidden", background:"#f1f3f0", border:`1px solid ${T.line}`, aspectRatio:"1 / 1", display:"grid", placeItems:"center"}}><img src={visual.largeSrc} alt={`Illustration of ${exercise.name}`} decoding="async" style={{width:"100%", height:"100%", objectFit:"contain"}} /></div>
+              : <div style={{borderRadius:15, aspectRatio:"1 / 1", display:"grid", placeItems:"center", background:T.input, border:`1px dashed ${T.line}`, textAlign:"center", padding:18}}><div><ExerciseThumb exercise={exercise} size={74} /><div style={{fontSize:12.5, color:T.sub, marginTop:12, lineHeight:1.45}}>An exact illustration is not available yet.<br/>Muscles and equipment are still shown here.</div></div></div>}
+          </div>
+          <div style={{minWidth:0, display:"flex", flexDirection:"column"}}>
+            <div className="eyebrow" style={{marginBottom:7}}>What it trains</div>
+            <div style={{display:"flex", flexWrap:"wrap", gap:6, marginBottom:16}}>
+              {primary.map(m=><span key={m} className="chip" style={{background:T.mint, color:T.green}}>● {m} <span style={{color:T.sub}}>main</span></span>)}
+              {secondary.map(m=><span key={m} className="chip" style={{background:"rgba(227,190,85,.10)", color:AMBER}}>½ {m} <span style={{color:T.sub}}>secondary</span></span>)}
+            </div>
+            <div className="eyebrow" style={{marginBottom:7}}>Equipment</div>
+            <div style={{fontSize:14, color:T.ink, fontWeight:700, marginBottom:16}}>{equipOf(exercise)}{machineOf(exercise) ? " · Machine / cable" : ""}</div>
+            <div style={{fontSize:12.5, color:T.sub, lineHeight:1.5, padding:"11px 12px", borderRadius:11, border:`1px solid ${T.line}`, background:T.input}}>
+              Use this to recognize the setup and movement. Start light and use a comfortable range; this is not personalized form coaching.
+            </div>
+            {visual && <div style={{fontSize:10.5, color:T.sub, lineHeight:1.5, marginTop:"auto", paddingTop:16}}>
+              Illustration by {visual.author} via <a href="https://wger.de" target="_blank" rel="noreferrer" style={{color:T.green}}>wger</a> · <a href={VISUAL_LICENSES[visual.license]} target="_blank" rel="noreferrer" style={{color:T.green}}>{visual.license}</a>
+            </div>}
+          </div>
+        </div>
+      </div>
+    </div>, document.body
+  );
 }
 
 /* default cardio activities — Sport = calories estimated, Machine = read them off the display,
@@ -674,6 +794,9 @@ export default function LiftingTracker({ user }) {
         .tabview > .card:nth-child(n+6) { animation-delay:.24s; }
         /* desktop depth without positional movement — floating controls can be crossed safely */
         @media(hover:hover){ .card { transition:border-color .2s ease, box-shadow .2s ease; } .card:hover { border-color:color-mix(in srgb, var(--accent) 22%, var(--line)); box-shadow:0 1px 0 rgba(255,255,255,.05) inset, 0 16px 40px -18px rgba(0,0,0,.85); } }
+        .exercise-visual-dialog { width:min(680px, 100%); max-height:calc(100dvh - 28px); overflow:auto; background:linear-gradient(165deg, color-mix(in srgb, var(--card) 92%, var(--accent) 8%), var(--card) 48%); border:1px solid color-mix(in srgb, var(--accent) 45%, var(--line)); border-radius:19px; box-shadow:0 28px 80px rgba(0,0,0,.72), 0 0 0 1px rgba(var(--accent-rgb),.08) inset; animation:calPop .22s cubic-bezier(.22,1,.36,1) both; }
+        .exercise-visual-body { display:grid; grid-template-columns:minmax(220px, 270px) 1fr; gap:20px; padding:17px; }
+        @media(max-width:580px){ .exercise-visual-dialog { border-radius:17px; } .exercise-visual-body { grid-template-columns:1fr; gap:15px; } .exercise-visual-body > div:first-child { max-width:280px; width:100%; margin:0 auto; } }
         .navicon { transition:transform .2s cubic-bezier(.34,1.56,.64,1); font-size:19px; }
         .navicon.on { transform:translateY(-1px) scale(1.16); }
         @media(prefers-reduced-motion:reduce){ *{transition:none!important;animation:none!important} }
@@ -1108,6 +1231,7 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
   const [effort, setEffort] = useState("");
   const [notes, setNotes] = useState("");
   const [justSaved, setJustSaved] = useState(null);
+  const [visualOpen, setVisualOpen] = useState(null);
   const units = useUnit();
   const plateSet = units === "kg" ? PLATES_KG : PLATES_LB;
   const barOpts = units === "kg" ? BARS_KG : BARS_LB;
@@ -1399,9 +1523,10 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
           <div style={{border:`1px solid ${T.line}`, borderRadius:10, overflow:"hidden", marginBottom:6}}>
             {exMatches.map(x=>(
               <button key={x.name} type="button" onClick={()=>{ startNewExercise(x.name); setExQ(""); }}
-                style={{display:"block", width:"100%", textAlign:"left", padding:"11px 13px", background:T.input,
+                style={{display:"flex", alignItems:"center", gap:10, width:"100%", textAlign:"left", padding:"8px 10px", background:T.input,
                   color:T.ink, borderRadius:0, borderBottom:`1px solid ${T.line}`, fontSize:14.5, fontWeight:600}}>
-                {x.name} <span style={{color:T.sub, fontSize:12, fontWeight:500}}>· {muscleOf(x)}</span>
+                <ExerciseThumb exercise={x} size={42} />
+                <span style={{minWidth:0, flex:1}}><span style={{display:"block", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{x.name}</span><span style={{display:"block", color:T.sub, fontSize:11.5, fontWeight:500, marginTop:2}}>{muscleLabel(x)} · {equipOf(x)}</span></span>
               </button>
             ))}
           </div>
@@ -1420,18 +1545,24 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
       </label>
 
       {exName && (
-        <div style={{ background:T.cream, border:`1px solid ${T.creamLine}`, borderRadius:10, padding:"9px 12px", margin:"10px 0", fontSize:14 }}>
-          {lastTime?.first
-            ? <b>First time logging this!</b>
-            : <>Last time: <b>{lastTime.text}</b> <span style={{color:T.sub}}>({fmtDate(lastTime.date)})</span> — beat it.
-              {beaten && <span className="chip" style={{background:T.mint, color:T.green, marginLeft:8}}>🔥 Beating last time!</span>}</>}
-          {isBW && <div style={{fontSize:12, color:T.sub, marginTop:2}}>Bodyweight move — tracked by reps. Add weight below if you used a belt/vest; it still counts as bodyweight everywhere.</div>}
-          {sparkPts && sparkPts.length >= 2 && (
-            <div style={{display:"flex", alignItems:"center", gap:10, marginTop:8}}>
-              <Spark pts={sparkPts} w={110} h={28} />
-              <span style={{fontSize:11.5, color:T.sub}}>your last {sparkPts.length} sessions ({isBW ? "best reps" : "best est. 1RM"})</span>
-            </div>
-          )}
+        <div style={{ background:T.cream, border:`1px solid ${T.creamLine}`, borderRadius:12, padding:"10px 11px", margin:"10px 0", fontSize:14, display:"flex", gap:11, alignItems:"flex-start" }}>
+          <ExerciseThumb exercise={exMap[exName]} size={74} onOpen={()=>setVisualOpen(exMap[exName])} />
+          <div style={{minWidth:0, flex:1}}>
+            <button type="button" onClick={()=>setVisualOpen(exMap[exName])} style={{display:"flex", alignItems:"center", gap:6, maxWidth:"100%", padding:0, background:"none", color:T.green, fontSize:11.5, fontWeight:800, textTransform:"uppercase", letterSpacing:".55px", marginBottom:4}}>
+              <span style={{overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{exerciseVisualOf(exName) ? "View movement" : "Exercise details"}</span><span aria-hidden="true">↗</span>
+            </button>
+            {lastTime?.first
+              ? <b>First time logging this!</b>
+              : <>Last time: <b>{lastTime.text}</b> <span style={{color:T.sub}}>({fmtDate(lastTime.date)})</span> — beat it.
+                {beaten && <span className="chip" style={{background:T.mint, color:T.green, marginLeft:8}}>🔥 Beating last time!</span>}</>}
+            {isBW && <div style={{fontSize:12, color:T.sub, marginTop:2}}>Bodyweight move — tracked by reps. Add weight below if you used a belt/vest; it still counts as bodyweight everywhere.</div>}
+            {sparkPts && sparkPts.length >= 2 && (
+              <div style={{display:"flex", alignItems:"center", gap:10, marginTop:8}}>
+                <Spark pts={sparkPts} w={110} h={28} />
+                <span style={{fontSize:11.5, color:T.sub}}>your last {sparkPts.length} sessions ({isBW ? "best reps" : "best est. 1RM"})</span>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -1670,6 +1801,7 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
         </div>
       )}
     </div>
+    {visualOpen && <ExerciseVisualModal exercise={visualOpen} onClose={()=>setVisualOpen(null)} />}
   </>);
 }
 const lbl = { display:"block", fontSize:12.5, fontWeight:600, color:"#A9BDBA", marginBottom:0 };
@@ -4481,6 +4613,7 @@ function ExercisesTab({ data, setData }) {
   const [name, setName] = useState(""); const [muscles, setMuscles] = useState([]);
   const [muscles2, setMuscles2] = useState([]); const [equip, setEquip] = useState("Barbell (plates)");
   const [machine, setMachine] = useState(false);
+  const [visualOpen, setVisualOpen] = useState(null);
   const [addMsg, setAddMsg] = useState(null); // "already in your library" notice
   const [libQ, setLibQ] = useState(""); const [libM, setLibM] = useState("All");
   const shownEx = useMemo(() => {
@@ -4538,7 +4671,8 @@ function ExercisesTab({ data, setData }) {
   return (<>
     <div className="card">
       <div className="h" style={{fontSize:19, color:T.tealDk, marginBottom:4}}>📚 Exercise library</div>
-      <div style={{fontSize:12.5, color:T.sub, marginBottom:10}}>Add your own moves (e.g. Decline Push-Up). Pick <b>Barbell</b> to get the plate helper when logging; <b>Bodyweight</b> moves auto-track by reps.</div>
+      <div style={{fontSize:12.5, color:T.sub, marginBottom:6}}>Add your own moves (e.g. Decline Push-Up). Pick <b>Barbell</b> to get the plate helper when logging; <b>Bodyweight</b> moves auto-track by reps.</div>
+      <div style={{fontSize:11.5, color:T.sub, marginBottom:11, lineHeight:1.45}}>Tap an exercise picture to see it larger, plus the muscles and equipment. Exact illustrations are shown where available; custom and unmatched moves use a muscle badge.</div>
       <div style={{display:"flex", gap:8, marginBottom:10, flexWrap:"wrap"}}>
         <input value={name} onChange={e=>{setName(e.target.value); setAddMsg(null);}} placeholder="Exercise name" style={{flex:2, minWidth:150}} />
         <select value={equip} onChange={e=>setEquip(e.target.value)} style={{flex:1, minWidth:150}}>{EQUIP_OPTS.map(o=><option key={o}>{o}</option>)}</select>
@@ -4577,7 +4711,7 @@ function ExercisesTab({ data, setData }) {
       <div style={{overflowX:"auto"}}>
         <table><thead><tr><th>Exercise</th><th>Muscle</th><th>Equipment</th><th></th></tr></thead>
           <tbody>{shownEx.map(x=>(<Fragment key={x.name}>
-            <tr><td>{x.name}</td><td>{muscleLabel(x)}</td><td>{equipOf(x)}{machineOf(x) && <span title="Compared separately by gym" style={{marginLeft:5}}>🏢</span>}</td>
+             <tr><td><div style={{display:"flex", alignItems:"center", gap:10, minWidth:175}}><ExerciseThumb exercise={x} size={48} onOpen={()=>setVisualOpen(x)} /><button type="button" onClick={()=>setVisualOpen(x)} style={{padding:0, background:"none", color:T.ink, textAlign:"left", fontSize:13.5, fontWeight:700, overflowWrap:"anywhere"}}>{x.name}</button></div></td><td>{muscleLabel(x)}</td><td>{equipOf(x)}{machineOf(x) && <span title="Compared separately by gym" style={{marginLeft:5}}>🏢</span>}</td>
               <td style={{whiteSpace:"nowrap"}}>
                 <PencilBtn onClick={()=>{ setEdit({ orig:x.name, name:x.name, muscles:musclesOf(x), muscles2:secondariesOf(x), equip:equipOf(x), machine:machineOf(x) }); setMergeTo(""); }} />
                 <ConfirmX onConfirm={()=>setData(d=>({...d, exercises:d.exercises.filter(e=>e.name!==x.name)}))} />
@@ -4629,7 +4763,10 @@ function ExercisesTab({ data, setData }) {
             )}
           </Fragment>))}</tbody></table>
       </div>
+      <div style={{fontSize:10.5, color:T.sub, marginTop:9, lineHeight:1.45}}>Common-movement illustrations are provided by <a href="https://wger.de" target="_blank" rel="noreferrer" style={{color:T.green}}>wger</a> under per-image Creative Commons licenses. Attribution appears in each preview.</div>
     </div>
+
+    {visualOpen && <ExerciseVisualModal exercise={visualOpen} onClose={()=>setVisualOpen(null)} />}
 
     <div className="card">
       <div className="h" style={{fontSize:19, color:T.tealDk, marginBottom:4}}>💾 Your data</div>

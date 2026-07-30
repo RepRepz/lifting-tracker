@@ -1,7 +1,7 @@
 /* Offline support: network-first for same-origin files, falling back to
    the last cached copy when there's no signal. Supabase API calls are
    never intercepted. */
-const CACHE = "the-lab-v152";
+const CACHE = "the-lab-v153";
 
 self.addEventListener("install", () => self.skipWaiting());
 
@@ -15,7 +15,19 @@ self.addEventListener("activate", (e) => {
 
 self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
-  if (e.request.method !== "GET" || url.origin !== location.origin) return;
+  if (e.request.method !== "GET") return;
+  const exerciseMedia = url.origin === "https://wger.de" && url.pathname.startsWith("/media/exercise-images/");
+  if (exerciseMedia) {
+    e.respondWith(
+      caches.match(e.request).then((hit) => hit || fetch(e.request).then((res) => {
+        const copy = res.clone();
+        caches.open(CACHE).then((c) => c.put(e.request, copy));
+        return res;
+      }))
+    );
+    return;
+  }
+  if (url.origin !== location.origin) return;
   e.respondWith(
     fetch(e.request)
       .then((res) => {
