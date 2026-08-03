@@ -33,6 +33,46 @@ export async function saveUserState(userId, value) {
   if (error) throw error;
 }
 
+/* ---------- private exercise images / GIFs ---------- */
+
+const exerciseMediaUrlCache = new Map();
+
+/** Uploads one private exercise visual. The database stores only this path—not the file. */
+export async function uploadExerciseMedia(userId, file) {
+  if (!userId || !file) throw new Error("Missing exercise media");
+  const allowed = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+  if (!allowed.has(file.type)) throw new Error("Use a JPG, PNG, WebP, or GIF");
+  if (file.size > 8 * 1024 * 1024) throw new Error("Image or GIF must be 8 MB or smaller");
+  const ext = ({ "image/jpeg":"jpg", "image/png":"png", "image/webp":"webp", "image/gif":"gif" })[file.type];
+  const id = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const path = `${userId}/${id}.${ext}`;
+  const { error } = await supabase.storage.from("exercise-media").upload(path, file, {
+    cacheControl: "3600", contentType: file.type, upsert: false,
+  });
+  if (error) throw error;
+  return path;
+}
+
+/** Returns a short-lived URL for the signed-in owner's private visual. */
+export async function getExerciseMediaUrl(path) {
+  if (!path) return null;
+  const cached = exerciseMediaUrlCache.get(path);
+  if (cached && cached.expires > Date.now()) return cached.url;
+  const { data, error } = await supabase.storage.from("exercise-media").createSignedUrl(path, 60 * 60 * 12);
+  if (error) throw error;
+  const url = data?.signedUrl || null;
+  if (url) exerciseMediaUrlCache.set(path, { url, expires: Date.now() + 11 * 60 * 60 * 1000 });
+  return url;
+}
+
+/** Removes a visual owned by the signed-in user. */
+export async function deleteExerciseMedia(path) {
+  if (!path) return;
+  const { error } = await supabase.storage.from("exercise-media").remove([path]);
+  if (error) throw error;
+  exerciseMediaUrlCache.delete(path);
+}
+
 /* ---------- steps (Apple Health via the phone Shortcut) ---------- */
 
 /** Returns (and lazily creates) the signed-in user's secret step-upload code. */

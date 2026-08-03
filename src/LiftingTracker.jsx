@@ -1,6 +1,6 @@
 import { useState, useEffect, useLayoutEffect, useMemo, useRef, lazy, Suspense, Fragment, createContext, useContext } from "react";
 import { createPortal } from "react-dom";
-import { supabase, loadUserState, loadSharedUserStates, saveUserState, listMyGroups, listMembers, createGroup, joinGroup, leaveGroup, listReactions, addReaction, removeReaction, lastActiveFor, setGroupEmoji, resetInviteCode, getStepToken, rotateStepToken, disconnectSteps, stepsFor, lastStepSync, createDuel, listDuels, deleteDuel, acceptDuel, declineDuel, forfeitDuel, requestDuelCancel, clearDuelCancel, setGroupRecordLifts, getMyProStatus, listProUserIds, generateBackupCodes, hasBackupCodes, requestAccountDeletion, clearLocalAccountData } from "./lib/storage.js";
+import { supabase, loadUserState, loadSharedUserStates, saveUserState, uploadExerciseMedia, getExerciseMediaUrl, deleteExerciseMedia, listMyGroups, listMembers, createGroup, joinGroup, leaveGroup, listReactions, addReaction, removeReaction, lastActiveFor, setGroupEmoji, resetInviteCode, getStepToken, rotateStepToken, disconnectSteps, stepsFor, lastStepSync, createDuel, listDuels, deleteDuel, acceptDuel, declineDuel, forfeitDuel, requestDuelCancel, clearDuelCancel, setGroupRecordLifts, getMyProStatus, listProUserIds, generateBackupCodes, hasBackupCodes, requestAccountDeletion, clearLocalAccountData } from "./lib/storage.js";
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -54,7 +54,7 @@ const SEED_EXERCISES = [
   ["Barbell Shrug",["Back"]],["Dumbbell Shrug",["Back"]],["Back Extension",["Back"],["Legs"]],["Superman",["Back"]],
   // biceps
   ["Barbell Curl",["Biceps"]],["Dumbbell Curl",["Biceps"]],["Incline Dumbbell Curl",["Biceps"]],["Hammer Curl",["Biceps"]],
-  ["Preacher Curl",["Biceps"]],["Cable Curl",["Biceps"]],["Concentration Curl",["Biceps"]],
+  ["Preacher Curl",["Biceps"]],["Cable Curl",["Biceps"]],["Concentration Curl",["Biceps"]],["Concentration Curl Machine",["Biceps"]],
   // legs
   ["Back Squat",["Legs"]],["Front Squat",["Legs"]],["Machine Squat",["Legs"]],["Hack Squat",["Legs"]],
   ["Smith Machine Squat",["Legs"]],
@@ -94,7 +94,7 @@ const MACHINE_SEED = new Set([
   "High To Low Cable Chest Fly", "Low To High Cable Chest Fly", "Middle Cable Chest Fly",
   "Triceps Pushdown", "Overhead Triceps Extension",
   "Single-Arm Cable Side Raise", "Rear Delt Fly", "Face Pull",
-  "Lat Pulldown", "Seated Cable Row", "Seated Single-Arm Cross-Body Cable Row", "Cable Curl",
+  "Lat Pulldown", "Seated Cable Row", "Seated Single-Arm Cross-Body Cable Row", "Cable Curl", "Concentration Curl Machine",
   "Machine Squat", "Hack Squat", "Leg Press", "Leg Extension", "Lying Leg Curl", "Seated Leg Curl",
   "Hip Abduction Machine", "Cable Crunch",
 ]);
@@ -137,7 +137,6 @@ const entryPrimaryMuscles = (entry, exMap) => entry?.muscleOnly && MUSCLES.inclu
   : musclesOf(exMap?.[entry?.exercise]);
 const entryLabel = (entry) => entry?.muscleOnly ? `${entry.muscle} (quick workout)` : (entry?.exercise || "Workout");
 const MUSCLE_COLORS = ["#009E04","#3D7FD9","#C08A1E","#9C4DE0","#D94F00","#17ABA0","#A83277"];
-const MUSCLE_SHORT = { Chest:"CH", Triceps:"TR", Shoulders:"SH", Back:"BA", Biceps:"BI", Legs:"LE", Abs:"AB" };
 
 /* Curated, exact exercise illustrations. These stay outside saved user data, so the
    feature is easy to remove/replace without a migration. wger's exercise media is
@@ -186,6 +185,20 @@ const exerciseVisualOf = (name) => {
   const row = EXERCISE_VISUALS[name];
   return row ? { src:row[0], largeSrc:row[0].replace(".200x200_q85", ".400x400_q85"), license:row[1], author:row[2] } : null;
 };
+const hasExerciseVisual = (exercise) => !!exercise?.visualPath || !!exerciseVisualOf(exercise?.name);
+function useExerciseVisual(exercise) {
+  const builtIn = exercise?.visualPath ? null : exerciseVisualOf(exercise?.name);
+  const [privateUrl, setPrivateUrl] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    setPrivateUrl(null);
+    if (!exercise?.visualPath) return () => { alive = false; };
+    getExerciseMediaUrl(exercise.visualPath).then(url => { if (alive) setPrivateUrl(url); }).catch(() => {});
+    return () => { alive = false; };
+  }, [exercise?.visualPath]);
+  if (exercise?.visualPath) return privateUrl ? { src:privateUrl, largeSrc:privateUrl, custom:true, kind:exercise.visualKind || "image" } : null;
+  return builtIn;
+}
 const EFFORTS = ["Warm-up","Could've done more","Right amount","To failure"];
 const MET = { Light: 4, Moderate: 6, Vigorous: 9, "Max Effort": 12 };
 const INTENSITY_FEEL = {
@@ -257,21 +270,17 @@ function platesPerSide(total, bar, plates) {
   return { plates: out, leftover: side };
 }
 
-function ExerciseThumb({ exercise, size = 46, onOpen = null, showFallback = true }) {
-  const visual = exerciseVisualOf(exercise?.name);
+function ExerciseThumb({ exercise, size = 46, onOpen = null }) {
+  const visual = useExerciseVisual(exercise);
   const [failed, setFailed] = useState(false);
   useEffect(() => setFailed(false), [visual?.src]);
-  if (!visual && !showFallback) return null;
-  const muscle = muscleOf(exercise) || "Exercise";
-  const color = MUSCLE_COLORS[Math.max(0, MUSCLES.indexOf(muscle))] || T.green;
-  const content = visual && !failed
-    ? <img src={visual.src} alt={`Illustration of ${exercise.name}`} loading="lazy" decoding="async" onError={()=>setFailed(true)}
-        style={{width:"100%", height:"100%", display:"block", objectFit:"contain", background:"#f1f3f0"}} />
-    : <span aria-hidden="true" style={{width:"100%", height:"100%", display:"grid", placeItems:"center", color, fontSize:Math.max(10,size*.25), fontWeight:900, letterSpacing:".6px", background:`radial-gradient(circle at 35% 25%, color-mix(in srgb, ${color} 23%, transparent), transparent 58%), ${T.input}`}}>{MUSCLE_SHORT[muscle] || "EX"}</span>;
+  if (!visual || failed) return null;
+  const content = <img src={visual.src} alt={`${visual.kind === "gif" ? "Animated demonstration" : "Illustration"} of ${exercise.name}`} loading="lazy" decoding="async" onError={()=>setFailed(true)}
+    style={{width:"100%", height:"100%", display:"block", objectFit:"contain", background:"#f1f3f0"}} />;
   const shared = {
     width:size, height:size, minWidth:size, borderRadius:Math.max(9, size*.2), overflow:"hidden",
-    border:`1px solid ${visual && !failed ? "color-mix(in srgb, var(--accent) 34%, var(--line))" : T.line}`,
-    boxShadow:visual && !failed ? "0 7px 18px -10px rgba(var(--accent-rgb),.75)" : "none",
+    border:"1px solid color-mix(in srgb, var(--accent) 34%, var(--line))",
+    boxShadow:"0 7px 18px -10px rgba(var(--accent-rgb),.75)",
   };
   if (!onOpen) return <span style={{...shared, display:"inline-flex"}}>{content}</span>;
   return <button type="button" onClick={onOpen} aria-label={`Open ${exercise.name} movement preview`} title="View movement"
@@ -279,7 +288,7 @@ function ExerciseThumb({ exercise, size = 46, onOpen = null, showFallback = true
 }
 
 function ExerciseVisualModal({ exercise, onClose }) {
-  const visual = exerciseVisualOf(exercise?.name);
+  const visual = useExerciseVisual(exercise);
   useEffect(() => {
     if (!exercise) return;
     const prev = document.body.style.overflow;
@@ -304,8 +313,8 @@ function ExerciseVisualModal({ exercise, onClose }) {
         <div className="exercise-visual-body">
           <div style={{minWidth:0}}>
             {visual
-              ? <div style={{borderRadius:15, overflow:"hidden", background:"#f1f3f0", border:`1px solid ${T.line}`, aspectRatio:"1 / 1", display:"grid", placeItems:"center"}}><img src={visual.largeSrc} alt={`Illustration of ${exercise.name}`} decoding="async" style={{width:"100%", height:"100%", objectFit:"contain"}} /></div>
-              : <div style={{borderRadius:15, aspectRatio:"1 / 1", display:"grid", placeItems:"center", background:T.input, border:`1px dashed ${T.line}`, textAlign:"center", padding:18}}><div><ExerciseThumb exercise={exercise} size={74} /><div style={{fontSize:12.5, color:T.sub, marginTop:12, lineHeight:1.45}}>An exact illustration is not available yet.<br/>Muscles and equipment are still shown here.</div></div></div>}
+              ? <div style={{borderRadius:15, overflow:"hidden", background:"#f1f3f0", border:`1px solid ${T.line}`, aspectRatio:"1 / 1", display:"grid", placeItems:"center"}}><img src={visual.largeSrc} alt={`${visual.kind === "gif" ? "Animated demonstration" : "Illustration"} of ${exercise.name}`} decoding="async" style={{width:"100%", height:"100%", objectFit:"contain"}} /></div>
+              : <div className="skeleton" style={{borderRadius:15, aspectRatio:"1 / 1"}} />}
           </div>
           <div style={{minWidth:0, display:"flex", flexDirection:"column"}}>
             <div className="eyebrow" style={{marginBottom:7}}>What it trains</div>
@@ -319,7 +328,7 @@ function ExerciseVisualModal({ exercise, onClose }) {
               Use this to recognize the setup and movement. Start light and use a comfortable range; this is not personalized form coaching.
             </div>
             {visual && <div style={{fontSize:10.5, color:T.sub, lineHeight:1.5, marginTop:"auto", paddingTop:16}}>
-              Illustration by {visual.author} via <a href="https://wger.de" target="_blank" rel="noreferrer" style={{color:T.green}}>wger</a> · <a href={VISUAL_LICENSES[visual.license]} target="_blank" rel="noreferrer" style={{color:T.green}}>{visual.license}</a>
+              {visual.custom ? "Your private upload · only visible in your exercise library" : <>Illustration by {visual.author} via <a href="https://wger.de" target="_blank" rel="noreferrer" style={{color:T.green}}>wger</a> · <a href={VISUAL_LICENSES[visual.license]} target="_blank" rel="noreferrer" style={{color:T.green}}>{visual.license}</a></>}
             </div>}
           </div>
         </div>
@@ -353,7 +362,7 @@ const defaultData = {
   journal: {}, // { "YYYY-MM-DD": { mood, sleep, text } } — daily notes
   profile: {}, // heightIn (inches) lives here once set
   pins: [],    // pinned dashboard charts (exercise names)
-  libraryV: 12, // bumped when the seed library changes, so existing users get the update once
+  libraryV: 13, // bumped when the seed library changes, so existing users get the update once
 };
 
 /* One-time upgrade of previously saved data: pull in newly added seed exercises and
@@ -1002,7 +1011,7 @@ export default function LiftingTracker({ user }) {
           {tab==="body" && liftingOn && <BodyTab data={data} setData={setData} hunit={hunit} />}
           {tab==="cardio" && liftingOn && <CardioTab data={data} setData={setData} latestBW={latestBW} user={user} stepsOn={stepsEnabled} />}
           {tab==="steps" && liftingOn && stepsEnabled && <StepsTab user={user} data={data} setData={setData} />}
-          {tab==="ex" && liftingOn && <ExercisesTab data={data} setData={setData} />}
+          {tab==="ex" && liftingOn && <ExercisesTab data={data} setData={setData} user={user} />}
         </div>
       </main>
 
@@ -1251,42 +1260,54 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
     const raw = localStorage.getItem("lt-rest");
     return raw === null ? 90 : Number(raw);
   });
+  const [showRestOvertime, setShowRestOvertime] = useState(() => localStorage.getItem("lt-rest-overtime") === "1");
   const restEndAt = () => Number(localStorage.getItem("lt-rest-end")) || 0;
+  const restFinishedAt = () => Number(localStorage.getItem("lt-rest-finished")) || 0;
   const secsLeft = (end) => Math.max(0, Math.ceil((end - Date.now()) / 1000));
   const [restLeft, setRestLeft] = useState(() => secsLeft(restEndAt()));
   const [restDone, setRestDone] = useState(() => {
-    const end = restEndAt(); // finished while we were away (within the last 10 min)?
-    return end > 0 && end <= Date.now() && Date.now() - end < 10 * 60 * 1000;
+    const end = restEndAt() || restFinishedAt(); // finished while we were away?
+    return end > 0 && end <= Date.now() && Date.now() - end < 2 * 60 * 60 * 1000;
   });
+  const [restOver, setRestOver] = useState(() => restFinishedAt() ? Math.max(0, Math.floor((Date.now()-restFinishedAt())/1000)) : 0);
   useEffect(() => { localStorage.setItem("lt-rest", String(restDur)); }, [restDur]);
+  useEffect(() => { localStorage.setItem("lt-rest-overtime", showRestOvertime ? "1" : "0"); }, [showRestOvertime]);
   const startRest = () => {
     if (restDur <= 0) return;
     localStorage.setItem("lt-rest-end", String(Date.now() + restDur * 1000));
-    setRestDone(false); setRestLeft(restDur);
+    localStorage.removeItem("lt-rest-finished");
+    setRestOver(0); setRestDone(false); setRestLeft(restDur);
   };
-  const stopRest = () => { localStorage.removeItem("lt-rest-end"); setRestLeft(0); setRestDone(false); };
+  const stopRest = () => { localStorage.removeItem("lt-rest-end"); localStorage.removeItem("lt-rest-finished"); setRestOver(0); setRestLeft(0); setRestDone(false); };
   useEffect(() => {
     if (restLeft <= 0) return;
     const t = setInterval(() => {
       const s = secsLeft(restEndAt()); // clock-based: stays honest even if ticks get throttled
       setRestLeft(s);
-      if (s <= 0) { clearInterval(t); navigator.vibrate?.([250,120,250]); setRestDone(true); localStorage.removeItem("lt-rest-end"); }
+      if (s <= 0) { const finished=restEndAt()||Date.now(); clearInterval(t); navigator.vibrate?.([250,120,250]); localStorage.setItem("lt-rest-finished",String(finished)); setRestOver(Math.max(0,Math.floor((Date.now()-finished)/1000))); setRestDone(true); localStorage.removeItem("lt-rest-end"); }
     }, 1000);
     return () => clearInterval(t);
   }, [restLeft > 0]);
   // the ✅ done note clears itself after a few seconds
   useEffect(() => {
-    if (!restDone) return;
-    const t = setTimeout(() => { setRestDone(false); localStorage.removeItem("lt-rest-end"); }, 6000);
+    if (!restDone || showRestOvertime) return;
+    const t = setTimeout(() => { setRestDone(false); localStorage.removeItem("lt-rest-finished"); }, 6000);
     return () => clearTimeout(t);
-  }, [restDone]);
+  }, [restDone, showRestOvertime]);
+  useEffect(() => {
+    if (!restDone || !showRestOvertime) return;
+    const tick = () => setRestOver(Math.max(0, Math.floor((Date.now()-(restFinishedAt()||Date.now()))/1000)));
+    tick(); const t=setInterval(tick,1000); return()=>clearInterval(t);
+  }, [restDone, showRestOvertime]);
 
   const isBW = exMap[exName]?.type === "Bodyweight";
+  const selectedHasVisual = hasExerciseVisual(exMap[exName]);
   // Machine/cable exercises only, and only once multi-gym tracking is on — the load a
   // pin-loaded machine gives at "20kg" isn't standardized like a barbell's, so once tagged,
   // "last time"/PRs/the sparkline all compare within the SAME gym instead of across gyms.
   const gyms = data.gyms || [];
   const isMachine = multiGymOn && machineOf(exMap[exName]);
+  const gymPickerHidden = !!data.profile?.hideGymPicker;
   const [gymId, setGymId] = useState("");
   const addGym = (name) => {
     const g = { id: Math.random().toString(36).slice(2), name };
@@ -1483,7 +1504,8 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
     {restDone && restLeft <= 0 && (
       <div className="card" style={{ padding:"12px 16px", marginBottom:14, borderColor:T.green, display:"flex", alignItems:"center", gap:10 }}>
         <span style={{ fontSize:15, fontWeight:800, color:T.green }}>✅ Rest done — next set!</span>
-        <button onClick={()=>setRestDone(false)} style={{ marginLeft:"auto", background:T.input, color:T.sub, padding:"6px 12px", fontSize:13, fontWeight:600 }}>OK</button>
+        {showRestOvertime && <span style={{fontSize:16,fontWeight:900,color:T.ink,fontVariantNumeric:"tabular-nums"}}>+{Math.floor(restOver/60)}:{String(restOver%60).padStart(2,"0")}</span>}
+        <button onClick={()=>{setRestDone(false);localStorage.removeItem("lt-rest-finished");}} style={{ marginLeft:"auto", background:T.input, color:T.sub, padding:"6px 12px", fontSize:13, fontWeight:600 }}>{showRestOvertime?"Done":"OK"}</button>
       </div>
     )}
     {restLeft > 0 && (
@@ -1546,11 +1568,11 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
 
       {exName && (
         <div style={{ background:T.cream, border:`1px solid ${T.creamLine}`, borderRadius:12, padding:"10px 11px", margin:"10px 0", fontSize:14, display:"flex", gap:11, alignItems:"flex-start" }}>
-          <ExerciseThumb exercise={exMap[exName]} size={74} onOpen={()=>setVisualOpen(exMap[exName])} />
+          {selectedHasVisual && <ExerciseThumb exercise={exMap[exName]} size={74} onOpen={()=>setVisualOpen(exMap[exName])} />}
           <div style={{minWidth:0, flex:1}}>
-            <button type="button" onClick={()=>setVisualOpen(exMap[exName])} style={{display:"flex", alignItems:"center", gap:6, maxWidth:"100%", padding:0, background:"none", color:T.green, fontSize:11.5, fontWeight:800, textTransform:"uppercase", letterSpacing:".55px", marginBottom:4}}>
-              <span style={{overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{exerciseVisualOf(exName) ? "View movement" : "Exercise details"}</span><span aria-hidden="true">↗</span>
-            </button>
+            {selectedHasVisual && <button type="button" onClick={()=>setVisualOpen(exMap[exName])} style={{display:"flex", alignItems:"center", gap:6, maxWidth:"100%", padding:0, background:"none", color:T.green, fontSize:11.5, fontWeight:800, textTransform:"uppercase", letterSpacing:".55px", marginBottom:4}}>
+              <span style={{overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>View movement</span><span aria-hidden="true">↗</span>
+            </button>}
             {lastTime?.first
               ? <b>First time logging this!</b>
               : <>Last time: <b>{lastTime.text}</b> <span style={{color:T.sub}}>({fmtDate(lastTime.date)})</span> — beat it.
@@ -1566,9 +1588,10 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
         </div>
       )}
 
-      {isMachine && (
+      {isMachine && !gymPickerHidden && (
         <div style={{ marginBottom:10 }}>
-          <label style={lbl}>🏢 Gym <span style={{fontWeight:400, color:T.sub}}>(optional)</span>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}><span style={lbl}>🏢 Gym <span style={{fontWeight:400, color:T.sub}}>(optional)</span></span><button type="button" onClick={()=>{setGymId("");setData(d=>({...d,profile:{...(d.profile||{}),hideGymPicker:true}}));}} style={{marginLeft:"auto",padding:"3px 8px",background:"none",color:T.sub,fontSize:10.5,border:`1px solid ${T.line}`}}>Hide picker</button></div>
+          <label style={lbl}>
             <GymPicker gyms={gyms} value={gymId} onChange={setGymId} onCreate={addGym} />
           </label>
           {!gymId && <div style={{fontSize:11.5, color:AMBER, marginTop:4, lineHeight:1.45}}>
@@ -1679,6 +1702,7 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
           }}>{s===0?"Off":s<60?`${s}s`:`${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`}</button>
         ))}
         <span style={{fontSize:11.5, color:T.sub}}>{restDur===0?"timer off — stays off until you pick a time":"auto-starts after each working set"}</span>
+        {restDur>0 && <button type="button" onClick={()=>setShowRestOvertime(v=>!v)} style={{marginLeft:"auto",padding:"5px 10px",background:showRestOvertime?T.mint:"none",border:`1px solid ${showRestOvertime?T.green:T.line}`,color:showRestOvertime?T.green:T.sub,fontSize:11.5,fontWeight:750}}>{showRestOvertime?"✓ Count up after zero":"Count up after zero"}</button>}
       </div>
 
       {justSaved && (
@@ -4609,11 +4633,14 @@ function MuscleChips({ prim, sec, onChange }) {
 const properCase = (s) => s.trim().replace(/\s+/g, " ").split(" ")
   .map(w => w === w.toLowerCase() ? w.replace(/(^|[-(/])([a-z])/g, (m, p, c) => p + c.toUpperCase()) : w).join(" ");
 
-function ExercisesTab({ data, setData }) {
+function ExercisesTab({ data, setData, user }) {
   const [name, setName] = useState(""); const [muscles, setMuscles] = useState([]);
   const [muscles2, setMuscles2] = useState([]); const [equip, setEquip] = useState("Barbell (plates)");
   const [machine, setMachine] = useState(false);
   const [visualOpen, setVisualOpen] = useState(null);
+  const [newVisual, setNewVisual] = useState(null);
+  const [mediaBusy, setMediaBusy] = useState(false);
+  const [mediaMsg, setMediaMsg] = useState(null);
   const [addMsg, setAddMsg] = useState(null); // "already in your library" notice
   const [libQ, setLibQ] = useState(""); const [libM, setLibM] = useState("All");
   const shownEx = useMemo(() => {
@@ -4631,21 +4658,64 @@ function ExercisesTab({ data, setData }) {
     if (!editValid) return;
     const nn = properCase(edit.name);
     setData(d=>({ ...d,
-      exercises: d.exercises.map(x => x.name===edit.orig ? { name:nn, muscle:edit.muscles[0], muscles:edit.muscles, muscles2:edit.muscles2, machine: edit.equip==="Bodyweight" ? false : edit.machine, ...fromEquip(edit.equip) } : x),
+      exercises: d.exercises.map(x => x.name===edit.orig ? { ...x, name:nn, muscle:edit.muscles[0], muscles:edit.muscles, muscles2:edit.muscles2, machine: edit.equip==="Bodyweight" ? false : edit.machine, ...fromEquip(edit.equip) } : x),
       log: nn !== edit.orig ? d.log.map(e => e.exercise===edit.orig ? { ...e, exercise:nn } : e) : d.log,
       routines: nn !== edit.orig ? (d.routines||[]).map(r => ({ ...r, items:(r.items||[]).map(it => it.exercise===edit.orig ? { ...it, exercise:nn } : it) })) : d.routines,
     }));
     setEdit(null);
   };
   // merge: every logged set (and routine slot) moves to the picked exercise, then this one is deleted
-  const doMerge = () => {
+  const doMerge = async () => {
     if (!mergeTo || !edit) return;
+    const source = data.exercises.find(x=>x.name===edit.orig);
+    const target = data.exercises.find(x=>x.name===mergeTo);
+    if (source?.visualPath && target?.visualPath) {
+      try { await deleteExerciseMedia(source.visualPath); } catch {}
+    }
     setData(d=>({ ...d,
       log: d.log.map(e => e.exercise===edit.orig ? { ...e, exercise:mergeTo } : e),
       routines: (d.routines||[]).map(r => ({ ...r, items:(r.items||[]).map(it => it.exercise===edit.orig ? { ...it, exercise:mergeTo } : it) })),
-      exercises: d.exercises.filter(x => x.name !== edit.orig),
+      exercises: d.exercises.filter(x => x.name !== edit.orig).map(x => x.name===mergeTo && source?.visualPath && !x.visualPath ? { ...x, visualPath:source.visualPath, visualKind:source.visualKind } : x),
     }));
     setEdit(null); setMergeTo("");
+  };
+  const addExercise = async () => {
+    if (!name.trim() || !muscles.length || mediaBusy) return;
+    const nn = properCase(name);
+    const dupe = data.exercises.find(x => x.name.toLowerCase() === nn.toLowerCase());
+    if (dupe) { setAddMsg(`“${dupe.name}” is already in your library — no duplicate added. (To fold one exercise into another, open it with ✏️ and use Merge.)`); return; }
+    setMediaBusy(true); setMediaMsg(null);
+    try {
+      const visualPath = newVisual ? await uploadExerciseMedia(user.id, newVisual) : null;
+      setData(d=>({...d, exercises:[...d.exercises, {name:nn, muscle:muscles[0], muscles, muscles2, machine:equip==="Bodyweight"?false:machine, ...fromEquip(equip), ...(visualPath?{visualPath,visualKind:newVisual.type==="image/gif"?"gif":"image"}:{})}]}));
+      setName(""); setMuscles([]); setMuscles2([]); setMachine(false); setNewVisual(null); setAddMsg(null);
+    } catch (err) { setMediaMsg(err?.message || "Couldn't upload that visual."); }
+    finally { setMediaBusy(false); }
+  };
+  const uploadVisualFor = async (exercise, file) => {
+    if (!file || mediaBusy) return;
+    setMediaBusy(true); setMediaMsg(null);
+    try {
+      const path = await uploadExerciseMedia(user.id, file);
+      setData(d=>({...d, exercises:d.exercises.map(x=>x.name===exercise.name?{...x,visualPath:path,visualKind:file.type==="image/gif"?"gif":"image"}:x)}));
+      if (exercise.visualPath) { try { await deleteExerciseMedia(exercise.visualPath); } catch {} }
+      setMediaMsg(`${file.type==="image/gif"?"GIF":"Image"} saved for ${exercise.name}.`);
+    } catch (err) { setMediaMsg(err?.message || "Couldn't upload that visual."); }
+    finally { setMediaBusy(false); }
+  };
+  const removeVisualFor = async (exercise) => {
+    if (!exercise?.visualPath || mediaBusy) return;
+    setMediaBusy(true); setMediaMsg(null);
+    try {
+      await deleteExerciseMedia(exercise.visualPath);
+      setData(d=>({...d, exercises:d.exercises.map(x=>x.name===exercise.name?((({visualPath,visualKind,...rest})=>rest)(x)):x)}));
+      setMediaMsg(`Your upload was removed from ${exercise.name}.`);
+    } catch (err) { setMediaMsg(err?.message || "Couldn't remove that visual."); }
+    finally { setMediaBusy(false); }
+  };
+  const removeExercise = async (exercise) => {
+    if (exercise.visualPath) { try { await deleteExerciseMedia(exercise.visualPath); } catch {} }
+    setData(d=>({...d, exercises:d.exercises.filter(e=>e.name!==exercise.name)}));
   };
 
   const exMuscle = Object.fromEntries(data.exercises.map(x => [x.name, muscleLabel(x)]));
@@ -4672,9 +4742,9 @@ function ExercisesTab({ data, setData }) {
     <div className="card">
       <div className="h" style={{fontSize:19, color:T.tealDk, marginBottom:4}}>📚 Exercise library</div>
       <div style={{fontSize:12.5, color:T.sub, marginBottom:6}}>Add your own moves (e.g. Decline Push-Up). Pick <b>Barbell</b> to get the plate helper when logging; <b>Bodyweight</b> moves auto-track by reps.</div>
-      <div style={{fontSize:11.5, color:T.sub, marginBottom:11, lineHeight:1.45}}>Tap an exercise picture to see it larger, plus the muscles and equipment. Exact illustrations are shown where available; custom and unmatched moves use a muscle badge.</div>
+      <div style={{fontSize:11.5, color:T.sub, marginBottom:11, lineHeight:1.45}}>Exercises with a visual show it beside the name. Add your own image or GIF below; exercises without one stay clean and text-only.</div>
       <div style={{display:"flex", gap:8, marginBottom:10, flexWrap:"wrap"}}>
-        <input value={name} onChange={e=>{setName(e.target.value); setAddMsg(null);}} placeholder="Exercise name" style={{flex:2, minWidth:150}} />
+        <input value={name} onChange={e=>{setName(e.target.value); setAddMsg(null);}} placeholder="Type to add exercise…" style={{flex:2, minWidth:150}} />
         <select value={equip} onChange={e=>setEquip(e.target.value)} style={{flex:1, minWidth:150}}>{EQUIP_OPTS.map(o=><option key={o}>{o}</option>)}</select>
       </div>
       {equip !== "Bodyweight" && (
@@ -4685,18 +4755,19 @@ function ExercisesTab({ data, setData }) {
       )}
       <div style={{fontSize:12, color:T.sub, marginBottom:6}}>Muscle groups: tap once = <b style={{color:T.green}}>✓ main</b> (full set credit) · tap again = <b style={{color:AMBER}}>½ secondary</b> (half credit) · third tap clears. First main pick decides where it sorts.</div>
       <MuscleChips prim={muscles} sec={muscles2} onChange={(p,s)=>{setMuscles(p);setMuscles2(s);}} />
+      <div style={{display:"flex", alignItems:"center", gap:8, marginTop:10, flexWrap:"wrap"}}>
+        <label style={{display:"inline-flex", alignItems:"center", gap:7, width:"auto", padding:"8px 13px", borderRadius:10, background:T.input, border:`1px solid ${T.line}`, color:T.ink, fontSize:12.5, fontWeight:750, cursor:mediaBusy?"wait":"pointer", opacity:mediaBusy?.6:1}}>
+          🖼️ {newVisual ? "Change visual" : "Optional image or GIF"}
+          <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" disabled={mediaBusy} onChange={e=>setNewVisual(e.target.files?.[0]||null)} style={{display:"none"}} />
+        </label>
+        {newVisual && <><span style={{fontSize:11.5, color:T.green, maxWidth:220, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{newVisual.name}</span><button type="button" onClick={()=>setNewVisual(null)} style={{padding:"5px 8px", background:"none", color:T.sub, fontSize:12}}>Remove</button></>}
+        <span style={{fontSize:10.5, color:T.sub}}>JPG, PNG, WebP, or GIF · max 8 MB</span>
+      </div>
       {name.trim() && !muscles.length && <div style={{fontSize:12, color:AMBER, marginTop:6}}>Pick at least one main muscle group to add this exercise.</div>}
       {addMsg && <div style={{fontSize:12.5, color:AMBER, marginTop:6}}>{addMsg}</div>}
-      <button onClick={()=>{
-          if(!name.trim()||!muscles.length)return;
-          const nn = properCase(name); // capitalization fixes itself — "cable fly" becomes "Cable Fly"
-          const dupe = data.exercises.find(x => x.name.toLowerCase() === nn.toLowerCase());
-          if (dupe) { setAddMsg(`“${dupe.name}” is already in your library — no duplicate added. (To fold one exercise into another, open it with ✏️ and use Merge.)`); return; }
-          setData(d=>({...d, exercises:[...d.exercises, {name:nn, muscle:muscles[0], muscles, muscles2, machine: equip==="Bodyweight" ? false : machine, ...fromEquip(equip)}]}));
-          setName(""); setMuscles([]); setMuscles2([]); setMachine(false); setAddMsg(null);
-        }}
-        disabled={!name.trim()||!muscles.length} className="btn-primary"
-        style={{padding:"11px 22px", marginTop:10, marginBottom:14}}>Add exercise</button>
+      <button onClick={addExercise} disabled={!name.trim()||!muscles.length||mediaBusy} className="btn-primary"
+        style={{padding:"11px 22px", marginTop:10, marginBottom:14}}>{mediaBusy?"Saving…":"Add exercise"}</button>
+      {mediaMsg && <div style={{fontSize:11.5, color:mediaMsg.includes("Couldn't")?T.danger:T.green, margin:"-5px 0 10px"}}>{mediaMsg}</div>}
       <input value={libQ} onChange={e=>setLibQ(e.target.value)} placeholder="🔍 Search your library…"
         autoCapitalize="none" autoCorrect="off" spellCheck={false} style={{marginBottom:8}} />
       <div style={{display:"flex", gap:6, overflowX:"auto", paddingBottom:6, WebkitOverflowScrolling:"touch"}}>
@@ -4711,10 +4782,10 @@ function ExercisesTab({ data, setData }) {
       <div style={{overflowX:"auto"}}>
         <table><thead><tr><th>Exercise</th><th>Muscle</th><th>Equipment</th><th></th></tr></thead>
           <tbody>{shownEx.map(x=>(<Fragment key={x.name}>
-             <tr><td><div style={{display:"flex", alignItems:"center", gap:10, minWidth:175}}><ExerciseThumb exercise={x} size={48} onOpen={()=>setVisualOpen(x)} /><button type="button" onClick={()=>setVisualOpen(x)} style={{padding:0, background:"none", color:T.ink, textAlign:"left", fontSize:13.5, fontWeight:700, overflowWrap:"anywhere"}}>{x.name}</button></div></td><td>{muscleLabel(x)}</td><td>{equipOf(x)}{machineOf(x) && <span title="Compared separately by gym" style={{marginLeft:5}}>🏢</span>}</td>
+             <tr><td><div style={{display:"flex", alignItems:"center", gap:hasExerciseVisual(x)?10:0, minWidth:175}}>{hasExerciseVisual(x) && <ExerciseThumb exercise={x} size={48} onOpen={()=>setVisualOpen(x)} />}{hasExerciseVisual(x)?<button type="button" onClick={()=>setVisualOpen(x)} style={{padding:0, background:"none", color:T.ink, textAlign:"left", fontSize:13.5, fontWeight:700, overflowWrap:"anywhere"}}>{x.name}</button>:<span style={{fontSize:13.5,fontWeight:700,color:T.ink}}>{x.name}</span>}</div></td><td>{muscleLabel(x)}</td><td>{equipOf(x)}{machineOf(x) && <span title="Compared separately by gym" style={{marginLeft:5}}>🏢</span>}</td>
               <td style={{whiteSpace:"nowrap"}}>
                 <PencilBtn onClick={()=>{ setEdit({ orig:x.name, name:x.name, muscles:musclesOf(x), muscles2:secondariesOf(x), equip:equipOf(x), machine:machineOf(x) }); setMergeTo(""); }} />
-                <ConfirmX onConfirm={()=>setData(d=>({...d, exercises:d.exercises.filter(e=>e.name!==x.name)}))} />
+                <ConfirmX onConfirm={()=>removeExercise(x)} />
               </td></tr>
             {edit?.orig === x.name && (
               <tr><td colSpan={4} style={{padding:"6px 4px"}}>
@@ -4733,6 +4804,15 @@ function ExercisesTab({ data, setData }) {
                   <div style={{fontSize:12, color:T.sub, marginBottom:6}}>Tap once = ✓ main (full credit) · again = ½ secondary (half credit) · again = off:</div>
                   <div style={{marginBottom:10}}>
                     <MuscleChips prim={edit.muscles} sec={edit.muscles2} onChange={(p,s2)=>setEdit(s=>({...s, muscles:p, muscles2:s2}))} />
+                  </div>
+                  <div style={{display:"flex", alignItems:"center", gap:9, flexWrap:"wrap", margin:"0 0 11px", padding:"10px 11px", background:T.card, border:`1px solid ${T.line}`, borderRadius:11}}>
+                    {hasExerciseVisual(x) && <ExerciseThumb exercise={x} size={46} onOpen={()=>setVisualOpen(x)} />}
+                    <div style={{minWidth:130, flex:1}}><div style={{fontSize:12.5,fontWeight:750,color:T.ink}}>{x.visualPath?"Your uploaded visual":exerciseVisualOf(x.name)?"Included visual":"No visual"}</div><div style={{fontSize:10.5,color:T.sub,marginTop:2}}>Use a still image or animated GIF.</div></div>
+                    <label style={{width:"auto", padding:"8px 11px", borderRadius:9, background:T.input, border:`1px solid ${T.line}`, color:T.green, fontSize:11.5, fontWeight:800, cursor:mediaBusy?"wait":"pointer", opacity:mediaBusy?.6:1}}>
+                      {x.visualPath?"Replace":"Upload"}
+                      <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" disabled={mediaBusy} onChange={e=>{const f=e.target.files?.[0];e.target.value="";if(f)uploadVisualFor(x,f);}} style={{display:"none"}} />
+                    </label>
+                    {x.visualPath && <button type="button" onClick={()=>removeVisualFor(x)} disabled={mediaBusy} style={{padding:"8px 10px", background:"none", border:`1px solid ${T.line}`, color:T.sub, fontSize:11.5}}>Remove</button>}
                   </div>
                   <div style={{display:"flex", gap:8}}>
                     <button onClick={saveEdit} disabled={!editValid} style={{...saveSm, opacity:editValid?1:0.45}}>Save changes</button>
@@ -4763,7 +4843,7 @@ function ExercisesTab({ data, setData }) {
             )}
           </Fragment>))}</tbody></table>
       </div>
-      <div style={{fontSize:10.5, color:T.sub, marginTop:9, lineHeight:1.45}}>Common-movement illustrations are provided by <a href="https://wger.de" target="_blank" rel="noreferrer" style={{color:T.green}}>wger</a> under per-image Creative Commons licenses. Attribution appears in each preview.</div>
+      <div style={{fontSize:10.5, color:T.sub, marginTop:9, lineHeight:1.45}}>Included illustrations are provided by <a href="https://wger.de" target="_blank" rel="noreferrer" style={{color:T.green}}>wger</a> under per-image Creative Commons licenses. Personal uploads are private to their owner.</div>
     </div>
 
     {visualOpen && <ExerciseVisualModal exercise={visualOpen} onClose={()=>setVisualOpen(null)} />}
@@ -5118,6 +5198,8 @@ function SettingsModal({ user, username, data, setData, startTab, setStartTab, t
             desc="Adds a Routines section to the Log tab: build templates like “Push Day,” then tap Start to log them exercise-by-exercise. Off by default. Turning it off just hides it — your saved routines stay." />
           <FeatureToggle label="Compare machines by gym" on={multiGymOn} setOn={setMultiGymOn}
             desc="Optional. Turn this on if you use machines at different gyms. The app will compare each machine only with sets from the same gym. Leave it off otherwise." />
+          {multiGymOn && <FeatureToggle label="Show gym picker while logging" on={!data.profile?.hideGymPicker} setOn={on=>setData(d=>({...d,profile:{...(d.profile||{}),hideGymPicker:!on}}))}
+            desc="Hide the optional gym field from the Log tab without deleting your saved gyms or past gym comparisons." />}
         </SettingsSection>
 
         <SettingsSection icon="🎨" title="Themes" desc={isPro ? "Recolor the app your way" : "Accent colors + palettes · Pro"} defaultOpen={false}>
@@ -6188,12 +6270,6 @@ function customCyclePosition(data, log, exMap) {
   while (cycle[idx].rest && elapsed > 0) { idx = (idx + 1) % len; elapsed--; }
   return { cycle, idx };
 }
-/* First non-rest day at or after startIdx (wrapping once); null if the cycle is all rest. */
-const nextTrainingDay = (cycle, startIdx) => {
-  for (let i = 0; i < cycle.length; i++) { const d = cycle[(startIdx + i) % cycle.length]; if (!d.rest && d.muscles?.length) return d; }
-  return null;
-};
-
 const naturalList = (items) => {
   const a = [...new Set((items || []).filter(Boolean))];
   if (a.length < 2) return a[0] || "your planned muscles";
@@ -6202,6 +6278,8 @@ const naturalList = (items) => {
 };
 const coachMuscleList = (muscles) => naturalList((muscles || []).map(m=>m.toLowerCase()));
 const effortAllowsLoad = (effort) => effort === "Could've done more" || effort === "Right amount";
+const DEFAULT_COACH_PREFS = { focusStyle:"overdue", staleDays:4, progression:true, volume:true, balance:true };
+const coachPrefsOf = (data) => ({ ...DEFAULT_COACH_PREFS, ...(data.profile?.coachPrefs || {}) });
 
 function coachTips(data, exMap, units) {
   const log = Array.isArray(data.log) ? data.log : [];
@@ -6211,6 +6289,7 @@ function coachTips(data, exMap, units) {
   const wk = weekStart(today);
   const goalMode = goalModeOf(data);
   const trainingLevel = data.profile?.trainingLevel || "beginner";
+  const coachPrefs = coachPrefsOf(data);
   const inc = units === "kg" ? 2.5 : 5;              // smallest sensible jump
   const byEx = {};
   for (const e of log) {
@@ -6241,97 +6320,60 @@ function coachTips(data, exMap, units) {
   }
   // (progressions are pushed later, once we know which muscles today's plan targets)
 
-  // ---- WHAT TO TRAIN TODAY: tailored to the user's chosen split ----
-  // We never assume a rotation until they've told us their split (data.profile.split).
+  // ---- TRAINING FOCUS: missed work and genuinely overdue muscles come first ----
+  // The default does NOT blindly advance because somebody logged an out-of-order day.
+  // A user's custom split still defines sensible muscle pairings, while their preference
+  // decides whether the coach ranks overdue work, the planned split, or weekly goal gaps.
   const split = data.profile?.split || null;
-  const todayGroups = groupsLoggedOn(log, exMap, today);   // what you actually logged TODAY
+  const todayGroups = groupsLoggedOn(log, exMap, today);
   const trainedToday = todayGroups.size > 0;
-  const todayList = [...todayGroups].join(" & ");
-  const lastByGroup = { push: null, pull: null, legs: null };
-  for (const e of log) for (const muscle of entryPrimaryMuscles(e, exMap)) { const g = MUSCLE_GROUP(muscle); if (g in lastByGroup && (!lastByGroup[g] || e.date > lastByGroup[g])) lastByGroup[g] = e.date; }
-  const pushTrain = (key, text, icon = "📅") => tips.push({ key, icon, cat: "Train today", text });
-  // the muscles the coach is steering you toward today (or the next training day) —
-  // insights below are filtered/ranked so they stay relevant to this, not stale work.
+  const todayList = naturalList([...todayGroups].map(m=>m.toLowerCase()));
+  const pushTrain = (key, text, icon = "🎯") => tips.push({ key, icon, cat: "Training focus", text });
   let focusMuscles = null;
-
-  if (split === "custom") {
-    // a repeating cycle of training + rest days. Position is read from your ACTUAL logs
-    // (last workout matched to a cycle day, rolled forward), so it self-corrects.
-    const { cycle, idx } = customCyclePosition(data, log, exMap);
-    if (cycle.length && idx >= 0) {
-      const todayEntry = cycle[idx];
-      const nextEntry = cycle[(idx + 1) % cycle.length];
-      const nextTrain = nextTrainingDay(cycle, (idx + 1) % cycle.length);
-      const nextLabel = nextEntry.rest ? "a rest day 😴" : coachMuscleList(nextEntry.muscles);
-      if (trainedToday) {
-        if (nextTrain) focusMuscles = nextTrain.muscles;
-        pushTrain(`done-cust-${today}`, `Session logged: ${naturalList([...todayGroups].map(m=>m.toLowerCase()))}. Next in your rotation: ${nextLabel}.`, "💪");
-      } else if (todayEntry.rest) {
-        if (nextTrain) focusMuscles = nextTrain.muscles;
-        pushTrain(`rest-cust-${today}`, `Scheduled rest day 😴 — recover today. Next in your rotation: ${nextLabel}.`, "🛌");
-      } else {
-        focusMuscles = todayEntry.muscles;
-        pushTrain(`train-cust-${todayEntry.id}-${today}`, `Today's focus: ${coachMuscleList(todayEntry.muscles)}.`);
-      }
-    }
-  } else if (split && trainedToday) {
-    // any fixed split: acknowledge today's session and point at what's still most-rested
-    let staleG = null, staleD = null;
-    for (const g of ["push", "pull", "legs"]) { const d = lastByGroup[g]; if (!d || d === today) continue; if (!staleD || d < staleD) { staleD = d; staleG = g; } }
-    const gapS = staleD ? dayGap(today, staleD) : 0;
-    if (staleG) focusMuscles = GROUP_MUSCLES[staleG];
-    if (staleG && gapS >= 3)
-      pushTrain(`done-${today}`, `Nice — you trained ${todayList} today. ${GSHORT[staleG]} is your most-rested (${gapS}d) if you've got more in you.`, "💪");
-    else
-      pushTrain(`done-${today}`, `Nice — logged ${todayList} today. You're on rhythm — rest or hit the next day in your rotation tomorrow.`, "💪");
-  } else if (split === "ppl") {
-    // the push/pull/legs group left longest
-    let sg = null, sd = null;
-    for (const g of ["push", "pull", "legs"]) { const d = lastByGroup[g]; if (!d) continue; if (!sd || d < sd) { sd = d; sg = g; } }
-    if (sg) focusMuscles = GROUP_MUSCLES[sg];
-    if (sg && dayGap(today, sd) >= 3)
-      tips.push({ key: `train-${sg}-${sd}`, icon: "📅", cat: "Train today",
-        text: `It's been ${dayGap(today, sd)} days since you trained ${GNAME[sg]} — a solid pick for today.` });
-  } else if (split === "arnold") {
-    // Chest & Back / Shoulders & Arms / Legs — the day you've rested longest
-    const lastAr = { cb: null, sa: null, legs: null };
-    for (const e of log) { const g = ARNOLD_DAY(exMap[e.exercise]?.muscle); if (g in lastAr && (!lastAr[g] || e.date > lastAr[g])) lastAr[g] = e.date; }
-    let sg = null, sd = null;
-    for (const g of ["cb", "sa", "legs"]) { const d = lastAr[g]; if (!d) continue; if (!sd || d < sd) { sd = d; sg = g; } }
-    if (sg) focusMuscles = ARNOLD_MUSCLES[sg];
-    if (sg && dayGap(today, sd) >= 3)
-      tips.push({ key: `train-ar-${sg}-${sd}`, icon: "📅", cat: "Train today",
-        text: `It's been ${dayGap(today, sd)} days since your ${ARNOLD_NAME[sg]} day — a solid pick for today.` });
-  } else if (split === "upperlower" || split === "phul") {
-    const lastUpper = maxDate(lastByGroup.push, lastByGroup.pull);
-    const lastLower = lastByGroup.legs;
-    // suggest whichever half you've rested longer
-    let region = null, rDate = null;
-    if (lastUpper && lastLower) { if (lastUpper <= lastLower) { region = "upper"; rDate = lastUpper; } else { region = "lower"; rDate = lastLower; } }
-    else if (lastUpper && !lastLower) { region = "lower"; rDate = lastUpper; }
-    else if (lastLower && !lastUpper) { region = "upper"; rDate = lastLower; }
-    if (region) focusMuscles = region === "upper" ? ALL_UPPER : GROUP_MUSCLES.legs;
-    if (region && dayGap(today, rDate) >= 2)
-      tips.push({ key: `train-ul-${region}-${rDate}`, icon: "📅", cat: "Train today",
-        text: `It's been ${dayGap(today, rDate)} days since your last ${region === "upper" ? "upper-body (chest/back/shoulders/arms)" : "lower-body (legs)"} session — good pick for today.` });
-  } else if (split === "fullbody") {
-    const lastAny = maxDate(...log.map(e => e.date));
-    const gap = lastAny ? dayGap(today, lastAny) : 0;
-    if (lastAny && gap >= 2)
-      tips.push({ key: `train-fb-${lastAny}`, icon: "📅", cat: "Train today",
-        text: `You last lifted ${gap} days ago — you're recovered. Hit a full-body session today (a push, a pull, and a leg movement).` });
-  } else if (split === "bro") {
-    // longest-rested individual muscle among the ones you actually train
-    const lastMuscle = {};
-    for (const e of log) { const m = exMap[e.exercise]?.muscle; if (!m) continue; if (!lastMuscle[m] || e.date > lastMuscle[m]) lastMuscle[m] = e.date; }
-    let bm = null, bd = null;
-    for (const [m, d] of Object.entries(lastMuscle)) { if (!bd || d < bd) { bd = d; bm = m; } }
-    if (bm) focusMuscles = [bm];
-    if (bm && dayGap(today, bd) >= 4)
-      tips.push({ key: `train-bro-${bm}-${bd}`, icon: "📅", cat: "Train today",
-        text: `It's been ${dayGap(today, bd)} days since you hit ${bm.toLowerCase()} — a good muscle to target today.` });
+  const lastByMuscle = {};
+  for (const e of log) {
+    if (e.effort === "Warm-up") continue;
+    for (const m of entryPrimaryMuscles(e, exMap)) if (!lastByMuscle[m] || e.date > lastByMuscle[m]) lastByMuscle[m] = e.date;
   }
-  // split === "other" or unset: no rotation nudge (the card asks you to pick a split)
+  let candidates = [];
+  if (split === "custom") candidates = (data.profile?.customSplit || []).filter(d=>!d.rest&&d.muscles?.length).map(d=>({id:d.id,muscles:d.muscles}));
+  else if (split === "ppl") candidates = Object.entries(GROUP_MUSCLES).map(([id,muscles])=>({id,muscles}));
+  else if (split === "arnold") candidates = Object.entries(ARNOLD_MUSCLES).map(([id,muscles])=>({id,muscles}));
+  else if (split === "upperlower" || split === "phul") candidates = [{id:"upper",muscles:ALL_UPPER},{id:"lower",muscles:["Legs"]}];
+  else if (split === "fullbody") candidates = [{id:"full",muscles:["Chest","Back","Legs"]}];
+  else if (split === "bro") candidates = MUSCLES.filter(m=>m!=="Abs").map(m=>({id:m,muscles:[m]}));
+  else if (split === "other") candidates = MUSCLES.map(m=>({id:m,muscles:[m]}));
+  candidates = candidates.map(c=>({...c,muscles:[...new Set(c.muscles)].filter(m=>MUSCLES.includes(m)&&!todayGroups.has(m))})).filter(c=>c.muscles.length);
+  const gapFor = (m) => lastByMuscle[m] ? dayGap(today,lastByMuscle[m]) : 30;
+  const rank = (c) => c.muscles.reduce((s,m)=>s+gapFor(m),0)/c.muscles.length;
+  let chosen = null;
+  if (split && candidates.length) {
+    if (coachPrefs.focusStyle !== "volume" && split === "custom") {
+      const pos = customCyclePosition(data, log.filter(e=>e.date<today), exMap);
+      const queued = pos.idx>=0 ? pos.cycle[pos.idx] : null;
+      const matched = queued && !queued.rest ? queued.muscles.filter(m=>todayGroups.has(m)).length / Math.max(1,queued.muscles.length) : 1;
+      // If today's workout did not substantially match the day that was already queued,
+      // keep that missed day visible instead of allowing the new log to jump past it.
+      if (queued && !queued.rest && matched < .5) chosen = candidates.find(c=>c.id===queued.id) || null;
+    }
+    if (coachPrefs.focusStyle === "volume") {
+      const targetsNow=setTargetsOf(data), got={};
+      for (const e of log) if(e.effort!=="Warm-up"&&weekStart(e.date)===wk) for(const [m,c] of entryMuscleCredits(e,exMap)) got[m]=(got[m]||0)+c*setCountOf(e);
+      chosen=candidates.map(c=>({...c,score:c.muscles.reduce((s,m)=>s+Math.max(0,(targetsNow[m]||0)-(got[m]||0)),0)})).sort((a,b)=>b.score-a.score)[0]||null;
+    }
+    if (!chosen) chosen=candidates.slice().sort((a,b)=>rank(b)-rank(a))[0];
+  }
+  if (chosen) {
+    focusMuscles=chosen.muscles;
+    const gap=Math.round(rank(chosen));
+    const label=coachMuscleList(chosen.muscles);
+    if (coachPrefs.focusStyle === "volume") {
+      pushTrain(`focus-volume-${wk}-${chosen.id}`, `${label[0].toUpperCase()+label.slice(1)} currently has your largest weekly set gap.`);
+    } else if (gap >= coachPrefs.staleDays) {
+      const timing=gap>=30&&chosen.muscles.some(m=>!lastByMuscle[m])?"has no recent logged session":`hasn't been trained in about ${gap} day${gap===1?"":"s"}`;
+      pushTrain(`focus-overdue-${chosen.id}-${today}`, `${label[0].toUpperCase()+label.slice(1)} ${timing}.${trainedToday?` You logged ${todayList} today, but this work is still overdue.`:" Prioritize it when you train."}`);
+    }
+  }
 
   // ---- PROGRESSION tips, now filtered to stay relevant to today's plan ----
   // Drop suggestions for muscles you already trained today (stale), and — when the coach
@@ -6439,7 +6481,7 @@ function coachTips(data, exMap, units) {
   const tot = vol.push + vol.pull + vol.legs + vol.core + vol.other;
   const customPlansLegs = split !== "custom" || (data.profile?.customSplit || []).some(d=>d.muscles?.includes("Legs"));
   if (customPlansLegs && recentTrainingDates.size >= 5 && tot >= 20 && vol.legs <= tot * 0.15)
-    tips.push({ key: `bal-legs-${wk}`, icon: "🦵", cat: "Balance", text: `4 weeks: ${vol.legs} leg vs ${vol.push + vol.pull} upper-body sets. Schedule legs next for better balance.`, basis:"Four-week primary-muscle comparison · neutral planning flag" });
+    tips.push({ key: `bal-legs-${wk}`, icon: "🦵", cat: "Balance", text: `4 weeks: ${vol.legs} leg vs ${vol.push + vol.pull} upper-body sets. Leg training is overdue for better balance.`, basis:"Four-week primary-muscle comparison · neutral planning flag" });
 
   // ---- RECOVERY: only flag a lower-fatigue week when schedule + effort support it ----
   const daysByWeek = {};
@@ -6458,7 +6500,12 @@ function coachTips(data, exMap, units) {
       text: `Fatigue flag: ${streakWeeks} busy weeks + a plateau + ${Math.round(failureRate*100)}% failure sets. Consider a lighter week.`,
       basis:"Schedule + logged effort + performance trend; only appears when all three agree" });
 
-  return tips;
+  return tips.filter(t => {
+    if (["Progression","Projection","Plateau"].includes(t.cat)) return coachPrefs.progression;
+    if (t.cat === "Volume") return coachPrefs.volume;
+    if (["Balance","Recovery"].includes(t.cat)) return coachPrefs.balance;
+    return true;
+  });
 }
 
 /* The Coach card (shown on Home for Pro). Personal tips are instant; the group weak-
@@ -6509,6 +6556,8 @@ function CoachCard({ data, exMap, user, setData }) {
   const goalModeInfo = GOAL_MODES[goalMode];
   const trainingLevel = data.profile?.trainingLevel || "beginner";
   const setTrainingLevel = (level) => setData(d=>({...d, profile:{...(d.profile||{}), trainingLevel:level}}));
+  const coachPrefs = coachPrefsOf(data);
+  const setCoachPref = (key, value) => setData(d=>({...d,profile:{...(d.profile||{}),coachPrefs:{...coachPrefsOf(d),[key]:value}}}));
   const customTargetCount = Object.keys(customSetTargetsOf(data)).length;
   const targets = setTargetsOf(data);
   const bumpTarget = (m, delta) => setData(d => { const cur = setTargetsOf(d); const key = targetOverrideKeyOf(d); return { ...d, profile: { ...(d.profile || {}), [key]: { ...(d.profile?.[key] || {}), [m]: Math.max(0, Math.min(40, (cur[m] || 0) + delta)) } } }; });
@@ -6552,10 +6601,10 @@ function CoachCard({ data, exMap, user, setData }) {
     return () => { alive = false; };
   }, [data.log, user.id, units]);
 
-  const all = (groupTip ? [...tips, groupTip] : tips).filter(t => !dismissed.includes(t.key));
-  const trainTip = all.find(t => t.cat === "Train today");
-  const otherTips = all.filter(t => t.cat !== "Train today");
-  const CAT_COLOR = { Progression: T.green, "Train today": STEP_BLUE, Projection: "#9D5CFF", Plateau: "#E9C46A", Volume: STEP_BLUE, Balance: STEP_BLUE, Recovery: "#00D1B2", "Weak point": "#FF7A45" };
+  const all = (groupTip && coachPrefs.balance ? [...tips, groupTip] : tips).filter(t => !dismissed.includes(t.key));
+  const trainTip = all.find(t => t.cat === "Training focus");
+  const otherTips = all.filter(t => t.cat !== "Training focus");
+  const CAT_COLOR = { Progression: T.green, "Training focus": STEP_BLUE, Projection: "#9D5CFF", Plateau: "#E9C46A", Volume: STEP_BLUE, Balance: STEP_BLUE, Recovery: "#00D1B2", "Weak point": "#FF7A45" };
 
   const setMinimized = (value) => setData(d => ({ ...d, profile: { ...(d.profile || {}), minimizedSections:{ ...(d.profile?.minimizedSections||{}), aiCoach:value } } }));
   const minimized = !!data.profile?.minimizedSections?.aiCoach;
@@ -6563,7 +6612,7 @@ function CoachCard({ data, exMap, user, setData }) {
     return (
       <div className="card" style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 14px" }}>
         <span style={{ fontSize: 16 }}>💪</span>
-        <span style={{ fontSize: 13, color: T.sub, fontWeight: 600, flex: 1, minWidth: 0 }}>Lab's AI Coach minimized{trainTip ? " — today's focus is ready" : ""}.</span>
+        <span style={{ fontSize: 13, color: T.sub, fontWeight: 600, flex: 1, minWidth: 0 }}>Lab's AI Coach minimized{trainTip ? " — a training focus is ready" : ""}.</span>
         <button onClick={() => setMinimized(false)} style={showSectionBtn}>Show</button>
       </div>
     );
@@ -6584,25 +6633,25 @@ function CoachCard({ data, exMap, user, setData }) {
         </div>
       </div>
 
-      {/* TODAY'S FOCUS — the headline: what to hit right now */}
+      {/* COACH FOCUS — overdue work, not a blind "next day" prediction */}
       <div style={{ borderRadius: 15, padding: "14px 15px", marginBottom: 13,
         background: trainTip ? "linear-gradient(135deg, rgba(var(--accent-rgb),.20), rgba(var(--accent-rgb),.05))" : "rgba(255,255,255,.03)",
         border: `1px solid ${trainTip ? "rgba(var(--accent-rgb),.4)" : T.line}` }}>
         <div className="eyebrow" style={{ fontSize: 9.5, color: trainTip ? T.green : T.sub, marginBottom: 7, display: "flex", alignItems: "center", gap: 6 }}>
-          <span className="status-dot" style={{ width: 5, height: 5 }} />Today's focus
+          <span className="status-dot" style={{ width: 5, height: 5 }} />Coach focus
         </div>
         {!split ? (
-          <div style={{ fontSize: 14, color: T.ink, fontWeight: 600, lineHeight: 1.5 }}>Pick your split below 👇 and I'll tell you exactly what to hit each day.</div>
+          <div style={{ fontSize: 14, color: T.ink, fontWeight: 600, lineHeight: 1.5 }}>Pick your training split below so reminders match how you actually lift.</div>
         ) : trainTip ? (
           <div style={{ fontSize: 15.5, color: T.ink, fontWeight: 700, lineHeight: 1.45 }}>{trainTip.text}</div>
         ) : (
-          <div style={{ fontSize: 14, color: T.ink, fontWeight: 600, lineHeight: 1.5 }}>✅ On track. Train the next day in your rotation or rest.</div>
+          <div style={{ fontSize: 14, color: T.ink, fontWeight: 600, lineHeight: 1.5 }}>✅ Nothing is overdue by your {coachPrefs.staleDays}-day reminder. Train what feels appropriate or rest.</div>
         )}
         {split === "custom" && cycle.length > 0 && !editing && (
           <div style={{display:"flex", alignItems:"center", gap:8, marginTop:11, paddingTop:10, borderTop:`1px solid ${T.line}`, flexWrap:"wrap"}}>
             {canUndoRestart
               ? <button onClick={undoRestartRotation} title="Restore your previous rotation position" style={{background:T.mint, color:T.green, border:`1px solid ${T.green}`, borderRadius:99, padding:"7px 12px", fontSize:11.5, fontWeight:850}}>↶ Undo restart</button>
-              : <button onClick={restartRotation} title="Make Day 1 your next workout" style={{background:T.input, color:T.green, border:`1px solid ${T.line}`, borderRadius:99, padding:"7px 12px", fontSize:11.5, fontWeight:850}}>↺ Restart at Day 1</button>}
+              : <button onClick={restartRotation} title="Reset your saved rotation marker to Day 1" style={{background:T.input, color:T.green, border:`1px solid ${T.line}`, borderRadius:99, padding:"7px 12px", fontSize:11.5, fontWeight:850}}>↺ Restart at Day 1</button>}
             <span style={{fontSize:10.5, color:T.sub}}>{canUndoRestart ? "Restores your exact previous split position." : "Use only when you want to begin the rotation again."}</span>
           </div>
         )}
@@ -6616,6 +6665,14 @@ function CoachCard({ data, exMap, user, setData }) {
             <div style={{display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:6}}>
               {[['beginner','Beginner'],['intermediate','Intermediate'],['advanced','Advanced']].map(([value,label])=><button key={value} type="button" onClick={()=>setTrainingLevel(value)} aria-pressed={trainingLevel===value} style={{padding:"8px 5px", borderRadius:9, background:trainingLevel===value?T.mint:T.card, color:trainingLevel===value?T.green:T.sub, border:`1px solid ${trainingLevel===value?T.green:T.line}`, fontSize:10.5, fontWeight:800}}>{label}</button>)}
             </div>
+          </div>
+          <div style={{background:T.input,border:`1px solid ${T.line}`,borderRadius:13,padding:"11px 12px",marginBottom:12}}>
+            <div className="eyebrow" style={{fontSize:9.5,color:T.sub,marginBottom:7}}>Build your coach</div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6}}>
+              {[["overdue","Overdue first"],["split","My split first"],["volume","Set gaps first"]].map(([value,label])=>{const on=coachPrefs.focusStyle===value;return <button key={value} type="button" onClick={()=>setCoachPref("focusStyle",value)} style={{padding:"8px 5px",borderRadius:9,background:on?T.mint:T.card,color:on?T.green:T.sub,border:`1px solid ${on?T.green:T.line}`,fontSize:10.5,fontWeight:800}}>{label}</button>;})}
+            </div>
+            <div style={{display:"flex",alignItems:"center",gap:6,marginTop:10,flexWrap:"wrap"}}><span style={{fontSize:10.5,color:T.sub,marginRight:2}}>Remind me after</span>{[3,4,5,7].map(days=><button key={days} type="button" onClick={()=>setCoachPref("staleDays",days)} style={{padding:"5px 9px",background:coachPrefs.staleDays===days?T.mint:T.card,color:coachPrefs.staleDays===days?T.green:T.sub,border:`1px solid ${coachPrefs.staleDays===days?T.green:T.line}`,fontSize:10.5,fontWeight:800}}>{days}d</button>)}</div>
+            <div style={{display:"flex",alignItems:"center",gap:6,marginTop:9,flexWrap:"wrap"}}><span style={{fontSize:10.5,color:T.sub,marginRight:2}}>Advice cards</span>{[["progression","Progress"],["volume","Volume"],["balance","Balance"]].map(([key,label])=><button key={key} type="button" onClick={()=>setCoachPref(key,!coachPrefs[key])} style={{padding:"5px 9px",background:coachPrefs[key]?T.mint:T.card,color:coachPrefs[key]?T.green:T.sub,border:`1px solid ${coachPrefs[key]?T.green:T.line}`,fontSize:10.5,fontWeight:800}}>{coachPrefs[key]?"✓ ":""}{label}</button>)}</div>
           </div>
           <div className="eyebrow" style={{ fontSize: 9.5, color: T.sub, marginBottom: 9 }}>Choose your split</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(102px, 1fr))", gap: 7, marginBottom: split === "custom" ? 12 : (split ? 12 : 0) }}>
@@ -6746,8 +6803,8 @@ function CoachCard({ data, exMap, user, setData }) {
         <summary style={{cursor:"pointer", color:T.sub, fontSize:10.5, fontWeight:800, listStyle:"none"}}>How coaching works <span style={{fontSize:8}}>▾</span></summary>
         <div style={{marginTop:8, padding:"9px 11px", background:T.input, border:`1px solid ${T.line}`, borderRadius:11, fontSize:10.5, color:T.sub, lineHeight:1.65}}>
           <div>✓ Uses your {goalModeInfo.label.toLowerCase()} goals{customTargetCount ? `, including ${customTargetCount} custom` : ""}.</div>
-          <div>✓ Uses your split, recent sets, reps, and effort.</div>
-          {split === "custom" && <div>✓ Missed workout days stay next; logging another split day realigns the rotation.</div>}
+          <div>✓ Uses your coach style, split, recent sets, reps, and effort.</div>
+          {split === "custom" && <div>✓ An out-of-order workout does not erase older missed muscle groups.</div>}
           <div>✓ Main muscle = 1 set · secondary = ½ · warm-ups ignored.</div>
         </div>
       </details>
