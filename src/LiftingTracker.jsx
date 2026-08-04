@@ -3608,7 +3608,7 @@ function BodyTab({ data, setData, hunit }) {
     return out;
   }, [rows]);
 
-  const monthlyChartData = months.map(m=>({ key:m.key, label:m.label.replace(" 20"," '"), tipLabel:m.label, value:dispW(m.avg, units), sub:m.avg==null?"No weigh-ins":`${m.count} weigh-in${m.count===1?"":"s"}` }));
+  const monthlyChartData = months.map(m=>({ key:m.key, label:m.label, tipLabel:m.label, value:dispW(m.avg, units), sub:m.avg==null?"No weigh-ins":`${m.count} weigh-in${m.count===1?"":"s"}` }));
   const weighInChartData = rows.map(r=>{const [,mo,day]=r.date.split("-");return {key:r.date,label:`${+mo}/${+day}`,tipLabel:fmtDate(r.date),value:dispW(r.weight,units),sub:r.note||"Individual weigh-in"};});
   const bodyChartData = weightChartView==="monthly"?monthlyChartData:weighInChartData;
 
