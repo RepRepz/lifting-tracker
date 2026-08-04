@@ -3566,6 +3566,8 @@ function BodyTab({ data, setData, hunit }) {
   const [creatine, setCreatine] = useState("No");
   const [note, setNote] = useState("");
   const [noteOpen, setNoteOpen] = useState(null); // date of the weigh-in whose note is expanded
+  const [selectedMonth, setSelectedMonth] = useState(null);
+  const [selectedMonthSource, setSelectedMonthSource] = useState(null);
   const rows = useMemo(()=>[...data.bodyweight].sort((a,b)=>a.date.localeCompare(b.date)),[data.bodyweight]);
 
   const current = rows.length ? rows[rows.length-1] : null;
@@ -3600,13 +3602,36 @@ function BodyTab({ data, setData, hunit }) {
       const rs=byM[k]||[];
       const avg = rs.length ? Math.round(rs.reduce((s,r)=>s+r.weight,0)/rs.length*10)/10 : null;
       const cr = !rs.length ? "-" : rs.every(r=>r.creatine==="Yes") ? "Yes" : rs.every(r=>r.creatine==="No") ? "No" : "Mixed";
-      out.push({ key:k, label:monthLabel(k), avg, creatine:cr });
+      out.push({ key:k, label:monthLabel(k), avg, creatine:cr, count:rs.length });
       m++; if (m>12){m=1;y++;}
     }
     return out;
   }, [rows]);
 
-  const chartData = months.map(m=>({ label:m.label.replace(" 20"," '"), value:dispW(m.avg, units) }));
+  const chartData = months.map(m=>({ key:m.key, label:m.label.replace(" 20"," '"), value:dispW(m.avg, units), sub:m.avg==null?"No weigh-ins":`${m.count} weigh-in${m.count===1?"":"s"}` }));
+  const selectedMonthInfo = selectedMonth ? months.find(m=>m.key===selectedMonth&&m.avg!=null) : null;
+  const selectedMonthRows = selectedMonthInfo ? rows.filter(r=>monthKey(r.date)===selectedMonthInfo.key) : [];
+  let selectedMonthPrev = null;
+  if (selectedMonthInfo) {
+    const selectedIndex = months.findIndex(m=>m.key===selectedMonthInfo.key);
+    for (let i=selectedIndex-1;i>=0;i--) if(months[i].avg!=null){selectedMonthPrev=months[i].avg;break;}
+  }
+  const selectMonth = (key, source="chart") => {
+    if(selectedMonth===key&&selectedMonthSource===source){setSelectedMonth(null);setSelectedMonthSource(null);return;}
+    setSelectedMonth(key);setSelectedMonthSource(source);
+  };
+  const closeMonthDetail = () => { setSelectedMonth(null); setSelectedMonthSource(null); };
+  const monthDetail = selectedMonthInfo ? (
+    <div style={{marginTop:8,padding:"12px 13px",background:T.input,border:`1px solid ${T.line}`,borderRadius:13,animation:"fadeSwap .16s ease-out both"}}>
+      <div style={{display:"flex",alignItems:"center",gap:9,marginBottom:10}}><div style={{minWidth:0,flex:1}}><div style={{fontSize:14,fontWeight:850,color:T.ink}}>{selectedMonthInfo.label}</div><div style={{fontSize:10.5,color:T.sub,marginTop:2}}>{selectedMonthRows.length} weigh-in{selectedMonthRows.length===1?"":"s"} used in this average</div></div><button type="button" onClick={closeMonthDetail} aria-label="Close month details" style={{width:28,height:28,padding:0,background:T.card,color:T.sub,border:`1px solid ${T.line}`,borderRadius:8}}>✕</button></div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:7,marginBottom:10}}>
+        <div style={statBox}><div style={statL}>Average</div><div style={statV}>{dispW(selectedMonthInfo.avg,units)} <span style={{fontSize:10,color:T.sub}}>{uLabel(units)}</span></div></div>
+        <div style={statBox}><div style={statL}>Vs previous</div><div style={{...statV,color:selectedMonthPrev==null?T.sub:weightChangeColor(selectedMonthInfo.avg-selectedMonthPrev)}}>{selectedMonthPrev==null?"—":`${dispW(selectedMonthInfo.avg-selectedMonthPrev,units)>0?"+":""}${dispW(selectedMonthInfo.avg-selectedMonthPrev,units)}`}</div></div>
+        <div style={statBox}><div style={statL}>Range</div><div style={statV}>{dispW(Math.min(...selectedMonthRows.map(r=>r.weight)),units)}–{dispW(Math.max(...selectedMonthRows.map(r=>r.weight)),units)}</div></div>
+      </div>
+      <div style={{display:"flex",flexDirection:"column"}}>{[...selectedMonthRows].reverse().map((r,i)=><div key={r.date} style={{display:"grid",gridTemplateColumns:"1fr auto",gap:10,padding:"7px 1px",borderTop:i?`1px solid ${T.line}`:"none",fontSize:12.5}}><span style={{color:T.sub}}>{fmtDate(r.date)}{r.note?<span title={r.note} style={{marginLeft:6}}>📝</span>:null}</span><b style={{color:T.ink}}>{dispW(r.weight,units)} {uLabel(units)}</b></div>)}</div>
+    </div>
+  ) : null;
 
   const add = () => {
     if (!weight) return;
@@ -3652,10 +3677,11 @@ function BodyTab({ data, setData, hunit }) {
 
     <div className="card">
       <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:4}}>Body weight — monthly average</div>
-      <div style={{fontSize:12, color:T.sub, marginBottom:6}}>One dot per month. Months you didn't log stay blank.</div>
+      <div style={{fontSize:12, color:T.sub, marginBottom:6}}>One dot per month. Tap a point for that month's weigh-ins. Months you didn't log stay blank.</div>
       {chartData.length ? (
-        <Suspense fallback={<ChartFallback h={220} />}><BodyChart data={chartData} unit={" "+uLabel(units)} goalDirection={goalDirection} /></Suspense>
+        <Suspense fallback={<ChartFallback h={220} />}><BodyChart data={chartData} unit={" "+uLabel(units)} goalDirection={goalDirection} selectedKey={selectedMonthSource==="chart"?selectedMonth:null} onSelect={key=>selectMonth(key,"chart")} /></Suspense>
       ) : <div style={{color:T.sub, fontSize:14}}>Log a weigh-in and the trend starts here.</div>}
+      {selectedMonthSource==="chart"&&monthDetail}
     </div>
 
     <div className="card">
@@ -3669,7 +3695,10 @@ function BodyTab({ data, setData, hunit }) {
             return { ...m, diff: (m.avg != null && prev != null) ? dispW(m.avg - prev, units) : null };
           });
           return [...withPrev].reverse().map(m=>(
-            <tr key={m.key}><td>{m.label}</td><td style={{fontWeight:600}}>{m.avg==null ? "-" : dispW(m.avg, units)}</td>
+            <tr key={m.key} role={m.avg!=null?"button":undefined} tabIndex={m.avg!=null?0:undefined} aria-expanded={m.avg!=null?selectedMonthSource==="table"&&selectedMonth===m.key:undefined}
+              onClick={()=>{if(m.avg!=null)selectMonth(m.key,"table");}} onKeyDown={e=>{if(m.avg!=null&&(e.key==="Enter"||e.key===" ")){e.preventDefault();selectMonth(m.key,"table");}}}
+              style={{cursor:m.avg!=null?"pointer":"default",background:selectedMonthSource==="table"&&selectedMonth===m.key?T.mint:"transparent",outline:"none"}}>
+              <td style={{color:selectedMonthSource==="table"&&selectedMonth===m.key?T.green:undefined,fontWeight:selectedMonthSource==="table"&&selectedMonth===m.key?800:undefined}}>{m.label}</td><td style={{fontWeight:600}}>{m.avg==null ? "-" : dispW(m.avg, units)}</td>
               <td style={{color:weightChangeColor(m.diff), fontWeight:700}}>
                 {m.diff==null ? "—" : `${m.diff>0?"▲ +":m.diff<0?"▼ ":""}${m.diff===0?"0":Math.abs(m.diff)}`}
               </td>
@@ -3678,6 +3707,7 @@ function BodyTab({ data, setData, hunit }) {
         })()}
         {!months.length && <tr><td colSpan={4} style={{color:T.sub}}>No weigh-ins yet.</td></tr>}
         </tbody></table>
+      {selectedMonthSource==="table"&&monthDetail}
     </div>
 
     <div className="card">
@@ -6678,6 +6708,7 @@ function CoachCard({ data, exMap, user, setData }) {
             <div style={{display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:6}}>
               {[['beginner','Beginner'],['intermediate','Intermediate'],['advanced','Advanced']].map(([value,label])=><button key={value} type="button" onClick={()=>setTrainingLevel(value)} aria-pressed={trainingLevel===value} style={{padding:"8px 5px", borderRadius:9, background:trainingLevel===value?T.mint:T.card, color:trainingLevel===value?T.green:T.sub, border:`1px solid ${trainingLevel===value?T.green:T.line}`, fontSize:10.5, fontWeight:800}}>{label}</button>)}
             </div>
+            <div style={{fontSize:10.5,color:T.sub,lineHeight:1.45,marginTop:7}}>{trainingLevel==="advanced" ? "Advanced waits for three consistent sessions before suggesting more weight." : trainingLevel==="intermediate" ? "Intermediate recognizes progress across two sessions while allowing small rep variation." : "Beginner keeps progression simple and suggests more weight after two solid sessions."}</div>
           </div>
           <div style={{background:T.input,border:`1px solid ${T.line}`,borderRadius:13,padding:"11px 12px",marginBottom:12}}>
             <div className="eyebrow" style={{fontSize:9.5,color:T.sub,marginBottom:7}}>Build your coach</div>
