@@ -16,7 +16,7 @@ function NiceTip({ active, payload, label, unit }) {
       background: "rgba(18,19,20,.96)", border: `1px solid ${T.line}`, borderRadius: 10,
       padding: "8px 12px", boxShadow: "0 6px 18px rgba(0,0,0,.55)", pointerEvents: "none",
     }}>
-      <div style={{ fontSize: 11, color: T.sub, marginBottom: 2 }}>{label}</div>
+      <div style={{ fontSize: 11, color: T.sub, marginBottom: 2 }}>{p.payload?.tipLabel || label}</div>
       <div style={{ fontSize: 15, fontWeight: 700, color: "#FFF", display: "flex", alignItems: "center", gap: 6 }}>
         <span style={{ width: 8, height: 8, borderRadius: 99, background: p.payload?.dotColor || p.stroke || p.color, display: "inline-block" }} />
         {p.value}{unit ? <span style={{ fontSize: 11.5, color: T.sub, fontWeight: 500 }}>{unit}</span> : null}
@@ -72,31 +72,13 @@ export function TrendChart({ pts, unit = "", dots = false }) {
 }
 
 /* ---------- body weight (trend-colored, same style as the exercise charts) ---------- */
-export function BodyChart({ data, unit = " lb", goalDirection = null, selectedKey = null, onSelect = null }) {
+export function BodyChart({ data, unit = " lb", goalDirection = null }) {
   const vals = data.filter(m => m.value != null);
   const first = vals[0]?.value, last = vals[vals.length - 1]?.value;
   const movement = last - first;
   const towardGoal = goalDirection == null || !movement ? null : goalDirection === 0 ? false : Math.sign(movement) === goalDirection;
   const stroke = towardGoal == null ? T.sub : towardGoal ? T.green : T.down;
   const gid = towardGoal == null ? "gradBWneutral" : towardGoal ? "gradBWgood" : "gradBWaway";
-  const renderDot = ({ cx, cy, index, payload }) => {
-    if (payload?.value == null || cx == null || cy == null) return <g key={`bw-${index}`} />;
-    const selected = payload.key === selectedKey;
-    const choose = () => onSelect?.(payload.key);
-    return (
-      <g key={`bw-${index}`} role={onSelect ? "button" : undefined} tabIndex={onSelect ? 0 : undefined}
-        aria-label={onSelect ? `${payload.label}: ${payload.value}${unit}. View month details.` : undefined}
-        onClick={choose} onKeyDown={e=>{if(onSelect&&(e.key==="Enter"||e.key===" ")){e.preventDefault();choose();}}}
-        style={{cursor:onSelect?"pointer":"default",outline:"none"}}>
-        {onSelect && <circle cx={cx} cy={cy} r={14} fill="transparent" />}
-        {selected && <circle cx={cx} cy={cy} r={8} fill="rgba(0,0,0,.85)" stroke={stroke} strokeWidth={2} />}
-        <circle cx={cx} cy={cy} r={selected?4.5:3.5} fill={selected?"#FFF":stroke} stroke={selected?stroke:"none"} strokeWidth={selected?1:0} />
-      </g>
-    );
-  };
-  const renderActiveDot = ({ cx, cy, index, payload }) => payload?.value == null || cx == null || cy == null
-    ? <g key={`bwa-${index}`} />
-    : <circle key={`bwa-${index}`} cx={cx} cy={cy} r={5.5} fill="#FFF" stroke={stroke} strokeWidth={2} style={{pointerEvents:"none"}} />;
   return (
     <ResponsiveContainer width="100%" height={220}>
       <AreaChart data={data} margin={{ top: 8, right: 12, bottom: 0, left: -10 }}>
@@ -111,7 +93,7 @@ export function BodyChart({ data, unit = " lb", goalDirection = null, selectedKe
         <Tooltip content={<NiceTip unit={unit} />} cursor={{ stroke: "#4A4E50", strokeDasharray: "3 3" }} />
         <ReferenceLine y={first} stroke="#4A4E50" strokeDasharray="2 6" />
         <Area type="monotone" dataKey="value" stroke={stroke} strokeWidth={2.5} fill={`url(#${gid})`}
-          dot={renderDot} activeDot={renderActiveDot}
+          dot={{r:3.5,fill:stroke,stroke:"none"}} activeDot={{r:5.5,fill:stroke,stroke:"#080A09",strokeWidth:2}}
           connectNulls isAnimationActive={ANIM} animationDuration={700} animationEasing="ease-out" />
       </AreaChart>
     </ResponsiveContainer>

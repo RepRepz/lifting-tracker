@@ -760,6 +760,7 @@ export default function LiftingTracker({ user }) {
         /* bright hairline along the very top edge of every panel — subtle cockpit sheen */
         .card::before { content:""; position:absolute; top:0; left:14px; right:14px; height:1px; background:linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 30%, rgba(255,255,255,.5)), transparent); opacity:.4; pointer-events:none; }
         .recharts-text { fill:${T.sub}; }
+        .recharts-wrapper, .recharts-wrapper *, .recharts-surface { outline:none !important; -webkit-tap-highlight-color:transparent; }
         .h { font-weight:800; letter-spacing:.2px; }
         /* glass sticky app bar */
         .app-bar { position:sticky; top:0; z-index:10; background:color-mix(in srgb, var(--bg) 70%, transparent); -webkit-backdrop-filter:blur(22px) saturate(1.6); backdrop-filter:blur(22px) saturate(1.6); border-bottom:1px solid color-mix(in srgb, var(--accent) 16%, var(--line)); box-shadow:0 1px 0 rgba(var(--accent-rgb),.12), 0 8px 24px -18px rgba(0,0,0,.9); }
@@ -3566,8 +3567,7 @@ function BodyTab({ data, setData, hunit }) {
   const [creatine, setCreatine] = useState("No");
   const [note, setNote] = useState("");
   const [noteOpen, setNoteOpen] = useState(null); // date of the weigh-in whose note is expanded
-  const [selectedMonth, setSelectedMonth] = useState(null);
-  const [selectedMonthSource, setSelectedMonthSource] = useState(null);
+  const [weightChartView, setWeightChartView] = useState("monthly");
   const rows = useMemo(()=>[...data.bodyweight].sort((a,b)=>a.date.localeCompare(b.date)),[data.bodyweight]);
 
   const current = rows.length ? rows[rows.length-1] : null;
@@ -3608,30 +3608,9 @@ function BodyTab({ data, setData, hunit }) {
     return out;
   }, [rows]);
 
-  const chartData = months.map(m=>({ key:m.key, label:m.label.replace(" 20"," '"), value:dispW(m.avg, units), sub:m.avg==null?"No weigh-ins":`${m.count} weigh-in${m.count===1?"":"s"}` }));
-  const selectedMonthInfo = selectedMonth ? months.find(m=>m.key===selectedMonth&&m.avg!=null) : null;
-  const selectedMonthRows = selectedMonthInfo ? rows.filter(r=>monthKey(r.date)===selectedMonthInfo.key) : [];
-  let selectedMonthPrev = null;
-  if (selectedMonthInfo) {
-    const selectedIndex = months.findIndex(m=>m.key===selectedMonthInfo.key);
-    for (let i=selectedIndex-1;i>=0;i--) if(months[i].avg!=null){selectedMonthPrev=months[i].avg;break;}
-  }
-  const selectMonth = (key, source="chart") => {
-    if(selectedMonth===key&&selectedMonthSource===source){setSelectedMonth(null);setSelectedMonthSource(null);return;}
-    setSelectedMonth(key);setSelectedMonthSource(source);
-  };
-  const closeMonthDetail = () => { setSelectedMonth(null); setSelectedMonthSource(null); };
-  const monthDetail = selectedMonthInfo ? (
-    <div style={{marginTop:8,padding:"12px 13px",background:T.input,border:`1px solid ${T.line}`,borderRadius:13,animation:"fadeSwap .16s ease-out both"}}>
-      <div style={{display:"flex",alignItems:"center",gap:9,marginBottom:10}}><div style={{minWidth:0,flex:1}}><div style={{fontSize:14,fontWeight:850,color:T.ink}}>{selectedMonthInfo.label}</div><div style={{fontSize:10.5,color:T.sub,marginTop:2}}>{selectedMonthRows.length} weigh-in{selectedMonthRows.length===1?"":"s"} used in this average</div></div><button type="button" onClick={closeMonthDetail} aria-label="Close month details" style={{width:28,height:28,padding:0,background:T.card,color:T.sub,border:`1px solid ${T.line}`,borderRadius:8}}>✕</button></div>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:7,marginBottom:10}}>
-        <div style={statBox}><div style={statL}>Average</div><div style={statV}>{dispW(selectedMonthInfo.avg,units)} <span style={{fontSize:10,color:T.sub}}>{uLabel(units)}</span></div></div>
-        <div style={statBox}><div style={statL}>Vs previous</div><div style={{...statV,color:selectedMonthPrev==null?T.sub:weightChangeColor(selectedMonthInfo.avg-selectedMonthPrev)}}>{selectedMonthPrev==null?"—":`${dispW(selectedMonthInfo.avg-selectedMonthPrev,units)>0?"+":""}${dispW(selectedMonthInfo.avg-selectedMonthPrev,units)}`}</div></div>
-        <div style={statBox}><div style={statL}>Range</div><div style={statV}>{dispW(Math.min(...selectedMonthRows.map(r=>r.weight)),units)}–{dispW(Math.max(...selectedMonthRows.map(r=>r.weight)),units)}</div></div>
-      </div>
-      <div style={{display:"flex",flexDirection:"column"}}>{[...selectedMonthRows].reverse().map((r,i)=><div key={r.date} style={{display:"grid",gridTemplateColumns:"1fr auto",gap:10,padding:"7px 1px",borderTop:i?`1px solid ${T.line}`:"none",fontSize:12.5}}><span style={{color:T.sub}}>{fmtDate(r.date)}{r.note?<span title={r.note} style={{marginLeft:6}}>📝</span>:null}</span><b style={{color:T.ink}}>{dispW(r.weight,units)} {uLabel(units)}</b></div>)}</div>
-    </div>
-  ) : null;
+  const monthlyChartData = months.map(m=>({ key:m.key, label:m.label.replace(" 20"," '"), tipLabel:m.label, value:dispW(m.avg, units), sub:m.avg==null?"No weigh-ins":`${m.count} weigh-in${m.count===1?"":"s"}` }));
+  const weighInChartData = rows.map(r=>{const [,mo,day]=r.date.split("-");return {key:r.date,label:`${+mo}/${+day}`,tipLabel:fmtDate(r.date),value:dispW(r.weight,units),sub:r.note||"Individual weigh-in"};});
+  const bodyChartData = weightChartView==="monthly"?monthlyChartData:weighInChartData;
 
   const add = () => {
     if (!weight) return;
@@ -3676,12 +3655,11 @@ function BodyTab({ data, setData, hunit }) {
     <BMICard data={data} setData={setData} hunit={hunit} current={current} />
 
     <div className="card">
-      <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:4}}>Body weight — monthly average</div>
-      <div style={{fontSize:12, color:T.sub, marginBottom:6}}>One dot per month. Tap a point for that month's weigh-ins. Months you didn't log stay blank.</div>
-      {chartData.length ? (
-        <Suspense fallback={<ChartFallback h={220} />}><BodyChart data={chartData} unit={" "+uLabel(units)} goalDirection={goalDirection} selectedKey={selectedMonthSource==="chart"?selectedMonth:null} onSelect={key=>selectMonth(key,"chart")} /></Suspense>
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:5,flexWrap:"wrap"}}><div className="h" style={{fontSize:17,color:T.tealDk,flex:1}}>Body weight</div><div style={{display:"flex",gap:3,padding:3,background:T.input,borderRadius:99}}>{[["monthly","Monthly average"],["entries","Every weigh-in"]].map(([value,label])=><button key={value} type="button" onClick={()=>setWeightChartView(value)} aria-pressed={weightChartView===value} style={{padding:"5px 10px",borderRadius:99,background:weightChartView===value?T.mint:"transparent",border:`1px solid ${weightChartView===value?T.green:"transparent"}`,color:weightChartView===value?T.green:T.sub,fontSize:10.5,fontWeight:800}}>{label}</button>)}</div></div>
+      <div style={{fontSize:12, color:T.sub, marginBottom:6}}>{weightChartView==="monthly"?"One point per monthly average; months without data stay blank.":"One point for every saved weigh-in."} Tap a point to see its exact value.</div>
+      {bodyChartData.length ? (
+        <Suspense fallback={<ChartFallback h={220} />}><BodyChart data={bodyChartData} unit={" "+uLabel(units)} goalDirection={goalDirection} /></Suspense>
       ) : <div style={{color:T.sub, fontSize:14}}>Log a weigh-in and the trend starts here.</div>}
-      {selectedMonthSource==="chart"&&monthDetail}
     </div>
 
     <div className="card">
@@ -3695,10 +3673,7 @@ function BodyTab({ data, setData, hunit }) {
             return { ...m, diff: (m.avg != null && prev != null) ? dispW(m.avg - prev, units) : null };
           });
           return [...withPrev].reverse().map(m=>(
-            <tr key={m.key} role={m.avg!=null?"button":undefined} tabIndex={m.avg!=null?0:undefined} aria-expanded={m.avg!=null?selectedMonthSource==="table"&&selectedMonth===m.key:undefined}
-              onClick={()=>{if(m.avg!=null)selectMonth(m.key,"table");}} onKeyDown={e=>{if(m.avg!=null&&(e.key==="Enter"||e.key===" ")){e.preventDefault();selectMonth(m.key,"table");}}}
-              style={{cursor:m.avg!=null?"pointer":"default",background:selectedMonthSource==="table"&&selectedMonth===m.key?T.mint:"transparent",outline:"none"}}>
-              <td style={{color:selectedMonthSource==="table"&&selectedMonth===m.key?T.green:undefined,fontWeight:selectedMonthSource==="table"&&selectedMonth===m.key?800:undefined}}>{m.label}</td><td style={{fontWeight:600}}>{m.avg==null ? "-" : dispW(m.avg, units)}</td>
+            <tr key={m.key}><td>{m.label}</td><td style={{fontWeight:600}}>{m.avg==null ? "-" : dispW(m.avg, units)}</td>
               <td style={{color:weightChangeColor(m.diff), fontWeight:700}}>
                 {m.diff==null ? "—" : `${m.diff>0?"▲ +":m.diff<0?"▼ ":""}${m.diff===0?"0":Math.abs(m.diff)}`}
               </td>
@@ -3707,7 +3682,6 @@ function BodyTab({ data, setData, hunit }) {
         })()}
         {!months.length && <tr><td colSpan={4} style={{color:T.sub}}>No weigh-ins yet.</td></tr>}
         </tbody></table>
-      {selectedMonthSource==="table"&&monthDetail}
     </div>
 
     <div className="card">
