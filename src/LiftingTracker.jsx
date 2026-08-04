@@ -3572,6 +3572,19 @@ function BodyTab({ data, setData, hunit }) {
   const starting = rows.length ? rows[0] : null;
   const change = current && starting ? (current.weight - starting.weight) : null;
   const changeDisp = change==null ? null : dispW(change, units);
+  // Weight changes are only "good" relative to the person's saved goal. A loss
+  // goal makes decreases green; a gain goal makes increases green. With no goal,
+  // direction is neutral instead of assuming that everybody wants to gain.
+  const goalWeight = data.profile?.goalWeight ?? null;
+  const goalStartWeight = data.profile?.goalStartWeight ?? starting?.weight ?? null;
+  const goalDirection = goalWeight == null || goalStartWeight == null ? null : Math.sign(goalWeight - goalStartWeight); // -1 lose, +1 gain, 0 maintain
+  const weightChangeColor = (delta) => {
+    if (delta == null) return T.ink;
+    if (Math.abs(delta) < 0.05) return T.sub;
+    if (goalDirection == null) return T.sub;
+    if (goalDirection === 0) return T.down;
+    return Math.sign(delta) === goalDirection ? T.green : T.down;
+  };
 
   const months = useMemo(() => {
     if (!rows.length) return [];
@@ -3629,7 +3642,7 @@ function BodyTab({ data, setData, hunit }) {
     <div className="card" style={{display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:8, textAlign:"center"}}>
       <div><div style={kpiN}>{current?dispW(current.weight,units):"—"}</div><div style={kpiL}>Current</div></div>
       <div><div style={kpiN}>{starting?dispW(starting.weight,units):"—"}</div><div style={kpiL}>Starting</div></div>
-      <div><div style={{...kpiN, color: changeDisp==null ? T.ink : changeDisp >= 0 ? T.green : T.down}}>{changeDisp!=null?(changeDisp>0?"+":"")+changeDisp:"—"}</div><div style={kpiL}>Change ({uLabel(units)})</div></div>
+      <div><div style={{...kpiN, color:weightChangeColor(change)}}>{changeDisp!=null?(changeDisp>0?"+":"")+changeDisp:"—"}</div><div style={kpiL}>Change ({uLabel(units)})</div></div>
       <div><div style={{...kpiN, fontSize:20, paddingTop:8}}>{current?fmtDate(current.date):"—"}</div><div style={kpiL}>Latest</div></div>
     </div>
 
@@ -3641,7 +3654,7 @@ function BodyTab({ data, setData, hunit }) {
       <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:4}}>Body weight — monthly average</div>
       <div style={{fontSize:12, color:T.sub, marginBottom:6}}>One dot per month. Months you didn't log stay blank.</div>
       {chartData.length ? (
-        <Suspense fallback={<ChartFallback h={220} />}><BodyChart data={chartData} unit={" "+uLabel(units)} /></Suspense>
+        <Suspense fallback={<ChartFallback h={220} />}><BodyChart data={chartData} unit={" "+uLabel(units)} goalDirection={goalDirection} /></Suspense>
       ) : <div style={{color:T.sub, fontSize:14}}>Log a weigh-in and the trend starts here.</div>}
     </div>
 
@@ -3657,7 +3670,7 @@ function BodyTab({ data, setData, hunit }) {
           });
           return [...withPrev].reverse().map(m=>(
             <tr key={m.key}><td>{m.label}</td><td style={{fontWeight:600}}>{m.avg==null ? "-" : dispW(m.avg, units)}</td>
-              <td style={{color: m.diff==null ? T.sub : m.diff >= 0 ? T.green : T.down, fontWeight:700}}>
+              <td style={{color:weightChangeColor(m.diff), fontWeight:700}}>
                 {m.diff==null ? "—" : `${m.diff>0?"▲ +":m.diff<0?"▼ ":""}${m.diff===0?"0":Math.abs(m.diff)}`}
               </td>
               <td style={{color:T.sub}}>{m.creatine}</td></tr>
@@ -6669,8 +6682,9 @@ function CoachCard({ data, exMap, user, setData }) {
           <div style={{background:T.input,border:`1px solid ${T.line}`,borderRadius:13,padding:"11px 12px",marginBottom:12}}>
             <div className="eyebrow" style={{fontSize:9.5,color:T.sub,marginBottom:7}}>Build your coach</div>
             <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6}}>
-              {[["overdue","Overdue first"],["split","My split first"],["volume","Set gaps first"]].map(([value,label])=>{const on=coachPrefs.focusStyle===value;return <button key={value} type="button" onClick={()=>setCoachPref("focusStyle",value)} style={{padding:"8px 5px",borderRadius:9,background:on?T.mint:T.card,color:on?T.green:T.sub,border:`1px solid ${on?T.green:T.line}`,fontSize:10.5,fontWeight:800}}>{label}</button>;})}
+              {[["overdue","Overdue first"],["split","My split first"],["volume","Weekly goals"]].map(([value,label])=>{const on=coachPrefs.focusStyle===value;return <button key={value} type="button" onClick={()=>setCoachPref("focusStyle",value)} style={{padding:"8px 5px",borderRadius:9,background:on?T.mint:T.card,color:on?T.green:T.sub,border:`1px solid ${on?T.green:T.line}`,fontSize:10.5,fontWeight:800}}>{label}</button>;})}
             </div>
+            <div style={{fontSize:10.5,color:T.sub,lineHeight:1.45,marginTop:7}}>{coachPrefs.focusStyle==="volume" ? "Weekly goals recommends the muscle furthest below its set target this week." : coachPrefs.focusStyle==="split" ? "My split first keeps the next unfinished workout in your rotation." : "Overdue first prioritizes the muscle groups you have gone longest without training."}</div>
             <div style={{display:"flex",alignItems:"center",gap:6,marginTop:10,flexWrap:"wrap"}}><span style={{fontSize:10.5,color:T.sub,marginRight:2}}>Remind me after</span>{[3,4,5,7].map(days=><button key={days} type="button" onClick={()=>setCoachPref("staleDays",days)} style={{padding:"5px 9px",background:coachPrefs.staleDays===days?T.mint:T.card,color:coachPrefs.staleDays===days?T.green:T.sub,border:`1px solid ${coachPrefs.staleDays===days?T.green:T.line}`,fontSize:10.5,fontWeight:800}}>{days}d</button>)}</div>
             <div style={{display:"flex",alignItems:"center",gap:6,marginTop:9,flexWrap:"wrap"}}><span style={{fontSize:10.5,color:T.sub,marginRight:2}}>Advice cards</span>{[["progression","Progress"],["volume","Volume"],["balance","Balance"]].map(([key,label])=><button key={key} type="button" onClick={()=>setCoachPref(key,!coachPrefs[key])} style={{padding:"5px 9px",background:coachPrefs[key]?T.mint:T.card,color:coachPrefs[key]?T.green:T.sub,border:`1px solid ${coachPrefs[key]?T.green:T.line}`,fontSize:10.5,fontWeight:800}}>{coachPrefs[key]?"✓ ":""}{label}</button>)}</div>
           </div>

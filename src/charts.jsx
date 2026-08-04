@@ -72,12 +72,13 @@ export function TrendChart({ pts, unit = "", dots = false }) {
 }
 
 /* ---------- body weight (trend-colored, same style as the exercise charts) ---------- */
-export function BodyChart({ data, unit = " lb" }) {
+export function BodyChart({ data, unit = " lb", goalDirection = null }) {
   const vals = data.filter(m => m.value != null);
   const first = vals[0]?.value, last = vals[vals.length - 1]?.value;
-  const up = last >= first;
-  const stroke = up ? T.green : T.down;
-  const gid = up ? "gradBWup" : "gradBWdown";
+  const movement = last - first;
+  const towardGoal = goalDirection == null || !movement ? null : goalDirection === 0 ? false : Math.sign(movement) === goalDirection;
+  const stroke = towardGoal == null ? T.sub : towardGoal ? T.green : T.down;
+  const gid = towardGoal == null ? "gradBWneutral" : towardGoal ? "gradBWgood" : "gradBWaway";
   return (
     <ResponsiveContainer width="100%" height={220}>
       <AreaChart data={data} margin={{ top: 8, right: 12, bottom: 0, left: -10 }}>
