@@ -7,13 +7,19 @@ export const supabase = createClient(
 
 /** Returns the signed-in user's saved tracker state, or null if none yet. */
 export async function loadUserState(userId) {
+  const row = await loadUserStateRecord(userId);
+  return row?.value ?? null;
+}
+
+/** Returns state plus its cloud version for conflict-safe writes. */
+export async function loadUserStateRecord(userId) {
   const { data, error } = await supabase
     .from("user_state")
-    .select("value")
+    .select("value,updated_at")
     .eq("user_id", userId)
     .maybeSingle();
   if (error) throw error;
-  return data?.value ?? null;
+  return data ?? null;
 }
 
 /** Sanitized states for the signed-in user's groupmates. The server strips journals,
@@ -25,12 +31,34 @@ export async function loadSharedUserStates(userIds) {
   return Object.fromEntries((data ?? []).map((row) => [row.user_id, row.value]));
 }
 
-/** Upserts the signed-in user's tracker state (a plain JSON object). */
-export async function saveUserState(userId, value) {
-  const { error } = await supabase
-    .from("user_state")
-    .upsert({ user_id: userId, value, updated_at: new Date().toISOString() });
-  if (error) throw error;
+/**
+ * Saves only if the cloud row is still the version this device loaded. This prevents
+ * an old phone, offline tab, or slow request from silently overwriting newer data.
+ */
+export async function saveUserState(userId, value, expectedUpdatedAt = null) {
+  const nextUpdatedAt = new Date().toISOString();
+  let result;
+  if (expectedUpdatedAt) {
+    result = await supabase.from("user_state")
+      .update({ value, updated_at: nextUpdatedAt })
+      .eq("user_id", userId).eq("updated_at", expectedUpdatedAt)
+      .select("updated_at").maybeSingle();
+  } else {
+    result = await supabase.from("user_state")
+      .insert({ user_id: userId, value, updated_at: nextUpdatedAt })
+      .select("updated_at").single();
+  }
+  if (result.error) {
+    // A duplicate insert means another copy appeared after this client loaded: conflict.
+    if (result.error.code === "23505") {
+      const err = new Error("Cloud state changed on another device"); err.code = "STATE_CONFLICT"; throw err;
+    }
+    throw result.error;
+  }
+  if (!result.data?.updated_at) {
+    const err = new Error("Cloud state changed on another device"); err.code = "STATE_CONFLICT"; throw err;
+  }
+  return result.data.updated_at;
 }
 
 /* ---------- private exercise images / GIFs ---------- */
@@ -221,9 +249,9 @@ export async function confirmAccountDeletion(token) {
 
 /** Remove this account's private cached state/backups from the current browser. */
 export function clearLocalAccountData(userId) {
-  const exact = new Set([`lt-data-${userId}`, `lt-cache-${userId}`, `lt-pending-${userId}`, `lt-pro-${userId}`]);
+  const exact = new Set([`lt-data-${userId}`, `lt-cache-${userId}`, `lt-pending-${userId}`, `lt-pro-${userId}`, `lt-cloud-version-${userId}`, `lt-save-protected-${userId}`]);
   for (const key of Object.keys(localStorage)) {
-    if (exact.has(key) || key.startsWith(`lt-bk-${userId}-`)) localStorage.removeItem(key);
+    if (exact.has(key) || key.startsWith(`lt-bk-${userId}-`) || key.startsWith(`lt-recovery-${userId}-`)) localStorage.removeItem(key);
   }
 }
 

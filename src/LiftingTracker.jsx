@@ -1,6 +1,6 @@
 import { useState, useEffect, useLayoutEffect, useMemo, useRef, lazy, Suspense, Fragment, createContext, useContext } from "react";
 import { createPortal } from "react-dom";
-import { supabase, loadUserState, loadSharedUserStates, saveUserState, uploadExerciseMedia, getExerciseMediaUrl, deleteExerciseMedia, listMyGroups, listMembers, createGroup, joinGroup, leaveGroup, listReactions, addReaction, removeReaction, lastActiveFor, setGroupEmoji, resetInviteCode, getStepToken, rotateStepToken, disconnectSteps, stepsFor, lastStepSync, createDuel, listDuels, deleteDuel, acceptDuel, declineDuel, forfeitDuel, requestDuelCancel, clearDuelCancel, setGroupRecordLifts, getMyProStatus, listProUserIds, generateBackupCodes, hasBackupCodes, requestAccountDeletion, clearLocalAccountData } from "./lib/storage.js";
+import { supabase, loadUserStateRecord, loadSharedUserStates, saveUserState, uploadExerciseMedia, getExerciseMediaUrl, deleteExerciseMedia, listMyGroups, listMembers, createGroup, joinGroup, leaveGroup, listReactions, addReaction, removeReaction, lastActiveFor, setGroupEmoji, resetInviteCode, getStepToken, rotateStepToken, disconnectSteps, stepsFor, lastStepSync, createDuel, listDuels, deleteDuel, acceptDuel, declineDuel, forfeitDuel, requestDuelCancel, clearDuelCancel, setGroupRecordLifts, getMyProStatus, listProUserIds, generateBackupCodes, hasBackupCodes, requestAccountDeletion, clearLocalAccountData } from "./lib/storage.js";
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -412,6 +412,52 @@ function migrateData(d, uname) {
   return { ...d, log, exercises: cleanedExercises, cardioActivities, libraryV: defaultData.libraryV };
 }
 
+/* Data-safety helpers. Arrays in tracker state contain user-created history, so a sync
+   conflict is merged as a union instead of choosing whichever device wrote last. Local
+   values win only when both copies refer to the same item. This can preserve an item a
+   user deleted while offline, but it cannot silently destroy an item created elsewhere. */
+const stateItemKey = (item, index) => {
+  if (item == null || typeof item !== "object") return `${typeof item}:${String(item)}`;
+  if (item.id != null) return `id:${item.id}`;
+  if (item.date != null && item.exercise != null) return `date-ex:${item.date}:${item.exercise}:${item.set ?? ""}`;
+  if (item.date != null) return `date:${item.date}`;
+  if (item.day != null) return `day:${item.day}`;
+  if (item.name != null) return `name:${String(item.name).toLowerCase()}`;
+  return `json:${JSON.stringify(item)}:${index}`;
+};
+const mergeStateArray = (cloud = [], local = []) => {
+  const merged = new Map();
+  cloud.forEach((item, i) => merged.set(stateItemKey(item, i), item));
+  local.forEach((item, i) => merged.set(stateItemKey(item, i), item));
+  return [...merged.values()];
+};
+function mergeStateWithoutLoss(cloud, local) {
+  const out = { ...(cloud || {}), ...(local || {}) };
+  for (const key of new Set([...Object.keys(cloud || {}), ...Object.keys(local || {})])) {
+    const a = cloud?.[key], b = local?.[key];
+    if (Array.isArray(a) || Array.isArray(b)) out[key] = mergeStateArray(Array.isArray(a)?a:[], Array.isArray(b)?b:[]);
+    else if (a && b && typeof a === "object" && typeof b === "object") out[key] = { ...a, ...b };
+  }
+  return out;
+}
+const stateInventory = (d) => ({
+  sets:(d?.log||[]).reduce((sum,e)=>sum+setCountOf(e),0),
+  log:(d?.log||[]).length, bodyweight:(d?.bodyweight||[]).length, cardio:(d?.cardio||[]).length,
+  exercises:(d?.exercises||[]).length, routines:(d?.routines||[]).length,
+  journal:Object.keys(d?.journal||{}).length, foods:(d?.foods||[]).length,
+});
+const stateEntryTotal = (d) => Object.values(stateInventory(d)).reduce((a,b)=>a+b,0);
+const stateFingerprint = (d) => JSON.stringify(d);
+function keepDeviceSnapshot(userId, value) {
+  if (!value) return;
+  try {
+    const prefix=`lt-bk-${userId}-`, day=todayStr(), key=prefix+day;
+    if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify(value));
+    Object.keys(localStorage).filter(k=>k.startsWith(prefix)).sort().reverse().slice(14)
+      .forEach(k=>localStorage.removeItem(k));
+  } catch { /* storage can be unavailable in private mode */ }
+}
+
 /* weekly streak (lifting OR cardio) with mid-week protection */
 function computeStreak(log, cardio) {
   const weeks = new Set([...(log||[]).map(e=>weekStart(e.date)), ...(cardio||[]).map(e=>weekStart(e.date))]);
@@ -581,6 +627,9 @@ export default function LiftingTracker({ user }) {
   const [loadFailed, setLoadFailed] = useState(false);
   const [syncState, setSyncState] = useState("synced"); // "synced" | "offline"
   const saveTimer = useRef(null);
+  const saveQueue = useRef(Promise.resolve());
+  const cloudVersion = useRef(null);
+  const lastSyncedFingerprint = useRef(null);
   const dataRef = useRef(data);
   useEffect(() => { dataRef.current = data; }, [data]);
 
@@ -588,32 +637,54 @@ export default function LiftingTracker({ user }) {
   const unameLower = (user.user_metadata?.username || "").toLowerCase();
   const cacheKey = `lt-cache-${user.id}`;
   const pendKey = `lt-pending-${user.id}`;
+  const versionKey = `lt-cloud-version-${user.id}`;
+  const protectedKey = `lt-save-protected-${user.id}`;
   APP_TZ = data.profile?.tz || "auto"; // date helpers everywhere follow the Settings pick
   DAY_START = data.profile?.dayStart ?? 4; // 0 = date flips at midnight
 
-  useEffect(() => { (async () => {
+  useEffect(() => { let alive=true; (async () => {
     const cachedRaw = localStorage.getItem(cacheKey);
-    // Unsynced offline edits from a previous session win (accepted trade-off)
-    if (localStorage.getItem(pendKey) === "1" && cachedRaw) {
-      try { setData({ ...defaultData, ...migrateData(JSON.parse(cachedRaw), unameLower) }); setLoaded(true); return; } catch {}
-    }
+    const pending = localStorage.getItem(pendKey) === "1";
+    let cached = null;
+    try { if(cachedRaw) cached=JSON.parse(cachedRaw); } catch {}
     try {
-      const v = await loadUserState(user.id);
-      if (v) {
-        setData({ ...defaultData, ...migrateData(v, unameLower) });
-        localStorage.setItem(cacheKey, JSON.stringify(v));
+      const row = await loadUserStateRecord(user.id);
+      if (!alive) return;
+      cloudVersion.current = row?.updated_at || null;
+      if (row?.updated_at) localStorage.setItem(versionKey,row.updated_at);
+      if (row?.value) {
+        // Never let a stale offline copy simply replace cloud state. Preserve both and
+        // union their user-created records, then save using an optimistic version check.
+        // A substantially fuller cache is also treated as recovery evidence even if an
+        // old app incorrectly cleared its pending flag before the cloud write finished.
+        const cloudN=stateEntryTotal(row.value),cachedN=stateEntryTotal(cached);
+        const fullerCache=!!cached && cachedN>=cloudN+5 && cachedN>cloudN*1.15;
+        const combined = cached && (pending||fullerCache) ? mergeStateWithoutLoss(row.value,cached) : row.value;
+        const loadedData={ ...defaultData, ...migrateData(combined,unameLower) };
+        keepDeviceSnapshot(user.id,row.value);
+        lastSyncedFingerprint.current=stateFingerprint({ ...defaultData, ...migrateData(row.value,unameLower) });
+        setData(loadedData);
+        localStorage.setItem(cacheKey,JSON.stringify(loadedData));
+        setLoaded(true); return;
+      }
+      if (pending && cached) {
+        cloudVersion.current=null;
+        setData({ ...defaultData, ...migrateData(cached,unameLower) });
         setLoaded(true); return;
       }
       setLoaded(true);
     } catch (e) {
       console.error("load failed", e);
-      if (cachedRaw) {
+      if (cached) {
         // no signal, but we have this device's last copy — keep going offline
-        try { setData({ ...defaultData, ...migrateData(JSON.parse(cachedRaw), unameLower) }); setSyncState("offline"); setLoaded(true); return; } catch {}
+        cloudVersion.current=localStorage.getItem(versionKey)||null;
+        const loadedData={ ...defaultData, ...migrateData(cached,unameLower) };
+        lastSyncedFingerprint.current=pending?null:stateFingerprint(loadedData);
+        setData(loadedData); setSyncState("offline"); setLoaded(true); return;
       }
       setLoadFailed(true);
     }
-  })(); }, [user.id]);
+  })(); return()=>{alive=false;}; }, [user.id]);
 
   // One-time bridge from the old device-only minimize settings into the cloud profile.
   // Once a key exists in the profile, the cloud value always wins on every device.
@@ -648,24 +719,61 @@ export default function LiftingTracker({ user }) {
   // deletes never come close to triggering it.
   const [shrinkWarn, setShrinkWarn] = useState(null); // { prev, next } while a save is held
   const allowShrink = useRef(false);
-  const entryCount = (d) => (d.log||[]).reduce((sum,e)=>sum+setCountOf(e),0) + (d.bodyweight||[]).length + (d.cardio||[]).length;
+  const enqueueCloudSave = (payload) => {
+    saveQueue.current=saveQueue.current.then(async()=>{
+      const sentFingerprint=stateFingerprint(payload);
+      if(sentFingerprint===lastSyncedFingerprint.current){
+        if(stateFingerprint(dataRef.current)===sentFingerprint)localStorage.removeItem(pendKey);
+        return;
+      }
+      try {
+        const nextVersion=await saveUserState(user.id,payload,cloudVersion.current);
+        cloudVersion.current=nextVersion; localStorage.setItem(versionKey,nextVersion);
+        lastSyncedFingerprint.current=sentFingerprint;
+        if(stateFingerprint(dataRef.current)===sentFingerprint)localStorage.removeItem(pendKey);
+        localStorage.removeItem(protectedKey);
+        setSyncState("synced");
+      } catch(e) {
+        if(e?.code==="STATE_CONFLICT") {
+          try {
+            const latest=await loadUserStateRecord(user.id);
+            if(!latest?.value)throw e;
+            keepDeviceSnapshot(user.id,latest.value);
+            try{localStorage.setItem(`lt-recovery-${user.id}-${Date.now()}`,JSON.stringify(dataRef.current));}catch{}
+            cloudVersion.current=latest.updated_at;
+            if(latest.updated_at)localStorage.setItem(versionKey,latest.updated_at);
+            const cloudData={...defaultData,...migrateData(latest.value,unameLower)};
+            lastSyncedFingerprint.current=stateFingerprint(cloudData);
+            setData({...defaultData,...migrateData(mergeStateWithoutLoss(latest.value,dataRef.current),unameLower)});
+            setSyncState("merging");
+            return;
+          } catch(conflictError) { console.error("conflict recovery failed",conflictError); }
+        }
+        if(e?.code==="P0001" || String(e?.message||"").includes("STATE_SHRINK_BLOCKED")) {
+          localStorage.setItem(protectedKey,"1"); setSyncState("protected"); return;
+        }
+        console.error("save failed",e); setSyncState("offline");
+      }
+    }).catch(e=>{console.error("save queue failed",e);setSyncState("offline");});
+  };
   useEffect(() => { if (!loaded) return;
+    const fingerprint=stateFingerprint(data);
+    if(fingerprint===lastSyncedFingerprint.current)return;
     let prevN = null;
-    try { const raw = localStorage.getItem(cacheKey); if (raw) prevN = entryCount(JSON.parse(raw)); } catch {}
-    const nextN = entryCount(data);
-    if (!allowShrink.current && prevN !== null && prevN >= 20 && nextN < prevN / 2) {
+    let previous=null;
+    try { const raw=localStorage.getItem(cacheKey); if(raw){previous=JSON.parse(raw);prevN=stateEntryTotal(previous);} } catch {}
+    const nextN=stateEntryTotal(data);
+    if (!allowShrink.current && prevN !== null && prevN >= 20 && nextN < prevN * .7) {
       setShrinkWarn({ prev: prevN, next: nextN });
       return; // NOTHING is written (device or cloud) until the user decides
     }
     allowShrink.current = false;
     // Always land the change on this device instantly; the cloud follows.
+    keepDeviceSnapshot(user.id,previous);
     localStorage.setItem(cacheKey, JSON.stringify(data));
     localStorage.setItem(pendKey, "1");
     clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(async () => {
-      try { await saveUserState(user.id, data); localStorage.removeItem(pendKey); setSyncState("synced"); }
-      catch (e) { console.error("save failed", e); setSyncState("offline"); }
-    }, 500);
+    saveTimer.current=setTimeout(()=>enqueueCloudSave(data),500);
   }, [data, loaded, user.id]);
   const keepData = () => { // undo the mass delete: reload the untouched copy from this device
     setShrinkWarn(null);
@@ -677,8 +785,8 @@ export default function LiftingTracker({ user }) {
   useEffect(() => {
     const retry = async () => {
       if (localStorage.getItem(pendKey) !== "1") return;
-      try { await saveUserState(user.id, dataRef.current); localStorage.removeItem(pendKey); setSyncState("synced"); }
-      catch { /* still offline — keep waiting */ }
+      if (localStorage.getItem(protectedKey) === "1") return;
+      enqueueCloudSave(dataRef.current);
     };
     window.addEventListener("online", retry);
     const iv = setInterval(retry, 30000);
@@ -985,7 +1093,7 @@ export default function LiftingTracker({ user }) {
           <div className="card" style={{ maxWidth:430, width:"100%", borderColor:T.danger, marginBottom:0 }}>
             <div className="h" style={{ fontSize:18, color:T.danger, marginBottom:8 }}>⚠️ Hold up — big deletion</div>
             <div style={{ fontSize:14.5, color:T.ink, lineHeight:1.6, marginBottom:14 }}>
-              This change would shrink your data from <b>{shrinkWarn.prev}</b> logged entries to <b>{shrinkWarn.next}</b>.
+              This change would shrink your saved history from <b>{shrinkWarn.prev}</b> tracked items to <b>{shrinkWarn.next}</b>.
               Nothing has been saved yet — if you didn't mean to delete this much, keep your data and it's like it never happened.
             </div>
             <div style={{ display:"flex", gap:8 }}>
@@ -996,9 +1104,9 @@ export default function LiftingTracker({ user }) {
         </div>
       )}
 
-      {syncState === "offline" && (
+      {(syncState === "offline" || syncState === "merging" || syncState === "protected") && (
         <div style={{ background:"#2A2416", color:"#E3BE55", padding:"8px 18px", fontSize:13, fontWeight:600 }}>
-          📴 Offline — your sets are saved on this device and will sync automatically when signal returns.
+          {syncState==="merging" ? "🛟 Another device had newer data — both copies were preserved and are being safely merged." : syncState==="protected" ? "🛡️ A suspiciously large data loss was blocked. Your cloud copy was not overwritten." : "📴 Offline — your sets are saved on this device and will sync automatically when signal returns."}
         </div>
       )}
 
