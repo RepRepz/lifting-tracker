@@ -36,29 +36,24 @@ export async function loadSharedUserStates(userIds) {
  * an old phone, offline tab, or slow request from silently overwriting newer data.
  */
 export async function saveUserState(userId, value, expectedUpdatedAt = null) {
-  const nextUpdatedAt = new Date().toISOString();
-  let result;
-  if (expectedUpdatedAt) {
-    result = await supabase.from("user_state")
-      .update({ value, updated_at: nextUpdatedAt })
-      .eq("user_id", userId).eq("updated_at", expectedUpdatedAt)
-      .select("updated_at").maybeSingle();
-  } else {
-    result = await supabase.from("user_state")
-      .insert({ user_id: userId, value, updated_at: nextUpdatedAt })
-      .select("updated_at").single();
-  }
-  if (result.error) {
-    // A duplicate insert means another copy appeared after this client loaded: conflict.
-    if (result.error.code === "23505") {
+  // userId is retained in the signature for call-site clarity; the server always uses
+  // auth.uid() and never trusts a browser-supplied account id.
+  if (!userId) throw new Error("Missing user");
+  const { data, error } = await supabase.rpc("save_user_state", {
+    p_value: value,
+    p_expected_updated_at: expectedUpdatedAt,
+  });
+  if (error) {
+    if (error.code === "P0001" || String(error.message || "").includes("STATE_CONFLICT")) {
       const err = new Error("Cloud state changed on another device"); err.code = "STATE_CONFLICT"; throw err;
     }
-    throw result.error;
+    throw error;
   }
-  if (!result.data?.updated_at) {
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row?.updated_at) {
     const err = new Error("Cloud state changed on another device"); err.code = "STATE_CONFLICT"; throw err;
   }
-  return result.data.updated_at;
+  return row.updated_at;
 }
 
 /* ---------- private exercise images / GIFs ---------- */
