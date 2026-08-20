@@ -447,6 +447,22 @@ const stateInventory = (d) => ({
   journal:Object.keys(d?.journal||{}).length, foods:(d?.foods||[]).length,
 });
 const stateEntryTotal = (d) => Object.values(stateInventory(d)).reduce((a,b)=>a+b,0);
+const suspiciousStateShrink = (before, after) => {
+  const a=stateInventory(before),b=stateInventory(after);
+  const dropped=(key,minBefore,minLost,remainingRatio) =>
+    a[key]>=minBefore && a[key]-b[key]>=minLost && b[key]<a[key]*remainingRatio;
+  return dropped("log",10,3,.85)
+    || dropped("sets",15,4,.82)
+    || dropped("bodyweight",5,2,.80)
+    || dropped("cardio",3,2,.75)
+    || dropped("exercises",20,3,.90)
+    || dropped("routines",3,2,.75)
+    || dropped("journal",5,2,.75)
+    || dropped("foods",10,3,.80)
+    || (stateEntryTotal(before)>=20
+      && stateEntryTotal(before)-stateEntryTotal(after)>=8
+      && stateEntryTotal(after)<stateEntryTotal(before)*.80);
+};
 const stateFingerprint = (d) => JSON.stringify(d);
 function keepDeviceSnapshot(userId, value) {
   if (!value) return;
@@ -763,7 +779,7 @@ export default function LiftingTracker({ user }) {
     let previous=null;
     try { const raw=localStorage.getItem(cacheKey); if(raw){previous=JSON.parse(raw);prevN=stateEntryTotal(previous);} } catch {}
     const nextN=stateEntryTotal(data);
-    if (!allowShrink.current && prevN !== null && prevN >= 20 && nextN < prevN * .7) {
+    if (!allowShrink.current && previous && suspiciousStateShrink(previous,data)) {
       setShrinkWarn({ prev: prevN, next: nextN });
       return; // NOTHING is written (device or cloud) until the user decides
     }
