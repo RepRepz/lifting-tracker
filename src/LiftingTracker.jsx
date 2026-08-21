@@ -61,7 +61,8 @@ const SEED_EXERCISES = [
   ["Goblet Squat",["Legs"]],["Bodyweight Squat",["Legs"]],["Jump Squat",["Legs"]],["Leg Press",["Legs"]],["Leg Extension",["Legs"]],
   ["Lying Leg Curl",["Legs"]],["Seated Leg Curl",["Legs"]],["Romanian Deadlift",["Legs"],["Back"]],
   ["Good Morning",["Legs"],["Back"]],["Bulgarian Split Squat",["Legs"]],["Walking Lunge",["Legs"]],["Bodyweight Lunge",["Legs"]],
-  ["Step-Up",["Legs"]],["Box Jump",["Legs"]],["Wall Sit",["Legs"]],["Hip Thrust",["Legs"]],["Glute Bridge",["Legs"]],["Hip Abduction Machine",["Legs"]],
+  ["Step-Up",["Legs"]],["Box Jump",["Legs"]],["Wall Sit",["Legs"]],["Hip Thrust",["Legs"]],["Glute Bridge",["Legs"]],
+  ["Hip Adduction Machine",["Legs"]],["Hip Abduction Machine",["Legs"]],
   ["Kettlebell Swing",["Legs"],["Back"]],["Standing Calf Raise",["Legs"]],["Seated Calf Raise",["Legs"]],
   // abs / full body
   ["Plank",["Abs"]],["Side Plank",["Abs"]],["Hanging Leg Raise",["Abs"]],["Vertical Knee Raise",["Abs"]],["Cable Crunch",["Abs"]],["Ab Wheel",["Abs"]],
@@ -96,7 +97,7 @@ const MACHINE_SEED = new Set([
   "Single-Arm Cable Side Raise", "Rear Delt Fly", "Face Pull",
   "Lat Pulldown", "Seated Cable Row", "Seated Single-Arm Cross-Body Cable Row", "Cable Curl", "Concentration Curl Machine",
   "Machine Squat", "Hack Squat", "Leg Press", "Leg Extension", "Lying Leg Curl", "Seated Leg Curl",
-  "Hip Abduction Machine", "Cable Crunch",
+  "Hip Adduction Machine", "Hip Abduction Machine", "Cable Crunch",
 ]);
 /* Whether an exercise's load is gym-dependent — the seed flag, or a manual override
    (`ex.machine === true/false`) set in the Library for that specific exercise. */
@@ -362,7 +363,7 @@ const defaultData = {
   journal: {}, // { "YYYY-MM-DD": { mood, sleep, text } } — daily notes
   profile: {}, // heightIn (inches) lives here once set
   pins: [],    // pinned dashboard charts (exercise names)
-  libraryV: 13, // bumped when the seed library changes, so existing users get the update once
+  libraryV: 14, // bumped when the seed library changes, so existing users get the update once
 };
 
 /* One-time upgrade of previously saved data: pull in newly added seed exercises and
@@ -394,9 +395,19 @@ function migrateData(d, uname) {
   // fold pal's custom "Incline Smith Press" into the new official "Smith Machine Incline
   // Bench Press" seed move, now that Smith machine exercises have their own entries.
   const isOldInclineSmith = (name) => norm(name) === "incline smith press";
+  // Standardize the commonly labeled inner/outer-thigh machines. "Adduction" brings
+  // the legs inward; "abduction" moves them outward. Old custom aliases keep their logs.
+  const canonicalHipMachine = (name) => {
+    const n=norm(name);
+    if (["inner thigh","inner thigh machine","hip adductor machine","adductor machine","seated hip adduction machine","hip adduction"].includes(n)) return "Hip Adduction Machine";
+    if (["outer thigh","outer thigh machine","hip abductor machine","abductor machine","seated hip abduction machine","hip abduction"].includes(n)) return "Hip Abduction Machine";
+    return null;
+  };
   let log = (d.log || []).map(e => isOldSideRaise(e.exercise) ? { ...e, exercise: "Single-Arm Cable Side Raise" }
-    : isOldInclineSmith(e.exercise) ? { ...e, exercise: "Smith Machine Incline Bench Press" } : e);
-  const cleanedExercises = exercises.filter(x => !isOldSideRaise(x.name) && !isOldInclineSmith(x.name));
+    : isOldInclineSmith(e.exercise) ? { ...e, exercise: "Smith Machine Incline Bench Press" }
+    : canonicalHipMachine(e.exercise) ? { ...e, exercise:canonicalHipMachine(e.exercise) } : e);
+  const cleanedExercises = exercises.filter(x => !isOldSideRaise(x.name) && !isOldInclineSmith(x.name)
+    && (!canonicalHipMachine(x.name) || x.name===canonicalHipMachine(x.name)));
   if (uname === "dimi" && !cleanedExercises.some(x => x.name === "Dumbbell Overhead Triceps Extension (Adjustables)")) {
     cleanedExercises.push({ name:"Dumbbell Overhead Triceps Extension (Adjustables)", muscle:"Triceps",
       muscles:["Triceps"], muscles2:[], type:"Weighted", barbell:false, machine:false });
