@@ -62,7 +62,7 @@ const SEED_EXERCISES = [
   ["Lying Leg Curl",["Legs"]],["Seated Leg Curl",["Legs"]],["Romanian Deadlift",["Legs"],["Back"]],
   ["Good Morning",["Legs"],["Back"]],["Bulgarian Split Squat",["Legs"]],["Walking Lunge",["Legs"]],["Bodyweight Lunge",["Legs"]],
   ["Step-Up",["Legs"]],["Box Jump",["Legs"]],["Wall Sit",["Legs"]],["Hip Thrust",["Legs"]],["Glute Bridge",["Legs"]],
-  ["Hip Adduction Machine",["Legs"]],["Hip Abduction Machine",["Legs"]],
+  ["Hip Adduction Machine (Inner Thigh)",["Legs"]],["Hip Abduction Machine (Outer Thigh)",["Legs"]],
   ["Kettlebell Swing",["Legs"],["Back"]],["Standing Calf Raise",["Legs"]],["Seated Calf Raise",["Legs"]],
   // abs / full body
   ["Plank",["Abs"]],["Side Plank",["Abs"]],["Hanging Leg Raise",["Abs"]],["Vertical Knee Raise",["Abs"]],["Cable Crunch",["Abs"]],["Ab Wheel",["Abs"]],
@@ -97,7 +97,7 @@ const MACHINE_SEED = new Set([
   "Single-Arm Cable Side Raise", "Rear Delt Fly", "Face Pull",
   "Lat Pulldown", "Seated Cable Row", "Seated Single-Arm Cross-Body Cable Row", "Cable Curl", "Concentration Curl Machine",
   "Machine Squat", "Hack Squat", "Leg Press", "Leg Extension", "Lying Leg Curl", "Seated Leg Curl",
-  "Hip Adduction Machine", "Hip Abduction Machine", "Cable Crunch",
+  "Hip Adduction Machine (Inner Thigh)", "Hip Abduction Machine (Outer Thigh)", "Cable Crunch",
 ]);
 /* Whether an exercise's load is gym-dependent — the seed flag, or a manual override
    (`ex.machine === true/false`) set in the Library for that specific exercise. */
@@ -363,7 +363,7 @@ const defaultData = {
   journal: {}, // { "YYYY-MM-DD": { mood, sleep, text } } — daily notes
   profile: {}, // heightIn (inches) lives here once set
   pins: [],    // pinned dashboard charts (exercise names)
-  libraryV: 14, // bumped when the seed library changes, so existing users get the update once
+  libraryV: 15, // bumped when the seed library changes, so existing users get the update once
 };
 
 /* One-time upgrade of previously saved data: pull in newly added seed exercises and
@@ -399,8 +399,8 @@ function migrateData(d, uname) {
   // the legs inward; "abduction" moves them outward. Old custom aliases keep their logs.
   const canonicalHipMachine = (name) => {
     const n=norm(name);
-    if (["inner thigh","inner thigh machine","hip adductor machine","adductor machine","seated hip adduction machine","hip adduction"].includes(n)) return "Hip Adduction Machine";
-    if (["outer thigh","outer thigh machine","hip abductor machine","abductor machine","seated hip abduction machine","hip abduction"].includes(n)) return "Hip Abduction Machine";
+    if (["inner thigh","inner thigh machine","hip adductor machine","adductor machine","seated hip adduction machine","hip adduction","hip adduction machine","hip adduction machine (inner thigh)"].includes(n)) return "Hip Adduction Machine (Inner Thigh)";
+    if (["outer thigh","outer thigh machine","hip abductor machine","abductor machine","seated hip abduction machine","hip abduction","hip abduction machine","hip abduction machine (outer thigh)"].includes(n)) return "Hip Abduction Machine (Outer Thigh)";
     return null;
   };
   let log = (d.log || []).map(e => isOldSideRaise(e.exercise) ? { ...e, exercise: "Single-Arm Cable Side Raise" }
