@@ -1,7 +1,15 @@
 /* Offline support: network-first for same-origin files, falling back to
    the last cached copy when there's no signal. Supabase API calls are
    never intercepted. */
-const CACHE = "the-lab-v170";
+const CACHE = "the-lab-v171";
+const NETWORK_TIMEOUT_MS = 8000;
+
+async function fetchWithTimeout(request) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), NETWORK_TIMEOUT_MS);
+  try { return await fetch(request, { signal: controller.signal }); }
+  finally { clearTimeout(timer); }
+}
 
 self.addEventListener("install", () => self.skipWaiting());
 
@@ -19,7 +27,7 @@ self.addEventListener("fetch", (e) => {
   const exerciseMedia = url.origin === "https://wger.de" && url.pathname.startsWith("/media/exercise-images/");
   if (exerciseMedia) {
     e.respondWith(
-      caches.match(e.request).then((hit) => hit || fetch(e.request).then((res) => {
+      caches.match(e.request).then((hit) => hit || fetchWithTimeout(e.request).then((res) => {
         const copy = res.clone();
         caches.open(CACHE).then((c) => c.put(e.request, copy));
         return res;
@@ -29,7 +37,7 @@ self.addEventListener("fetch", (e) => {
   }
   if (url.origin !== location.origin) return;
   e.respondWith(
-    fetch(e.request)
+    fetchWithTimeout(e.request)
       .then((res) => {
         const copy = res.clone();
         caches.open(CACHE).then((c) => c.put(e.request, copy));

@@ -8,18 +8,30 @@ export default function App() {
   // undefined = still checking for a saved session; null = signed out
   const [session, setSession] = useState(undefined);
   const [recovering, setRecovering] = useState(false);
+  const [startupSlow, setStartupSlow] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => setSession(data.session ?? null));
+    let alive = true;
+    const timer = setTimeout(() => { if (alive) setStartupSlow(true); }, 10000);
+    supabase.auth.getSession()
+      .then(({ data, error }) => {
+        if (error) throw error;
+        if (alive) { clearTimeout(timer); setSession(data.session ?? null); }
+      })
+      .catch((error) => {
+        console.error("session startup failed", error);
+        if (alive) setStartupSlow(true);
+      });
     const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
+      clearTimeout(timer);
       setSession(s);
       if (event === "PASSWORD_RECOVERY") setRecovering(true);
     });
-    return () => sub.subscription.unsubscribe();
+    return () => { alive = false; clearTimeout(timer); sub.subscription.unsubscribe(); };
   }, []);
 
   if (session === undefined) {
-    return <LoadingScreen />;
+    return <LoadingScreen forceHelp={startupSlow} />;
   }
   if (!session) return <AuthScreen />;
   if (recovering) return <PasswordRecoveryScreen onDone={() => setRecovering(false)} />;

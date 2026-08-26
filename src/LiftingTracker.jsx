@@ -475,6 +475,10 @@ const suspiciousStateShrink = (before, after) => {
       && stateEntryTotal(after)<stateEntryTotal(before)*.80);
 };
 const stateFingerprint = (d) => JSON.stringify(d);
+const withTimeout = (promise, ms, label) => Promise.race([
+  promise,
+  new Promise((_, reject) => setTimeout(() => reject(Object.assign(new Error(`${label} timed out`), { code:"REQUEST_TIMEOUT" })), ms)),
+]);
 function keepDeviceSnapshot(userId, value) {
   if (!value) return;
   try {
@@ -574,7 +578,7 @@ export default function LiftingTracker({ user }) {
         if (delay) await new Promise(resolve => setTimeout(resolve, delay));
         if (!alive) return;
         try {
-          const active = await getMyProStatus();
+          const active = await withTimeout(getMyProStatus(), 6000, "Membership check");
           if (!alive) return;
           setProStatus(active);
           localStorage.setItem(proCacheKey, active ? "1" : "0");
@@ -675,7 +679,7 @@ export default function LiftingTracker({ user }) {
     let cached = null;
     try { if(cachedRaw) cached=JSON.parse(cachedRaw); } catch {}
     try {
-      const row = await loadUserStateRecord(user.id);
+      const row = await withTimeout(loadUserStateRecord(user.id), 12000, "Account load");
       if (!alive) return;
       cloudVersion.current = row?.updated_at || null;
       if (row?.updated_at) localStorage.setItem(versionKey,row.updated_at);
@@ -827,12 +831,7 @@ export default function LiftingTracker({ user }) {
     return rows.length ? rows[rows.length-1].weight : 195;
   }, [data.bodyweight]);
 
-  if (loadFailed) return (
-    <div style={{fontFamily:"system-ui",padding:40,color:T.sub}}>
-      ⚠️ Couldn't load your data — check your internet connection and refresh the page.
-      (Saving is switched off so nothing gets overwritten.)
-    </div>
-  );
+  if (loadFailed) return <LoadingScreen forceHelp label="Couldn't reach your account safely" />;
 
   if (!loaded || proStatus === null) return <LoadingScreen />;
 

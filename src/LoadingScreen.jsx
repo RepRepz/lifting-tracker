@@ -8,10 +8,47 @@
      73%–100% the glass flips 180° — and because a full bottom, once flipped,
               looks exactly like a full top, the loop restarts seamlessly. */
 
+import { useEffect, useState } from "react";
+
 const GREEN = "#00C805";
 const GOLD  = "#E9C46A";
 
-export default function LoadingScreen({ label = "Loading The Lab…" }) {
+async function refreshAppFiles() {
+  try {
+    const base = new URL(import.meta.env.BASE_URL, location.origin).href;
+    if ("serviceWorker" in navigator) {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(registrations.filter(r => r.scope.startsWith(base)).map(r => r.unregister()));
+    }
+    if ("caches" in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.filter(k => k.startsWith("the-lab-")).map(k => caches.delete(k)));
+    }
+  } finally {
+    location.replace(`${location.origin}${import.meta.env.BASE_URL}?refresh=${Date.now()}`);
+  }
+}
+
+function resetThisDeviceSignIn() {
+  if (!confirm("Sign out on this phone and return to the login screen? Your workouts stay safely in the cloud.")) return;
+  const projectRef = (() => { try { return new URL(import.meta.env.VITE_SUPABASE_URL).hostname.split(".")[0]; } catch { return ""; } })();
+  for (const store of [localStorage, sessionStorage]) {
+    for (const key of Object.keys(store)) {
+      if (projectRef && key.startsWith(`sb-${projectRef}-auth-token`)) store.removeItem(key);
+    }
+  }
+  location.reload();
+}
+
+export default function LoadingScreen({ label = "Loading The Lab…", forceHelp = false }) {
+  const [showHelp, setShowHelp] = useState(forceHelp);
+  const [repairing, setRepairing] = useState(false);
+  useEffect(() => {
+    if (forceHelp) { setShowHelp(true); return undefined; }
+    const timer = setTimeout(() => setShowHelp(true), 10000);
+    return () => clearTimeout(timer);
+  }, [forceHelp]);
+
   return (
     <div style={wrap}>
       <style>{css}</style>
@@ -76,6 +113,19 @@ export default function LoadingScreen({ label = "Loading The Lab…" }) {
       </svg>
 
       <div className="lt-shimmer">{label}</div>
+      {showHelp && (
+        <div className="lt-load-help">
+          <strong>Taking too long on this device?</strong>
+          <span>Your cloud workouts are safe. Retry first, or refresh the app files if this phone is stuck on an old copy.</span>
+          <div className="lt-load-actions">
+            <button onClick={() => location.reload()}>Try again</button>
+            <button className="primary" disabled={repairing} onClick={() => { setRepairing(true); refreshAppFiles(); }}>
+              {repairing ? "Refreshing…" : "Refresh app files"}
+            </button>
+          </div>
+          <button className="lt-signout-device" onClick={resetThisDeviceSignIn}>Still stuck? Sign out on this phone</button>
+        </div>
+      )}
     </div>
   );
 }
@@ -98,6 +148,14 @@ const css = `
     -webkit-text-fill-color: transparent; color: transparent;
     animation: lt-slide 2.4s linear infinite;
   }
+  .lt-load-help { width:min(420px,calc(100vw - 32px)); margin-top:4px; padding:18px; border:1px solid rgba(0,200,5,.3); border-radius:18px; background:#111512; color:#f3f5f3; display:flex; flex-direction:column; gap:9px; text-align:center; box-shadow:0 14px 45px rgba(0,0,0,.45); }
+  .lt-load-help strong { font-size:16px; }
+  .lt-load-help span { color:#9ba49d; font-size:13px; line-height:1.45; }
+  .lt-load-actions { display:grid; grid-template-columns:1fr 1fr; gap:9px; margin-top:4px; }
+  .lt-load-help button { min-height:44px; border:1px solid #303733; border-radius:12px; background:#191e1b; color:#fff; font:700 14px system-ui,-apple-system,"Segoe UI",sans-serif; cursor:pointer; }
+  .lt-load-help button.primary { border-color:${GREEN}; background:rgba(0,200,5,.14); color:#39e43e; }
+  .lt-load-help button:disabled { opacity:.6; }
+  .lt-load-help .lt-signout-device { min-height:auto; padding:4px; border:0; background:transparent; color:#89928b; font-size:12px; }
   @keyframes lt-slide { 0% { background-position: 130% 0; } 100% { background-position: -130% 0; } }
   @media (prefers-reduced-motion: reduce) {
     .lt-shimmer { animation: none; color: ${GREEN}; -webkit-text-fill-color: ${GREEN}; }
