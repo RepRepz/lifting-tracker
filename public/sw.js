@@ -1,7 +1,7 @@
 /* Offline support: network-first for same-origin files, falling back to
    the last cached copy when there's no signal. Supabase API calls are
    never intercepted. */
-const CACHE = "the-lab-v171";
+const CACHE = "the-lab-v172";
 const NETWORK_TIMEOUT_MS = 8000;
 
 async function fetchWithTimeout(request) {
@@ -36,11 +36,23 @@ self.addEventListener("fetch", (e) => {
     return;
   }
   if (url.origin !== location.origin) return;
+
+  // Build assets are content-hashed and immutable. Once one successfully loads, prefer
+  // that known-good copy on later launches instead of making iOS networking a blocker.
+  if (url.pathname.includes("/assets/")) {
+    e.respondWith(
+      caches.match(e.request).then((hit) => hit || fetchWithTimeout(e.request).then((res) => {
+        if (res.ok) caches.open(CACHE).then((c) => c.put(e.request, res.clone()));
+        return res;
+      }))
+    );
+    return;
+  }
+
   e.respondWith(
     fetchWithTimeout(e.request)
       .then((res) => {
-        const copy = res.clone();
-        caches.open(CACHE).then((c) => c.put(e.request, copy));
+        if (res.ok) caches.open(CACHE).then((c) => c.put(e.request, res.clone()));
         return res;
       })
       .catch(() =>

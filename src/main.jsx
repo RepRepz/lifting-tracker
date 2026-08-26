@@ -1,6 +1,22 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App.jsx";
+import LoadingScreen from "./LoadingScreen.jsx";
+
+class AppCrashBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { crashed:false }; }
+  static getDerivedStateFromError() { return { crashed:true }; }
+  componentDidCatch(error) {
+    // Keep one small, device-only breadcrumb for diagnosing repeat iOS failures.
+    // Never include account data, form values, or cloud state.
+    try { localStorage.setItem("lt-last-startup-error", JSON.stringify({ at:new Date().toISOString(), message:String(error?.message || "Unknown app error").slice(0,240) })); } catch {}
+    console.error("app render failed", error);
+  }
+  render() {
+    if (this.state.crashed) return <LoadingScreen forceHelp label="The app hit a device error" />;
+    return this.props.children;
+  }
+}
 
 // Apple devices keep their native emoji; other platforms use the self-hosted Twemoji font.
 const ua = navigator.userAgent || "";
@@ -10,13 +26,17 @@ if (!isApple) document.documentElement.classList.add("tw");
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <App />
+    <AppCrashBoundary>
+      <App />
+    </AppCrashBoundary>
   </React.StrictMode>
 );
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register(import.meta.env.BASE_URL + "sw.js").catch(() => {});
+    navigator.serviceWorker.register(import.meta.env.BASE_URL + "sw.js")
+      .then((registration) => registration.update().catch(() => {}))
+      .catch(() => {});
   });
 }
 
@@ -35,12 +55,15 @@ if ("serviceWorker" in navigator) {
   async function checkForUpdate() {
     if (checking || reloaded || !mine || document.visibilityState !== "visible") return;
     checking = true;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
     try {
-      const html = await fetch(import.meta.env.BASE_URL + "index.html?cb=" + Date.now(), { cache: "no-store" }).then((r) => r.text());
+      navigator.serviceWorker?.getRegistration(import.meta.env.BASE_URL).then((r) => r?.update()).catch(() => {});
+      const html = await fetch(import.meta.env.BASE_URL + "index.html?cb=" + Date.now(), { cache: "no-store", signal:controller.signal }).then((r) => r.text());
       const live = (html.match(/index-[\w-]+\.js/) || [])[0];
       if (live && live !== mine) { reloaded = true; location.reload(); }
     } catch { /* offline — try again next time */ }
-    finally { checking = false; }
+    finally { clearTimeout(timeout); checking = false; }
   }
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") checkForUpdate(); });
   window.addEventListener("focus", checkForUpdate);
