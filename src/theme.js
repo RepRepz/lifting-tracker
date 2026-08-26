@@ -21,14 +21,14 @@ export const tipStyle = { background: T.card, border: `1px solid ${T.line}`, bor
 
 /* Accent colors. `free: true` ones are usable without Pro. */
 export const ACCENTS = {
-  green:  { name: "Neon Green",     rgb: "0,200,5",     free: true  },
-  blue:   { name: "Electric Blue",  rgb: "10,132,255",  free: true  },
-  purple: { name: "Ultraviolet",    rgb: "157,92,255",  free: false },
-  pink:   { name: "Hot Pink",       rgb: "255,45,146",  free: false },
-  orange: { name: "Sunset Orange",  rgb: "255,122,0",   free: false },
-  red:    { name: "Crimson",        rgb: "255,59,48",   free: false },
-  gold:   { name: "Gold",           rgb: "240,185,11",  free: false },
-  cyan:   { name: "Aqua",           rgb: "0,209,178",   free: false },
+  green:  { name: "Neon Green",    rgb: "0,200,5",    free: true,  calendar:{ lift:"#20D94A", cardio:"#3B82F6", combo:"#A970FF" } },
+  blue:   { name: "Electric Blue", rgb: "10,132,255", free: true,  calendar:{ lift:"#0A84FF", cardio:"#22D3EE", combo:"#8B5CF6" } },
+  purple: { name: "Ultraviolet",   rgb: "157,92,255", free: false, calendar:{ lift:"#9D5CFF", cardio:"#38BDF8", combo:"#F472B6" } },
+  pink:   { name: "Hot Pink",      rgb: "255,45,146", free: false, calendar:{ lift:"#FF2D92", cardio:"#A78BFA", combo:"#F59E0B" } },
+  orange: { name: "Sunset Orange", rgb: "255,122,0",  free: false, calendar:{ lift:"#FF7A00", cardio:"#2DD4BF", combo:"#E879F9" } },
+  red:    { name: "Crimson",       rgb: "255,59,48",  free: false, calendar:{ lift:"#FF3B30", cardio:"#F59E0B", combo:"#A78BFA" } },
+  gold:   { name: "Gold",          rgb: "240,185,11", free: false, calendar:{ lift:"#F0B90B", cardio:"#22C55E", combo:"#8B5CF6" } },
+  cyan:   { name: "Aqua",          rgb: "0,209,178",  free: false, calendar:{ lift:"#00D1B2", cardio:"#3B82F6", combo:"#C084FC" } },
 };
 
 /* Background palettes (all dark, tuned to stay legible). Midnight is the free default. */
@@ -41,6 +41,13 @@ export const PALETTES = {
 
 export const DEFAULT_THEME = { accent: "green", palette: "midnight" };
 
+const contrastInk = (hex) => {
+  const n = parseInt(hex.slice(1),16);
+  const channel = shift => { const x=((n>>shift)&255)/255; return x<=.04045?x/12.92:((x+.055)/1.055)**2.4; };
+  const luminance=.2126*channel(16)+.7152*channel(8)+.0722*channel(0);
+  return luminance>.179 ? "#061008" : "#FFFFFF";
+};
+
 /* Push a theme onto :root as CSS variables. Falls back to defaults for unknown ids. */
 export function applyTheme(theme) {
   const a = ACCENTS[theme?.accent] || ACCENTS.green;
@@ -48,6 +55,10 @@ export function applyTheme(theme) {
   const r = document.documentElement.style;
   r.setProperty("--accent-rgb", a.rgb);
   r.setProperty("--accent", `rgb(${a.rgb})`);
+  for (const [kind,color] of Object.entries(a.calendar)) {
+    r.setProperty(`--cal-${kind}`,color);
+    r.setProperty(`--cal-${kind}-ink`,contrastInk(color));
+  }
   for (const k of ["bg", "card", "cardAlt", "input", "line", "ink", "sub", "creamLine"]) r.setProperty(`--${k}`, p[k]);
   // keep the iOS status bar / PWA chrome in sync with the background
   const meta = document.querySelector('meta[name="theme-color"]');

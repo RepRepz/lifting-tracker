@@ -2668,18 +2668,18 @@ function WorkoutHeatmap({ log, cardio, exMap = {}, storageKey="lt-cal-view", emp
     const cardioHit = day.cardioMin >= 30 || day.cardioCal >= 200;
     const stepHit = (day.steps||0) >= stepGoal;
     const wins = Number(lifted) + Number(cardioHit) + Number(stepHit);
-    // Activity colors are independent from the selected theme. A blue theme, for
-    // example, must not turn lifting and cardio into the same color.
-    if (wins >= 2) return {key:"combo",label:"Combined day",color:"#A970FF"};
-    if (cardioHit || stepHit) return {key:"active",label:cardioHit?"Cardio goal":"Step goal",color:"#348DFF"};
-    if (lifted) return {key:"lift",label:"Lift day",color:"#27D45A"};
-    if (day.cd.length) return {key:"activeLow",label:"Cardio logged",color:"rgba(52,141,255,.48)"};
+    // Each accent has its own coordinated three-color calendar palette. The categories
+    // stay unmistakably different even when the app's main accent is blue or purple.
+    if (wins >= 2) return {key:"combo",label:"Combined day",color:"var(--cal-combo)",ink:"var(--cal-combo-ink)"};
+    if (cardioHit || stepHit) return {key:"active",label:cardioHit?"Cardio goal":"Step goal",color:"var(--cal-cardio)",ink:"var(--cal-cardio-ink)"};
+    if (lifted) return {key:"lift",label:"Lift day",color:"var(--cal-lift)",ink:"var(--cal-lift-ink)"};
+    if (day.cd.length) return {key:"activeLow",label:"Cardio logged",color:"color-mix(in srgb, var(--cal-cardio) 48%, var(--input))",ink:T.ink};
     return null;
   };
   const cellStyle = (d) => {
     const reward = rewardOf(info[d.key]);
     if (!reward) return {background:shade(d.n,d.future),color:d.n>4?"#000":T.sub};
-    return {background:reward.color,color:reward.key==="lift"?"#071108":"#fff",boxShadow:reward.key==="combo"?"0 0 11px rgba(169,112,255,.35)":"none"};
+    return {background:reward.color,color:reward.ink,boxShadow:reward.key==="combo"?`0 0 11px color-mix(in srgb, ${reward.color} 42%, transparent)`:"none"};
   };
 
   const order = [...MUSCLES, "Cardio"];
@@ -2757,7 +2757,7 @@ function WorkoutHeatmap({ log, cardio, exMap = {}, storageKey="lt-cal-view", emp
       {view === "1M" ? monthGrid() : weekGrid()}
 
       {rewardMode && <div style={{display:"flex",justifyContent:"center",flexWrap:"wrap",gap:"6px 12px",marginTop:10,fontSize:10.5,color:T.sub}}>
-        {[["#27D45A","Lift"],["#348DFF","Cardio / step goal"],["#A970FF","Combined"]].map(([c,l])=><span key={l} style={{display:"inline-flex",alignItems:"center",gap:5}}><i style={{width:8,height:8,borderRadius:3,background:c}} />{l}</span>)}
+        {[["var(--cal-lift)","Lift"],["var(--cal-cardio)","Cardio / step goal"],["var(--cal-combo)","Combined"]].map(([c,l])=><span key={l} style={{display:"inline-flex",alignItems:"center",gap:5}}><i style={{width:8,height:8,borderRadius:3,background:c}} />{l}</span>)}
       </div>}
 
       {/* tapped-day details */}
@@ -2773,7 +2773,7 @@ function WorkoutHeatmap({ log, cardio, exMap = {}, storageKey="lt-cal-view", emp
             {reward && <div style={{display:"inline-flex",alignItems:"center",gap:5,background:`color-mix(in srgb, ${reward.color} 16%, transparent)`,border:`1px solid ${reward.color}`,color:reward.color,borderRadius:99,padding:"3px 8px",fontSize:10.5,fontWeight:850,marginBottom:6}}>{reward.key==="combo"?"⚡":"●"} {reward.label}</div>}
             {day.n > 0 && (
               <div style={{ fontSize:12.5, marginBottom:4 }}>
-                <b style={{ color:T.green }}>{day.n} set{day.n===1?"":"s"}</b>
+                <b style={{ color:"var(--cal-lift)" }}>{day.n} set{day.n===1?"":"s"}</b>
                 {muscles.length > 0 && <span style={{ color:T.sub }}> · {muscles.join(", ")}</span>}
               </div>
             )}
@@ -2785,7 +2785,7 @@ function WorkoutHeatmap({ log, cardio, exMap = {}, storageKey="lt-cal-view", emp
             {day.cd.map((c,i)=>(
               <div key={i} style={{ fontSize:12, color:T.sub }}>🏃 {c}</div>
             ))}
-            {day.steps!=null && <div style={{fontSize:12,color:(day.steps>=stepGoal)?"#3D8BFF":T.sub}}>👟 {day.steps.toLocaleString()} steps{rewardMode?` / ${stepGoal.toLocaleString()} goal`:""}{day.steps>=stepGoal?" ✓":""}</div>}
+            {day.steps!=null && <div style={{fontSize:12,color:(day.steps>=stepGoal)?"var(--cal-cardio)":T.sub}}>👟 {day.steps.toLocaleString()} steps{rewardMode?` / ${stepGoal.toLocaleString()} goal`:""}{day.steps>=stepGoal?" ✓":""}</div>}
           </>
         )}
       </div>
@@ -3316,7 +3316,7 @@ function Dashboard({ data, exMap, setData, own = true, user, sharedSteps = null,
   widgets.calendar = (
     <div className="card">
       <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:2}}>Workout calendar</div>
-      <div style={{fontSize:12, color:T.sub, marginBottom:10}}>Green is lifting, blue is a cardio or step goal, and purple combines any two. Colors stay distinct in every theme. Tap a day for details.</div>
+      <div style={{fontSize:12, color:T.sub, marginBottom:10}}>Lifting, cardio or step goals, and combined days each use a different color matched to your theme. Tap a day for details.</div>
       <WorkoutHeatmap log={data.log} cardio={data.cardio} exMap={exMap} steps={showDashSteps?dashStepData.map:null} stepGoal={dashStepGoal} rewardMode />
     </div>
   );
