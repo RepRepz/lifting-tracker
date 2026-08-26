@@ -1396,6 +1396,9 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
     const raw = localStorage.getItem("lt-rest");
     return raw === null ? 90 : Number(raw);
   });
+  const [customRestOpen, setCustomRestOpen] = useState(false);
+  const [customRestMin, setCustomRestMin] = useState(()=>Math.floor(restDur/60));
+  const [customRestSec, setCustomRestSec] = useState(()=>restDur%60);
   const [showRestOvertime, setShowRestOvertime] = useState(() => localStorage.getItem("lt-rest-overtime") === "1");
   const restEndAt = () => Number(localStorage.getItem("lt-rest-end")) || 0;
   const restFinishedAt = () => Number(localStorage.getItem("lt-rest-finished")) || 0;
@@ -1413,6 +1416,12 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
     localStorage.setItem("lt-rest-end", String(Date.now() + restDur * 1000));
     localStorage.removeItem("lt-rest-finished");
     setRestOver(0); setRestDone(false); setRestLeft(restDur);
+  };
+  const saveCustomRest = () => {
+    const total=Math.max(1,Math.min(3600,(parseInt(customRestMin)||0)*60+(parseInt(customRestSec)||0)));
+    setRestDur(total);
+    setCustomRestMin(Math.floor(total/60)); setCustomRestSec(total%60);
+    setCustomRestOpen(false);
   };
   const stopRest = () => { localStorage.removeItem("lt-rest-end"); localStorage.removeItem("lt-rest-finished"); setRestOver(0); setRestLeft(0); setRestDone(false); };
   useEffect(() => {
@@ -1845,7 +1854,8 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
       <div className="card" style={{padding:"11px 14px",marginBottom:0}}>
         <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
           <span style={{fontSize:12.5,color:T.ink,fontWeight:800}}>⏱ Rest timer</span>
-          <span style={{fontSize:10.5,color:T.sub,flex:1}}>{restDur===0?"Off":"Auto-starts"}</span>
+          <span style={{fontSize:10.5,color:T.sub,flex:1}}>{restDur===0?"Off":[60,90,120,180].includes(restDur)?"Auto-starts":"Custom · "+Math.floor(restDur/60)+":"+String(restDur%60).padStart(2,"0")}</span>
+          <button type="button" onClick={()=>{setCustomRestMin(Math.floor((restDur||90)/60));setCustomRestSec((restDur||90)%60);setCustomRestOpen(v=>!v);}} style={{padding:"5px 8px",background:customRestOpen?T.mint:"none",border:"1px solid "+(customRestOpen?T.green:T.line),color:customRestOpen?T.green:T.sub,fontSize:10.5,fontWeight:750,whiteSpace:"nowrap"}}>Custom</button>
           {restDur>0&&<button type="button" onClick={()=>setShowRestOvertime(v=>!v)} style={{padding:"5px 8px",background:showRestOvertime?T.mint:"none",border:"1px solid "+(showRestOvertime?T.green:T.line),color:showRestOvertime?T.green:T.sub,fontSize:10.5,fontWeight:750,whiteSpace:"nowrap"}}>{showRestOvertime?"✓ Count up":"Count up"}</button>}
         </div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(5,minmax(0,1fr))",gap:5}}>
@@ -1853,6 +1863,13 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
             <button key={s} onClick={()=>{setRestDur(s);if(s===0)stopRest();}} style={{minWidth:0,background:restDur===s?T.mint:T.input,color:restDur===s?T.green:T.sub,border:"1px solid "+(restDur===s?T.green:T.line),padding:"7px 2px",fontSize:11.5,fontWeight:800}}>{s===0?"Off":Math.floor(s/60)+":"+String(s%60).padStart(2,"0")}</button>
           ))}
         </div>
+        {customRestOpen&&<div style={{display:"flex",alignItems:"center",justifyContent:"flex-end",gap:5,marginTop:7,paddingTop:7,borderTop:"1px solid "+T.line}}>
+          <input aria-label="Custom rest minutes" type="number" inputMode="numeric" min="0" max="60" value={customRestMin} onChange={e=>setCustomRestMin(e.target.value)} style={{width:48,minHeight:32,padding:"5px 6px",textAlign:"center",fontSize:12.5}} />
+          <span style={{fontSize:10.5,color:T.sub}}>min</span>
+          <input aria-label="Custom rest seconds" type="number" inputMode="numeric" min="0" max="59" value={customRestSec} onChange={e=>setCustomRestSec(e.target.value)} style={{width:48,minHeight:32,padding:"5px 6px",textAlign:"center",fontSize:12.5}} />
+          <span style={{fontSize:10.5,color:T.sub}}>sec</span>
+          <button type="button" onClick={saveCustomRest} style={{padding:"7px 12px",background:T.green,color:"#061006",fontSize:11.5,fontWeight:850}}>Set</button>
+        </div>}
       </div>
     </div>
 
