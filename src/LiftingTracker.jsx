@@ -1843,14 +1843,16 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
         </div>
       )}
       <div className="card" style={{padding:"11px 14px",marginBottom:0}}>
-        <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
           <span style={{fontSize:12.5,color:T.ink,fontWeight:800}}>⏱ Rest timer</span>
-          {[0,60,90,120,180].map(s=>(
-            <button key={s} onClick={()=>{setRestDur(s);if(s===0)stopRest();}} style={{background:restDur===s?T.mint:T.input,color:restDur===s?T.green:T.sub,border:"1px solid "+(restDur===s?T.green:T.line),padding:"6px 11px",fontSize:12.5,fontWeight:750}}>{s===0?"Off":Math.floor(s/60)+":"+String(s%60).padStart(2,"0")}</button>
-          ))}
-          {restDur>0&&<button type="button" onClick={()=>setShowRestOvertime(v=>!v)} style={{marginLeft:"auto",padding:"6px 10px",background:showRestOvertime?T.mint:"none",border:"1px solid "+(showRestOvertime?T.green:T.line),color:showRestOvertime?T.green:T.sub,fontSize:11.5,fontWeight:750}}>{showRestOvertime?"✓ Count up after zero":"Count up after zero"}</button>}
+          <span style={{fontSize:10.5,color:T.sub,flex:1}}>{restDur===0?"Off":"Auto-starts"}</span>
+          {restDur>0&&<button type="button" onClick={()=>setShowRestOvertime(v=>!v)} style={{padding:"5px 8px",background:showRestOvertime?T.mint:"none",border:"1px solid "+(showRestOvertime?T.green:T.line),color:showRestOvertime?T.green:T.sub,fontSize:10.5,fontWeight:750,whiteSpace:"nowrap"}}>{showRestOvertime?"✓ Count up":"Count up"}</button>}
         </div>
-        <div style={{fontSize:10.5,color:T.sub,marginTop:6}}>{restDur===0?"Off until you choose a time.":"Starts automatically after every working set."}</div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(5,minmax(0,1fr))",gap:5}}>
+          {[0,60,90,120,180].map(s=>(
+            <button key={s} onClick={()=>{setRestDur(s);if(s===0)stopRest();}} style={{minWidth:0,background:restDur===s?T.mint:T.input,color:restDur===s?T.green:T.sub,border:"1px solid "+(restDur===s?T.green:T.line),padding:"7px 2px",fontSize:11.5,fontWeight:800}}>{s===0?"Off":Math.floor(s/60)+":"+String(s%60).padStart(2,"0")}</button>
+          ))}
+        </div>
       </div>
     </div>
 
