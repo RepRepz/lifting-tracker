@@ -6484,9 +6484,23 @@ function todayWorkoutPlan(data, exMap) {
   const gapFor=m=>lastByMuscle[m]?dayGap(today,lastByMuscle[m]):30;
   const overdueScore=c=>c.muscles.reduce((sum,m)=>sum+gapFor(m),0)/c.muscles.length;
   const todayGroups=groupsLoggedOn(log,exMap,today);
-  const overlap=c=>c.muscles.filter(m=>todayGroups.has(m)).length/Math.max(1,new Set([...c.muscles,...todayGroups]).size);
+  const matchScore=c=>{
+    const matches=c.muscles.filter(m=>todayGroups.has(m)).length;
+    const coverage=matches/Math.max(1,todayGroups.size);
+    const specificity=matches/Math.max(1,c.muscles.length);
+    return coverage*.75+specificity*.25;
+  };
   let chosen=null, reason="";
-  if(split==="custom"&&prefs.focusStyle!=="volume"){
+  // Once the log clearly matches a split day, make the visible session follow what
+  // the person is actually doing; missed-work coaching is still evaluated separately.
+  if(todayGroups.size){
+    const started=candidates.slice().sort((a,b)=>matchScore(b)-matchScore(a))[0];
+    if(started&&matchScore(started)>=.65){
+      chosen=started;
+      reason="Tracking the split day your logged sets match.";
+    }
+  }
+  if(!chosen&&split==="custom"&&prefs.focusStyle!=="volume"){
     const pos=customCyclePosition(data,log.filter(e=>e.date<today),exMap);
     const queued=pos.idx>=0?pos.cycle[pos.idx]:null;
     if(queued?.rest) return {muscles:[],rows:[],reason:"😴 Rest day in your custom split. Recovery is the plan today.",complete:true,rest:true};
@@ -6495,10 +6509,6 @@ function todayWorkoutPlan(data, exMap) {
       if(match<.5) chosen=candidates.find(c=>c.id===queued.id)||null;
       if(chosen) reason="Next unfinished day in your custom split.";
     }
-  }
-  if(!chosen&&todayGroups.size){
-    const started=candidates.slice().sort((a,b)=>overlap(b)-overlap(a))[0];
-    if(started&&overlap(started)>=.34){ chosen=started; reason="You already started this workout today."; }
   }
   if(!chosen&&prefs.focusStyle==="volume"){
     chosen=candidates.map(c=>({...c,score:c.muscles.reduce((sum,m)=>sum+Math.max(0,targets[m]-weekly[m]),0)})).sort((a,b)=>b.score-a.score)[0]||null;
