@@ -2656,10 +2656,11 @@ function WorkoutHeatmap({ log, cardio, exMap = {}, storageKey="lt-cal-view", emp
   const shade = (n, future) => {
     if (future) return "transparent";
     if (n === 0) return T.input;
-    if (n <= 2) return "rgba(var(--accent-rgb),.30)";
-    if (n <= 4) return "rgba(var(--accent-rgb),.55)";
-    if (n <= 6) return "rgba(var(--accent-rgb),.80)";
-    return T.green;
+    const base = rewardMode ? "var(--cal-lift)" : "var(--cal-cardio)";
+    if (n <= 2) return `color-mix(in srgb, ${base} 30%, var(--input))`;
+    if (n <= 4) return `color-mix(in srgb, ${base} 55%, var(--input))`;
+    if (n <= 6) return `color-mix(in srgb, ${base} 80%, var(--input))`;
+    return base;
   };
 
   const rewardOf = (day) => {
@@ -2756,8 +2757,8 @@ function WorkoutHeatmap({ log, cardio, exMap = {}, storageKey="lt-cal-view", emp
       </div>
       {view === "1M" ? monthGrid() : weekGrid()}
 
-      {rewardMode && <div style={{display:"flex",justifyContent:"center",flexWrap:"wrap",gap:"6px 12px",marginTop:10,fontSize:10.5,color:T.sub}}>
-        {[["var(--cal-lift)","Lift"],["var(--cal-cardio)","Cardio / step goal"],["var(--cal-combo)","Combined"]].map(([c,l])=><span key={l} style={{display:"inline-flex",alignItems:"center",gap:5}}><i style={{width:8,height:8,borderRadius:3,background:c}} />{l}</span>)}
+      {rewardMode && <div style={{display:"flex",justifyContent:"center",flexWrap:"wrap",gap:6,marginTop:10,fontSize:10.5,color:T.sub}}>
+        {[["var(--cal-lift)","Lift"],["var(--cal-cardio)","Cardio / step goal"],["var(--cal-combo)","Combined"]].map(([c,l])=><span key={l} style={{display:"inline-flex",alignItems:"center",gap:5,padding:"3px 7px",borderRadius:99,background:`color-mix(in srgb,${c} 9%,transparent)`,border:`1px solid color-mix(in srgb,${c} 24%,var(--line))`}}><i style={{width:8,height:8,borderRadius:3,background:c,boxShadow:`0 0 7px color-mix(in srgb,${c} 42%,transparent)`}} />{l}</span>)}
       </div>}
 
       {/* tapped-day details */}
@@ -3314,7 +3315,7 @@ function Dashboard({ data, exMap, setData, own = true, user, sharedSteps = null,
   );
 
   widgets.calendar = (
-    <div className="card">
+    <div className="card" style={{background:"radial-gradient(90% 68% at 100% 0%,color-mix(in srgb,var(--cal-combo) 8%,transparent),transparent 58%),radial-gradient(80% 65% at 0% 100%,color-mix(in srgb,var(--cal-cardio) 7%,transparent),transparent 60%),linear-gradient(180deg,color-mix(in srgb,var(--card) 92%,#fff 5%),var(--card))",borderColor:"color-mix(in srgb,var(--cal-lift) 22%,var(--line))"}}>
       <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:2}}>Workout calendar</div>
       <div style={{fontSize:12, color:T.sub, marginBottom:10}}>Lifting, cardio or step goals, and combined days each use a different color matched to your theme. Tap a day for details.</div>
       <WorkoutHeatmap log={data.log} cardio={data.cardio} exMap={exMap} steps={showDashSteps?dashStepData.map:null} stepGoal={dashStepGoal} rewardMode />
@@ -4035,7 +4036,7 @@ function SyncNowButton({ block, small }) {
   const href = `shortcuts://run-shortcut?name=${encodeURIComponent("The Lab: Steps")}`;
   return (
     <a href={href} style={{ display: block ? "flex" : "inline-flex", width: block ? "100%" : "auto",
-      alignItems:"center", justifyContent:"center", gap:7, background:T.green, color:"#000", fontWeight:800,
+      alignItems:"center", justifyContent:"center", gap:7, background:"var(--cal-cardio)", color:"var(--cal-cardio-ink)", fontWeight:800,
       fontSize: small?12.5:14.5, padding: small?"7px 13px":"12px 16px", borderRadius: small?99:11, textDecoration:"none" }}>
       🔄 Sync now
     </a>
@@ -4066,29 +4067,29 @@ function StepRingChart({ map, goal, meta }) {
   const hit = yCount >= goal;
   const remaining = Math.max(0, goal - yCount);
   return (<>
-    <div className="card" style={hit ? { borderColor:"rgba(var(--accent-rgb),.5)", background:"radial-gradient(120% 90% at 100% 0%, rgba(var(--accent-rgb),.12), transparent 55%), var(--card)" } : undefined}>
+    <div className="card" style={{borderColor:hit?"var(--cal-cardio)":"color-mix(in srgb,var(--cal-cardio) 20%,var(--line))",background:"radial-gradient(120% 90% at 100% 0%,color-mix(in srgb,var(--cal-cardio) 10%,transparent),transparent 58%),var(--card)"}}>
       <div style={{display:"flex", alignItems:"center", gap:20}}>
         <div style={{position:"relative", width:120, height:120, flexShrink:0}}>
           <svg width="120" height="120">
             <circle cx="60" cy="60" r={R} fill="none" stroke={T.line} strokeWidth="10" />
-            <circle cx="60" cy="60" r={R} fill="none" stroke={T.green} strokeWidth="10" strokeLinecap="round"
+            <circle cx="60" cy="60" r={R} fill="none" stroke="var(--cal-cardio)" strokeWidth="10" strokeLinecap="round"
               strokeDasharray={C} strokeDashoffset={C*(1-pct)} transform="rotate(-90 60 60)"
-              style={{transition:"stroke-dashoffset .8s cubic-bezier(.22,1,.36,1)", filter: hit ? "drop-shadow(0 0 6px rgba(var(--accent-rgb),.7))" : "none"}} />
+              style={{transition:"stroke-dashoffset .8s cubic-bezier(.22,1,.36,1)", filter: hit ? "drop-shadow(0 0 6px color-mix(in srgb,var(--cal-cardio) 70%,transparent))" : "none"}} />
           </svg>
           <div style={{position:"absolute", inset:0, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center"}}>
             <div style={{fontSize:23, fontWeight:900, color:T.ink, fontVariantNumeric:"tabular-nums", lineHeight:1}}>{yCount.toLocaleString()}</div>
-            <div style={{fontSize:11, fontWeight:800, color: hit?T.green:T.sub, marginTop:3}}>{hit ? "✓ 100%" : `${Math.round(pct*100)}% of ${goalK}`}</div>
+            <div style={{fontSize:11, fontWeight:800, color: hit?"var(--cal-cardio)":T.sub, marginTop:3}}>{hit ? "✓ 100%" : `${Math.round(pct*100)}% of ${goalK}`}</div>
           </div>
         </div>
         <div style={{flex:1, minWidth:0}}>
           <div className="eyebrow" style={{fontSize:10, color:T.sub, marginBottom:7}}>Yesterday</div>
           {/* clear, high-contrast goal status — no more squinting */}
           <div style={{display:"inline-flex", alignItems:"center", gap:7, padding:"6px 12px", borderRadius:99, marginBottom:13,
-            background: hit ? "var(--accent)" : yCount>0 ? "rgba(var(--accent-rgb),.12)" : T.input,
+            background: hit ? "var(--cal-cardio)" : yCount>0 ? "color-mix(in srgb,var(--cal-cardio) 12%,transparent)" : T.input,
             border: hit ? "none" : `1px solid ${T.line}`,
-            boxShadow: hit ? "0 6px 18px -6px rgba(var(--accent-rgb),.7)" : "none"}}>
+            boxShadow: hit ? "0 6px 18px -6px color-mix(in srgb,var(--cal-cardio) 70%,transparent)" : "none"}}>
             <span style={{fontSize:15}}>{hit ? "🏆" : yCount>0 ? "🚶" : "😴"}</span>
-            <span style={{fontSize:13.5, fontWeight:800, color: hit ? "#05140b" : yCount>0 ? T.green : T.sub}}>
+            <span style={{fontSize:13.5, fontWeight:800, color: hit ? "var(--cal-cardio-ink)" : yCount>0 ? "var(--cal-cardio)" : T.sub}}>
               {hit ? "Goal reached!" : yCount>0 ? `${remaining.toLocaleString()} steps to go` : "No steps yet"}
             </span>
           </div>
@@ -4104,12 +4105,12 @@ function StepRingChart({ map, goal, meta }) {
       <div style={{display:"flex", background:T.input, borderRadius:10, padding:3, gap:2, marginBottom:14}}>
         {["1D","W","M","6M","Y","5Y"].map(r=>(
           <button key={r} onClick={()=>{setRange(r); setSel(null);}} style={{flex:1, padding:"7px 0", borderRadius:8, fontSize:12, fontWeight:800,
-            background: range===r?T.green:"none", color: range===r?"#000":T.sub}}>{r}</button>
+            background: range===r?"var(--cal-cardio)":"none", color: range===r?"var(--cal-cardio-ink)":T.sub}}>{r}</button>
         ))}
       </div>
 
       {sel!=null && chart.bars[sel] ? (<>
-        <div style={{fontSize:11, fontWeight:800, color:T.green, textTransform:"uppercase", letterSpacing:.6}}>
+        <div style={{fontSize:11, fontWeight:800, color:"var(--cal-cardio)", textTransform:"uppercase", letterSpacing:.6}}>
           {chart.bars[sel].full}
           {(() => { const s = meta && chart.bars[sel].day && chart.bars[sel].has ? meta[chart.bars[sel].day] : null;
             return s ? <span style={{color: s==="manual"?T.down:T.sub, marginLeft:6}}>· {srcLabel[s]}</span> : null; })()}
@@ -4125,7 +4126,7 @@ function StepRingChart({ map, goal, meta }) {
           <span style={{fontSize:27, fontWeight:800, color:T.ink, fontVariantNumeric:"tabular-nums"}}>{chart.avg.toLocaleString()}</span>
           <span style={{fontSize:13, color:T.sub}}>steps/day</span>
         </div>
-        <div style={{fontSize:12, color:T.sub, marginBottom:14}}>{rangeSub[range]} · <span style={{color:T.green}}>tap a bar for details</span></div>
+        <div style={{fontSize:12, color:T.sub, marginBottom:14}}>{rangeSub[range]} · <span style={{color:"var(--cal-cardio)"}}>tap a bar for details</span></div>
       </>)}
 
       <div ref={plotRef}
@@ -4136,15 +4137,15 @@ function StepRingChart({ map, goal, meta }) {
           <div key={i} style={{flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:5, minWidth:0, pointerEvents:"none"}}>
             <div className="vbar" style={{width:"100%", maxWidth: range==="W"?30:14, borderRadius:"4px 4px 2px 2px",
               height: b.has&&b.value>0 ? Math.max(4, (b.value/chart.max)*100) : 3,
-              background: sel===i ? "#fff" : (meta && b.day && meta[b.day]==="manual") ? T.down : b.mark ? T.green : b.has ? "rgba(var(--accent-rgb),.6)" : T.line,
+              background: sel===i ? "#fff" : (meta && b.day && meta[b.day]==="manual") ? T.down : b.mark ? "var(--cal-cardio)" : b.has ? "color-mix(in srgb,var(--cal-cardio) 60%,var(--input))" : T.line,
               animationDelay:`${i*0.02}s`, transition:"background .12s ease"}} />
-            <span style={{fontSize:9, color: (sel===i||b.mark)?T.green:T.sub, fontWeight: (sel===i||b.mark)?800:400, whiteSpace:"nowrap"}}>{(i%chart.every===0 || i===chart.bars.length-1) ? b.label : ""}</span>
+            <span style={{fontSize:9, color: (sel===i||b.mark)?"var(--cal-cardio)":T.sub, fontWeight: (sel===i||b.mark)?800:400, whiteSpace:"nowrap"}}>{(i%chart.every===0 || i===chart.bars.length-1) ? b.label : ""}</span>
           </div>
         ))}
       </div>
       {hasManual && (
         <div style={{display:"flex", gap:14, marginTop:10, fontSize:11, color:T.sub, flexWrap:"wrap"}}>
-          <span style={{display:"flex", alignItems:"center", gap:5}}><span style={{width:9, height:9, borderRadius:2, background:T.green}} /> Apple Health (auto)</span>
+          <span style={{display:"flex", alignItems:"center", gap:5}}><span style={{width:9, height:9, borderRadius:2, background:"var(--cal-cardio)"}} /> Apple Health (auto)</span>
           <span style={{display:"flex", alignItems:"center", gap:5}}><span style={{width:9, height:9, borderRadius:2, background:T.down}} /> manually entered</span>
           <span>· hover a bar to check</span>
         </div>
@@ -4297,7 +4298,7 @@ function DuelsCard({ user, all, nameOf, myId, myName, proIds = [], minimized = f
                   {!me && oIsPro(oId) && <span style={{flexShrink:0, display:"inline-flex"}}><ProBadge small /></span>}
                 </span>
                 <span style={{flex:1, height:8, background:T.input, borderRadius:99, overflow:"hidden"}}>
-                  <span style={{display:"block", width:`${val/mx*100}%`, height:"100%", background: me?T.green:"rgba(var(--accent-rgb),.5)", borderRadius:99, transition:"width .5s ease"}} />
+                  <span style={{display:"block", width:`${val/mx*100}%`, height:"100%", background:me?"var(--cal-cardio)":`color-mix(in srgb, var(--cal-cardio) 44%, ${T.input})`, borderRadius:99, transition:"width .5s ease", boxShadow:me?"0 0 10px color-mix(in srgb, var(--cal-cardio) 34%, transparent)":"none"}} />
                 </span>
                 <b style={{fontSize:12.5, color:T.ink, minWidth:54, textAlign:"right", fontVariantNumeric:"tabular-nums"}}>{val.toLocaleString()}</b>
               </div>
@@ -4464,10 +4465,10 @@ function CardioStepsRecap({ user }) {
   const show = t != null ? { n:t, when:"today" } : y != null ? { n:y, when:"yesterday" } : null;
   if (!show) return null;
   return (
-    <div className="card" style={{display:"flex", alignItems:"center", gap:12, padding:"12px 16px"}}>
+    <div className="card" style={{display:"flex", alignItems:"center", gap:12, padding:"12px 16px",borderColor:"color-mix(in srgb,var(--cal-cardio) 22%,var(--line))",background:"radial-gradient(90% 100% at 100% 0%,color-mix(in srgb,var(--cal-cardio) 8%,transparent),transparent 65%),var(--card)"}}>
       <span style={{fontSize:24}}>👟</span>
       <div style={{flex:1, minWidth:0}}>
-        <div style={{fontSize:18, fontWeight:800, color:T.green, fontVariantNumeric:"tabular-nums"}}>{show.n.toLocaleString()} <span style={{fontSize:12.5, color:T.sub, fontWeight:600}}>steps {show.when}</span></div>
+        <div style={{fontSize:18, fontWeight:800, color:"var(--cal-cardio)", fontVariantNumeric:"tabular-nums"}}>{show.n.toLocaleString()} <span style={{fontSize:12.5, color:T.sub, fontWeight:600}}>steps {show.when}</span></div>
         <div style={{fontSize:11.5, color:T.sub}}>Synced from Apple Health via your iPhone Shortcut · full charts in the Steps tab</div>
       </div>
     </div>
@@ -4507,27 +4508,27 @@ function CardioOverview({ cardio, minimized=false, onMinimizedChange }) {
     <div style={{minWidth:0,flex:1}}><div className="h" style={{fontSize:14,color:T.tealDk}}>Cardio activity</div><div style={{fontSize:11,color:T.sub}}>{allTotals.sessions} session{allTotals.sessions===1?"":"s"} · {allTotals.minutes} min</div></div>
     <button type="button" onClick={()=>onMinimizedChange?.(false)} aria-label="Show cardio activity chart" style={showSectionBtn}>Show</button>
   </div>;
-  return <div className="card">
+  return <div className="card" style={{background:"radial-gradient(90% 70% at 100% 0%,color-mix(in srgb,var(--cal-cardio) 8%,transparent),transparent 62%),var(--card)",borderColor:"color-mix(in srgb,var(--cal-cardio) 24%,var(--line))"}}>
     <div style={{display:"flex",alignItems:"flex-start",gap:10,marginBottom:10}}>
       <div style={{flex:1,minWidth:0}}><div className="h" style={{fontSize:18,color:T.tealDk}}>Cardio activity</div><div style={{fontSize:12,color:T.sub,marginTop:2}}>Only periods with logged cardio appear.</div></div>
-      <div style={{display:"flex",alignItems:"center",gap:6}}><div className="seg"><button type="button" aria-pressed={metric==="minutes"} className={`seg-btn ${metric==="minutes"?"on":""}`} onClick={()=>setMetric("minutes")}>Minutes</button><button type="button" aria-pressed={metric==="calories"} className={`seg-btn ${metric==="calories"?"on":""}`} onClick={()=>setMetric("calories")}>Calories</button></div>
+      <div style={{display:"flex",alignItems:"center",gap:6}}><div className="seg"><button type="button" aria-pressed={metric==="minutes"} className={`seg-btn ${metric==="minutes"?"on":""}`} onClick={()=>setMetric("minutes")} style={metric==="minutes"?{color:"var(--cal-cardio)",background:"color-mix(in srgb,var(--cal-cardio) 15%,transparent)"}:undefined}>Minutes</button><button type="button" aria-pressed={metric==="calories"} className={`seg-btn ${metric==="calories"?"on":""}`} onClick={()=>setMetric("calories")} style={metric==="calories"?{color:"var(--cal-cardio)",background:"color-mix(in srgb,var(--cal-cardio) 15%,transparent)"}:undefined}>Calories</button></div>
       <button type="button" onClick={()=>onMinimizedChange?.(true)} title="Minimize cardio activity" aria-label="Minimize cardio activity" style={minimizeBtn}>➖</button></div>
     </div>
-    <div style={{display:"flex",gap:2,marginBottom:12,borderBottom:`1px solid ${T.line}`}}>{CARDIO_RANGES.map(v=><button type="button" aria-pressed={range===v} key={v} onClick={()=>setRange(v)} style={{flex:1,background:"none",padding:"9px 4px",fontSize:12.5,color:range===v?T.green:T.sub,borderBottom:range===v?`2px solid ${T.green}`:"2px solid transparent",borderRadius:0,fontWeight:800}}>{v}</button>)}</div>
+    <div style={{display:"flex",gap:2,marginBottom:12,borderBottom:`1px solid ${T.line}`}}>{CARDIO_RANGES.map(v=><button type="button" aria-pressed={range===v} key={v} onClick={()=>setRange(v)} style={{flex:1,background:"none",padding:"9px 4px",fontSize:12.5,color:range===v?"var(--cal-cardio)":T.sub,borderBottom:range===v?"2px solid var(--cal-cardio)":"2px solid transparent",borderRadius:0,fontWeight:800}}>{v}</button>)}</div>
     <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:7,marginBottom:13}}>
-      {[[totals.sessions,"sessions"],[totals.minutes,"minutes"],[totals.calKnown?totals.calories.toLocaleString():"—","calories"]].map(([v,l])=><div key={l} style={{background:T.input,border:`1px solid ${T.line}`,borderRadius:10,padding:"9px 6px",textAlign:"center"}}><div style={{fontSize:19,fontWeight:850,color:l===(metric==="minutes"?"minutes":"calories")?T.green:T.ink,fontVariantNumeric:"tabular-nums"}}>{v}</div><div style={{fontSize:10.5,color:T.sub}}>{l}</div></div>)}
+      {[[totals.sessions,"sessions"],[totals.minutes,"minutes"],[totals.calKnown?totals.calories.toLocaleString():"—","calories"]].map(([v,l])=><div key={l} style={{background:T.input,border:`1px solid ${T.line}`,borderRadius:10,padding:"9px 6px",textAlign:"center"}}><div style={{fontSize:19,fontWeight:850,color:l===(metric==="minutes"?"minutes":"calories")?"var(--cal-cardio)":T.ink,fontVariantNumeric:"tabular-nums"}}>{v}</div><div style={{fontSize:10.5,color:T.sub}}>{l}</div></div>)}
     </div>
     {!bins.length?<div style={{minHeight:110,display:"grid",placeItems:"center",textAlign:"center",color:T.sub,fontSize:13}}>No cardio logged {rangeText}.</div>:<>
       <div style={{overflowX:"auto",padding:"4px 1px 8px",WebkitOverflowScrolling:"touch"}}>
         <div style={{display:"flex",alignItems:"flex-end",gap:7,height:132,minWidth:`max(100%, ${bins.length*48}px)`}}>{bins.map((b,i)=>{const val=metric==="minutes"?b.minutes:b.calories;const active=b.key===(picked?.key);return <button key={b.key} onClick={()=>setSelected(b.key)} aria-label={`${b.title}: ${b.minutes} minutes, ${b.calKnown?`${b.calories} calories`:"calories unavailable"}`} style={{flex:"1 0 40px",height:"100%",minWidth:40,padding:0,background:"none",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"flex-end",gap:5,borderRadius:8}}>
-          <span style={{fontSize:10.5,fontWeight:800,color:active?T.green:T.sub}}>{val>0?val:""}</span>
-          <span className="vbar" style={{width:"70%",maxWidth:32,minHeight:5,height:Math.max(5,val/max*82),borderRadius:"7px 7px 3px 3px",background:active?T.green:"rgba(var(--accent-rgb),.48)",boxShadow:active?"0 0 16px rgba(var(--accent-rgb),.45)":"none",animationDelay:`${Math.min(i,12)*.025}s`}} />
+          <span style={{fontSize:10.5,fontWeight:800,color:active?"var(--cal-cardio)":T.sub}}>{val>0?val:""}</span>
+          <span className="vbar" style={{width:"70%",maxWidth:32,minHeight:5,height:Math.max(5,val/max*82),borderRadius:"7px 7px 3px 3px",background:active?"var(--cal-cardio)":"color-mix(in srgb,var(--cal-cardio) 45%,var(--input))",boxShadow:active?"0 0 16px color-mix(in srgb,var(--cal-cardio) 45%,transparent)":"none",animationDelay:`${Math.min(i,12)*.025}s`}} />
           <span style={{fontSize:9.5,color:active?T.ink:T.sub,whiteSpace:"nowrap",maxWidth:46,overflow:"hidden",textOverflow:"ellipsis"}}>{b.label}</span>
         </button>;})}</div>
       </div>
-      {picked&&<div key={picked.key} style={{marginTop:6,background:T.input,border:`1px solid ${T.green}`,borderRadius:12,padding:"11px 12px",animation:"fadeSwap .2s ease-out both"}}>
-        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}><div style={{fontSize:13.5,fontWeight:800,flex:1}}>{picked.title}</div><span style={{fontSize:12,color:T.green,fontWeight:800}}>{picked.minutes} min</span><span style={{fontSize:12,color:T.ink,fontWeight:800}}>{picked.calKnown?`${picked.calories} cal`:"— cal"}</span></div>
-        <div style={{display:"grid",gap:6}}>{picked.sessions.map((c,i)=><div key={c.id??i} style={{display:"flex",alignItems:"center",gap:8,fontSize:12.5}}><span style={{width:6,height:6,borderRadius:99,background:T.green,flexShrink:0}}/><span style={{flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontWeight:650}}>{c.activity}</span><span style={{color:T.sub}}>{c.duration||0} min</span><span style={{color:T.sub,minWidth:48,textAlign:"right"}}>{c.calories!=null?`${c.calories} cal`:"—"}</span></div>)}</div>
+      {picked&&<div key={picked.key} style={{marginTop:6,background:T.input,border:"1px solid var(--cal-cardio)",borderRadius:12,padding:"11px 12px",animation:"fadeSwap .2s ease-out both"}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}><div style={{fontSize:13.5,fontWeight:800,flex:1}}>{picked.title}</div><span style={{fontSize:12,color:"var(--cal-cardio)",fontWeight:800}}>{picked.minutes} min</span><span style={{fontSize:12,color:T.ink,fontWeight:800}}>{picked.calKnown?`${picked.calories} cal`:"— cal"}</span></div>
+        <div style={{display:"grid",gap:6}}>{picked.sessions.map((c,i)=><div key={c.id??i} style={{display:"flex",alignItems:"center",gap:8,fontSize:12.5}}><span style={{width:6,height:6,borderRadius:99,background:"var(--cal-cardio)",flexShrink:0}}/><span style={{flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontWeight:650}}>{c.activity}</span><span style={{color:T.sub}}>{c.duration||0} min</span><span style={{color:T.sub,minWidth:48,textAlign:"right"}}>{c.calories!=null?`${c.calories} cal`:"—"}</span></div>)}</div>
       </div>}
     </>}
   </div>;
@@ -4666,7 +4667,7 @@ function CardioTab({ data, setData, latestBW, user, stepsOn }) {
 
     {stepStats.any && (
       <div className="card" style={{display:"flex", justifyContent:"space-around", textAlign:"center", gap:8}}>
-        <div><div style={{fontSize:20, fontWeight:800, color:T.green}}>{stepStats.today.toLocaleString()}</div><div style={{fontSize:11.5, color:T.sub}}>👣 today</div></div>
+        <div><div style={{fontSize:20, fontWeight:800, color:"var(--cal-cardio)"}}>{stepStats.today.toLocaleString()}</div><div style={{fontSize:11.5, color:T.sub}}>👣 today</div></div>
         <div><div style={{fontSize:20, fontWeight:800, color:T.ink}}>{stepStats.week.toLocaleString()}</div><div style={{fontSize:11.5, color:T.sub}}>this week</div></div>
         <div><div style={{fontSize:20, fontWeight:800, color:T.ink}}>{stepStats.total.toLocaleString()}</div><div style={{fontSize:11.5, color:T.sub}}>all-time</div></div>
       </div>
@@ -5558,7 +5559,7 @@ function DayStartCard({ data, setData }) {
 }
 
 /* Small visual bits that make the walkthrough look like the Shortcuts app. */
-const STEP_BLUE = "#4C9BFF", STEP_BLUEBG = "rgba(76,155,255,.16)";
+const STEP_BLUE = "var(--cal-cardio)", STEP_BLUEBG = "color-mix(in srgb,var(--cal-cardio) 16%,transparent)";
 /* a word you tap in Shortcuts */
 function Tap({ children }) {
   return <span style={{ display:"inline-block", color:STEP_BLUE, background:STEP_BLUEBG, borderRadius:6, padding:"1px 7px", fontWeight:700, whiteSpace:"nowrap" }}>{children}</span>;
@@ -5567,7 +5568,7 @@ function Tap({ children }) {
    square, matching how variables actually render in the Shortcuts editor. */
 function Var({ children, icon, iconBg }) {
   return (
-    <span style={{ display:"inline-flex", alignItems:"center", gap:5, color:STEP_BLUE, background:"rgba(76,155,255,.18)", borderRadius:6, padding:"2px 8px 2px 4px", fontWeight:700, fontSize:12.5, whiteSpace:"nowrap" }}>
+    <span style={{ display:"inline-flex", alignItems:"center", gap:5, color:STEP_BLUE, background:STEP_BLUEBG, borderRadius:6, padding:"2px 8px 2px 4px", fontWeight:700, fontSize:12.5, whiteSpace:"nowrap" }}>
       <span style={{ width:16, height:16, borderRadius:4, flexShrink:0, background:iconBg || "#3B7BEF", display:"inline-flex", alignItems:"center", justifyContent:"center", fontSize:9.5, lineHeight:1 }}>{icon || "◈"}</span>
       {children}
     </span>
@@ -5887,7 +5888,7 @@ function StepsCard({ user, data, setData }) {
           <div style={{ fontSize:11, color:STEP_BLUE, fontWeight:700, marginBottom:8 }}>🔼 After adding it, drag it above “End Repeat.”</div>
           <MockCard glyph="📊" glyphBg="#8E8E93" title={<>Calculate the <Tap>Sum</Tap> of <Var icon="❤️" iconBg="#fff">Health Samples</Var></>} />
           <div style={{ fontSize:12.5, color:T.sub, lineHeight:1.55, marginBottom:9 }}>It starts as “<b>Average</b> of <b>Input</b>.” Tap <b>Average</b> → pick <b>Sum</b>. Tap <b>Input</b> → pick <b>Health Samples</b>. That adds that day's steps into one number.</div>
-          <div style={{ display:"flex", gap:9, alignItems:"flex-start", background:"rgba(76,155,255,.10)", border:`1px solid ${STEP_BLUE}`, borderRadius:10, padding:"10px 12px", fontSize:11.5, color:T.sub, lineHeight:1.55, marginBottom:9 }}>
+          <div style={{ display:"flex", gap:9, alignItems:"flex-start", background:STEP_BLUEBG, border:`1px solid ${STEP_BLUE}`, borderRadius:10, padding:"10px 12px", fontSize:11.5, color:T.sub, lineHeight:1.55, marginBottom:9 }}>
             <span style={{ flexShrink:0 }}>ℹ️</span>
             <span>Don't see <b style={{ color:T.ink }}>Health Samples</b> when you tap Input? Then step 4 isn't <b style={{ color:T.ink }}>above</b> this one — drag it up so it's <b>Find first, then Calculate</b>.</span>
           </div>
@@ -6879,7 +6880,7 @@ function CoachCard({ data, exMap, user, setData, onOpenLog }) {
   const otherTips = all.filter(t => t.cat !== "Training focus");
   const workoutPlan = useMemo(()=>todayWorkoutPlan(data,exMap),[data,exMap]);
   const workoutStartedToday = useMemo(()=>groupsLoggedOn(data.log||[],exMap,gymDayStr()).size>0,[data.log,exMap]);
-  const CAT_COLOR = { Progression: T.green, "Training focus": STEP_BLUE, Projection: "#9D5CFF", Plateau: "#E9C46A", Volume: STEP_BLUE, Balance: STEP_BLUE, Recovery: "#00D1B2", "Weak point": "#FF7A45" };
+  const CAT_COLOR = { Progression:"var(--cal-lift)", "Training focus":"var(--cal-lift)", Projection:"var(--cal-combo)", Plateau:"#E9C46A", Volume:STEP_BLUE, Balance:STEP_BLUE, Recovery:STEP_BLUE, "Weak point":"#FF7A45" };
 
   const setMinimized = (value) => setData(d => ({ ...d, profile: { ...(d.profile || {}), minimizedSections:{ ...(d.profile?.minimizedSections||{}), aiCoach:value } } }));
   const minimized = !!data.profile?.minimizedSections?.aiCoach;
@@ -6894,7 +6895,7 @@ function CoachCard({ data, exMap, user, setData, onOpenLog }) {
   }
 
   return (
-    <div className="card" style={{ border: "1px solid rgba(var(--accent-rgb),.4)", background: "radial-gradient(120% 90% at 0% 0%, rgba(var(--accent-rgb),.12), transparent 55%), linear-gradient(180deg, color-mix(in srgb, var(--card) 90%, #fff 5%), var(--card) 70%)" }}>
+    <div className="card" style={{ border: "1px solid color-mix(in srgb,var(--cal-lift) 34%,var(--line))", background: "radial-gradient(120% 90% at 0% 0%,color-mix(in srgb,var(--cal-lift) 11%,transparent),transparent 55%),radial-gradient(85% 70% at 100% 100%,color-mix(in srgb,var(--cal-cardio) 6%,transparent),transparent 62%),linear-gradient(180deg,color-mix(in srgb,var(--card) 90%,#fff 5%),var(--card) 70%)" }}>
       {/* header — split chip + minimize on the right */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 13 }}>
         <div className="h" style={{ fontSize: 18, color: T.ink, flex:1, minWidth:0 }}>💪 Lab's AI Coach</div>
@@ -7094,7 +7095,7 @@ function CoachCard({ data, exMap, user, setData, onOpenLog }) {
             <div key={t.key} style={{ display: "flex", gap: 11, alignItems: "flex-start", padding: "10px 0", borderTop: `1px solid ${T.creamLine}` }}>
               <span style={{ fontSize: 19, lineHeight: 1.2, flexShrink: 0 }}>{t.icon}</span>
               <div style={{ minWidth: 0, flex: 1 }}>
-                <span style={{ fontSize: 9.5, fontWeight: 800, color: CAT_COLOR[t.cat] || T.sub, textTransform: "uppercase", letterSpacing: .5 }}>{t.cat}</span>
+                <span style={{ display:"inline-block", fontSize:9.5, fontWeight:800, color:CAT_COLOR[t.cat]||T.sub, textTransform:"uppercase", letterSpacing:.5, background:`color-mix(in srgb,${CAT_COLOR[t.cat]||T.sub} 10%,transparent)`, border:`1px solid color-mix(in srgb,${CAT_COLOR[t.cat]||T.sub} 25%,transparent)`, borderRadius:99, padding:"2px 6px", marginBottom:2 }}>{t.cat}</span>
                 <div title={t.basis || ""} style={{ fontSize: 13.5, color: T.ink, lineHeight: 1.45 }}>{t.text}</div>
               </div>
               <button onClick={() => dismiss(t.key)} title="Don't show this again" style={{ flexShrink: 0, background: "none", border: "none", color: T.sub, fontSize: 15, lineHeight: 1, padding: "2px 4px", cursor: "pointer" }}>✕</button>
@@ -7307,7 +7308,7 @@ function StepFactsModal({ name, isMe, map, rank, onClose }) {
   ];
   return (
     <div onClick={onClose} style={{position:"fixed", inset:0, zIndex:60, background:"rgba(0,0,0,.6)", backdropFilter:"blur(2px)", display:"flex", alignItems:"center", justifyContent:"center", padding:20, animation:"fadeSwap .18s ease-out both"}}>
-      <div onClick={e=>e.stopPropagation()} style={{background:T.card, border:`1px solid ${T.line}`, borderRadius:18, padding:"20px 18px", maxWidth:380, width:"100%", animation:"calPop .26s cubic-bezier(.34,1.56,.64,1) both"}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:`radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--cal-cardio) 10%, transparent), transparent 42%), ${T.card}`, border:"1px solid color-mix(in srgb, var(--cal-cardio) 32%, var(--line))", borderRadius:18, padding:"20px 18px", maxWidth:380, width:"100%", animation:"calPop .26s cubic-bezier(.34,1.56,.64,1) both"}}>
         <div style={{display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:3}}>
           <div className="h" style={{fontSize:19, color:T.tealDk}}>👟 {name}{isMe?" (you)":""}</div>
           <button onClick={onClose} style={{background:T.input, color:T.sub, width:30, height:30, borderRadius:99, fontSize:14}}>✕</button>
@@ -7315,8 +7316,8 @@ function StepFactsModal({ name, isMe, map, rank, onClose }) {
         <div style={{fontSize:12, color:T.sub, marginBottom:14}}>Step stats{rank===1?" — leading the group 👑":""}</div>
         <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:8}}>
           {tiles.map(([n,l,hot],i)=>(
-            <div key={i} style={{background:T.input, borderRadius:12, padding:"11px 12px", border:`1px solid ${hot?T.green:T.line}`}}>
-              <div style={{fontSize:19, fontWeight:800, color: hot?T.green:T.ink, fontVariantNumeric:"tabular-nums", lineHeight:1.1}}>{n}</div>
+            <div key={i} style={{background:hot?"color-mix(in srgb, var(--cal-cardio) 9%, var(--input))":T.input, borderRadius:12, padding:"11px 12px", border:`1px solid ${hot?"var(--cal-cardio)":T.line}`}}>
+              <div style={{fontSize:19, fontWeight:800, color: hot?"var(--cal-cardio)":T.ink, fontVariantNumeric:"tabular-nums", lineHeight:1.1}}>{n}</div>
               <div style={{fontSize:11, color:T.sub, marginTop:3}}>{l}</div>
             </div>
           ))}
@@ -8125,19 +8126,19 @@ function FriendsTab({ user, data, setData, exMap = {}, nutritionOn, streaksOn, i
               {["W","1M","6M","YTD","1Y","5Y"].map(rg=>(
                 <button key={rg} onClick={()=>setStepRange(rg)} style={{
                   border:"none", cursor:"pointer", fontSize:11, fontWeight:700, padding:"4px 7px", borderRadius:99,
-                  background: stepRange===rg ? T.green : "transparent", color: stepRange===rg ? "#000" : T.sub }}>{rg}</button>
+                  background: stepRange===rg ? "var(--cal-cardio)" : "transparent", color: stepRange===rg ? "var(--cal-cardio-ink)" : T.sub }}>{rg}</button>
               ))}
             </div>
           </div>
 
           {/* group "journey" — everyone's steps combined into one fun number */}
           {stepBoard.total > 0 && (
-            <div style={{display:"flex", alignItems:"center", gap:11, background:"linear-gradient(100deg,rgba(var(--accent-rgb),.10),rgba(var(--accent-rgb),.02))",
-              border:`1px solid ${T.line}`, borderRadius:14, padding:"11px 14px", marginBottom:10}}>
+            <div style={{display:"flex", alignItems:"center", gap:11, background:"linear-gradient(100deg,color-mix(in srgb,var(--cal-cardio) 11%,transparent),color-mix(in srgb,var(--cal-cardio) 2%,transparent))",
+              border:"1px solid color-mix(in srgb,var(--cal-cardio) 24%,var(--line))", borderRadius:14, padding:"11px 14px", marginBottom:10}}>
               <span style={{fontSize:24}}>🌍</span>
               <div style={{flex:1, minWidth:0}}>
                 <div style={{fontSize:18, fontWeight:800, color:T.ink, fontVariantNumeric:"tabular-nums", lineHeight:1.1}}>{stepBoard.total.toLocaleString()} <span style={{fontSize:12, fontWeight:600, color:T.sub}}>steps together</span></div>
-                <div style={{fontSize:12, color:T.green, fontWeight:700}}>{Math.round(stepBoard.miles).toLocaleString()} mi {stepBoard.eq ? `· ${stepBoard.eq}` : ""}</div>
+                <div style={{fontSize:12, color:"var(--cal-cardio)", fontWeight:700}}>{Math.round(stepBoard.miles).toLocaleString()} mi {stepBoard.eq ? `· ${stepBoard.eq}` : ""}</div>
               </div>
             </div>
           )}
@@ -8150,10 +8151,10 @@ function FriendsTab({ user, data, setData, exMap = {}, nutritionOn, streaksOn, i
             return (
               <button key={r.uid} onClick={()=>setFacts({ uid:r.uid, name:r.user })} title={`${r.avg.toLocaleString()} steps/day average`}
                 style={{width:"100%", textAlign:"left", background:"none", display:"flex", alignItems:"center", gap:9, padding:"9px 2px", borderTop: i===0?"none":`1px solid ${T.creamLine}`}}>
-                <span style={{width:20, flexShrink:0, textAlign:"center", fontWeight:800, fontSize:13, color: i===0?T.green:T.sub}}>{i===0?"👑":i+1}</span>
+                <span style={{width:20, flexShrink:0, textAlign:"center", fontWeight:800, fontSize:13, color:i===0?"var(--cal-cardio)":T.sub}}>{i===0?"👑":i+1}</span>
                 <span style={{flex:"0 1 auto", minWidth:40, maxWidth:150, display:"flex", fontSize:13.5}}>{nameEl(r.uid, r.user, { you: isMe })}</span>
                 <span style={{flex:1, minWidth:36, height:8, background:T.input, borderRadius:99, overflow:"hidden"}}>
-                  <span style={{display:"block", width:`${r.total/top*100}%`, height:"100%", background:T.green, borderRadius:99, transition:"width .5s ease"}} />
+                  <span style={{display:"block", width:`${r.total/top*100}%`, height:"100%", background:"var(--cal-cardio)", borderRadius:99, transition:"width .5s ease"}} />
                 </span>
                 <span style={{textAlign:"right", flexShrink:0, minWidth:64}}>
                   <b style={{fontSize:13, color:T.ink, display:"block", fontVariantNumeric:"tabular-nums"}}>{r.total.toLocaleString()}</b>
