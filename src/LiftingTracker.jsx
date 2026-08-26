@@ -891,6 +891,7 @@ export default function LiftingTracker({ user }) {
         *::-webkit-scrollbar-thumb:hover { background:color-mix(in srgb, var(--accent) 45%, var(--line)); background-clip:content-box; }
         *::-webkit-scrollbar-track { background:transparent; }
         .card { position:relative; background:linear-gradient(180deg, color-mix(in srgb, var(--card) 90%, #fff 10%), var(--card) 58%); border:1px solid color-mix(in srgb, var(--line) 90%, transparent); border-radius:18px; padding:17px; margin-bottom:14px; box-shadow:0 1px 0 rgba(255,255,255,.05) inset, 0 12px 30px -18px rgba(0,0,0,.85); animation:rise .34s cubic-bezier(.22,1,.36,1) both; }
+        .card.compact-card { padding:8px 11px; margin-bottom:9px; min-height:48px; border-radius:14px; }
         /* bright hairline along the very top edge of every panel — subtle cockpit sheen */
         .card::before { content:""; position:absolute; top:0; left:14px; right:14px; height:1px; background:linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 30%, rgba(255,255,255,.5)), transparent); opacity:.4; pointer-events:none; }
         .recharts-text { fill:${T.sub}; }
@@ -1297,9 +1298,9 @@ function RoutinesPanel({ data, setData, onPick }) {
 
   /* ---- LIST (default) ---- */
   return (
-    <div style={box}>
+    <div style={{...box,...(collapsed?{padding:"8px 11px",marginBottom:9}:null)}}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <div className="h" style={{ fontSize: 18, color: T.tealDk }}>📋 Routines</div>
+        <div className="h" style={{ fontSize: collapsed?15:18, color: T.tealDk }}>📋 Routines</div>
         <button onClick={() => setCollapsed(c => !c)} style={{ background: "none", color: T.sub, fontSize: 13, padding: "4px 8px", marginLeft: "auto" }}>
           {collapsed ? "Show" : "Hide"}
         </button>
@@ -2026,16 +2027,23 @@ function QuickWorkoutLogger({ defaultDate, exercises, onSave, onAddExercise, min
     setCounts(Object.fromEntries(MUSCLES.map(m=>[m,0])));
     setSaved(true);
   };
+  if (!open) return (
+    <div className="card compact-card" style={{display:"flex",alignItems:"center",gap:8}}>
+      <span style={{fontSize:16}}>⚡</span>
+      <div className="h" style={{fontSize:14,color:T.tealDk,whiteSpace:"nowrap"}}>Quick workout</div>
+      <span style={{fontSize:11,color:T.sub,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>Muscles + sets only</span>
+      <button onClick={()=>onMinimizedChange?.(false)} title="Open quick workout" aria-label="Open quick workout" aria-expanded={false} style={showSectionBtn}>Show</button>
+    </div>
+  );
   return (
-    <div className="card" style={{borderColor:open?"rgba(var(--accent-rgb),.38)":T.line}}>
+    <div className="card" style={{borderColor:"rgba(var(--accent-rgb),.38)"}}>
       <div style={{display:"flex", alignItems:"center", gap:10}}>
         <div style={{minWidth:0, flex:1}}>
           <div className="h" style={{fontSize:18, color:T.tealDk}}>⚡ Quick workout</div>
-          {!open && <div style={{fontSize:11.5, color:T.sub, marginTop:2}}>Muscles + set counts. No exercises, weight, or reps.</div>}
         </div>
-        <button onClick={()=>onMinimizedChange?.(open)} title={open?"Minimize quick workout":"Open quick workout"} aria-label={open?"Minimize quick workout":"Open quick workout"} aria-expanded={open} style={{background:T.input, border:`1px solid ${T.line}`, color:open?T.sub:T.green, minWidth:36, height:36, borderRadius:9, padding:"0 9px", fontSize:open?15:12, fontWeight:800, flexShrink:0}}>{open?"−":"Show"}</button>
+        <button onClick={()=>onMinimizedChange?.(true)} title="Minimize quick workout" aria-label="Minimize quick workout" aria-expanded={true} style={minimizeBtn}>➖</button>
       </div>
-      {open && <>
+      <>
         <div style={{fontSize:12, color:T.sub, lineHeight:1.45, margin:"5px 0 12px"}}>For days you only want to track what you trained. It fills your calendar, streak, muscle charts, weekly goals, and group activity—never strength records.</div>
         <div style={{maxWidth:230, marginBottom:11}}><DateField label="Workout date" value={date} max={todayStr()} onChange={v=>{setDate(v);setSaved(false);}} /></div>
         <div style={{display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))", gap:8}}>
@@ -2064,7 +2072,7 @@ function QuickWorkoutLogger({ defaultDate, exercises, onSave, onAddExercise, min
           </summary>
           <div style={{marginTop:8, background:T.input, border:`1px solid ${T.line}`, borderRadius:12, padding:10}}><QuickAddSets exercises={exercises} onAdd={onAddExercise} /></div>
         </details>
-      </>}
+      </>
     </div>
   );
 }
@@ -2286,7 +2294,7 @@ function DateField({ label, value, onChange, max, min }) {
 const saveSm = { background:T.green, color:"#000", fontWeight:700, padding:"9px 18px", fontSize:13.5 };
 const cancelSm = { background:"none", border:`1px solid ${T.line}`, color:T.sub, padding:"9px 14px", fontSize:13.5 };
 const minimizeBtn = { background:"none", border:"1px solid transparent", color:T.sub, fontSize:15, lineHeight:1, width:36, height:36, padding:0, borderRadius:9, flexShrink:0 };
-const showSectionBtn = { flexShrink:0, background:T.input, border:`1px solid ${T.line}`, color:T.green, fontWeight:800, fontSize:12, minHeight:36, padding:"6px 13px", borderRadius:99 };
+const showSectionBtn = { flexShrink:0, background:T.input, border:`1px solid ${T.line}`, color:T.green, fontWeight:800, fontSize:11.5, minHeight:32, padding:"4px 11px", borderRadius:99 };
 const editBox = { background:T.cream, border:`1px solid ${T.creamLine}`, borderRadius:10, padding:12 };
 const noteInput = { display:"block", width:"100%", marginTop:5, resize:"vertical", minHeight:44,
   background:T.input, color:T.ink, border:`1px solid ${T.line}`, borderRadius:10, padding:"9px 11px",
@@ -2813,7 +2821,7 @@ function YearRecap({ data, setData }) {
 
   if (stats.empty) return null;
   if (minimized) return (
-    <div className="card" style={{display:"flex", alignItems:"center", gap:10, padding:"11px 14px", background:"linear-gradient(160deg,#0C1A0E,#0C0D0D 60%)"}}>
+    <div className="card compact-card" style={{display:"flex", alignItems:"center", gap:8, background:"linear-gradient(160deg,#0C1A0E,#0C0D0D 60%)"}}>
       <span style={{fontSize:17}}>✨</span>
       <div style={{minWidth:0, flex:1}}><div className="h" style={{fontSize:14, color:T.green}}>{year} in review</div><div style={{fontSize:11, color:T.sub}}>{stats.sets} sets · {stats.days} workout day{stats.days===1?"":"s"}</div></div>
       <button onClick={()=>setMinimizedSaved(false)} style={showSectionBtn}>Show</button>
@@ -3100,7 +3108,7 @@ function Dashboard({ data, exMap, setData, own = true, user, sharedSteps = null,
       const isBW = exMap[p]?.type==="Bodyweight";
       if (minimizedCharts[p]) {
         const latest = pts[pts.length-1];
-        return <div className="card" key={p} style={{display:"flex", alignItems:"center", gap:10, padding:"11px 14px"}}>
+        return <div className="card compact-card" key={p} style={{display:"flex", alignItems:"center", gap:8}}>
           <span style={{fontSize:17}}>📈</span>
           <div style={{minWidth:0, flex:1}}><div className="h" style={{fontSize:14, color:T.tealDk, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{p}</div><div style={{fontSize:11, color:T.sub}}>{latest ? `Latest: ${latest.value}${isBW?" reps":` ${uLabel(units)}`}` : "No chart data yet"}</div></div>
           <button onClick={()=>minimizeChart(p,false)} style={showSectionBtn}>Show</button>
@@ -3212,7 +3220,7 @@ function Dashboard({ data, exMap, setData, own = true, user, sharedSteps = null,
     const targetDone = Object.values(weekSets).reduce((sum,n)=>sum+n,0);
     const targetGoal = Object.values(targets).reduce((sum,n)=>sum+n,0);
     widgets.target = targetMinimized ? (
-      <div className="card" style={{display:"flex", alignItems:"center", gap:10, padding:"11px 14px"}}>
+      <div className="card compact-card" style={{display:"flex", alignItems:"center", gap:8}}>
         <span style={{fontSize:17}}>🎯</span>
         <div style={{minWidth:0, flex:1}}><div className="h" style={{fontSize:14, color:T.tealDk}}>Weekly set target</div><div style={{fontSize:11, color:T.sub}}>{fmtSets(targetDone)} / {fmtSets(targetGoal)} credited sets this week</div></div>
         <button onClick={()=>minimizeTarget(false)} style={showSectionBtn}>Show</button>
@@ -3315,7 +3323,7 @@ function Dashboard({ data, exMap, setData, own = true, user, sharedSteps = null,
 
   const muscleTotal = pieData.reduce((sum,row)=>sum+row.value,0);
   widgets.muscle = muscleMinimized ? (
-    <div className="card" style={{display:"flex", alignItems:"center", gap:10, padding:"11px 14px"}}>
+    <div className="card compact-card" style={{display:"flex", alignItems:"center", gap:8}}>
       <span style={{fontSize:17}}>🥧</span>
       <div style={{minWidth:0, flex:1}}><div className="h" style={{fontSize:14, color:T.tealDk}}>Last 30 days — work by muscle</div><div style={{fontSize:11, color:T.sub}}>{fmtSets(muscleTotal)} credited sets · {pieData.length} muscle group{pieData.length===1?"":"s"}</div></div>
       <button onClick={()=>minimizeMuscle(false)} style={showSectionBtn}>Show</button>
@@ -3430,7 +3438,7 @@ function RecordsTab({ data, exMap, setData }) {
     .slice().sort((a,b)=>b.lastDone.localeCompare(a.lastDone) || a.name.localeCompare(b.name));
 
   if (minimized) return (
-    <div className="card" style={{display:"flex", alignItems:"center", gap:10, padding:"11px 14px"}}>
+    <div className="card compact-card" style={{display:"flex", alignItems:"center", gap:8}}>
       <span style={{fontSize:17}}>🏆</span>
       <div style={{minWidth:0, flex:1}}><div className="h" style={{fontSize:14, color:T.tealDk}}>Personal records</div><div style={{fontSize:11, color:T.sub}}>{logged.length} lift{logged.length===1?"":"s"} with saved records</div></div>
       <button onClick={()=>setMinimizedSaved(false)} style={showSectionBtn}>Show</button>
@@ -4186,7 +4194,7 @@ function DuelsCard({ user, all, nameOf, myId, myName, proIds = [], minimized = f
 
   const currentCount = mine.filter(d => d.status === "pending" || (d.status === "active" && today <= d.end_day)).length;
   if (minimized) return (
-    <div className="card" style={{display:"flex", alignItems:"center", gap:10, padding:"11px 14px"}}>
+    <div className="card compact-card" style={{display:"flex", alignItems:"center", gap:8}}>
       <span style={{fontSize:17}}>⚔️</span>
       <div style={{minWidth:0, flex:1}}><div className="h" style={{fontSize:14, color:T.tealDk}}>Step duels</div><div style={{fontSize:11, color:T.sub}}>{currentCount} current duel{currentCount===1?"":"s"}{mine.length>currentCount?` · ${mine.length} total`:""}</div></div>
       <button onClick={()=>onMinimizedChange?.(false)} style={showSectionBtn}>Show</button>
@@ -4494,7 +4502,7 @@ function CardioOverview({ cardio, minimized=false, onMinimizedChange }) {
   const allTotals=useMemo(()=>({sessions:(cardio||[]).length,minutes:(cardio||[]).reduce((s,c)=>s+(c.duration||0),0)}),[cardio]);
   const max=Math.max(1,...bins.map(b=>metric==="minutes"?b.minutes:b.calories));
   const rangeText=range==="1D"?"today":range==="1M"?"the last 30 days":range==="1Y"?"the last 12 months":"all time";
-  if(minimized) return <div className="card" style={{display:"flex",alignItems:"center",gap:10,padding:"11px 14px"}}>
+  if(minimized) return <div className="card compact-card" style={{display:"flex",alignItems:"center",gap:8}}>
     <span style={{fontSize:18}}>🏃</span>
     <div style={{minWidth:0,flex:1}}><div className="h" style={{fontSize:14,color:T.tealDk}}>Cardio activity</div><div style={{fontSize:11,color:T.sub}}>{allTotals.sessions} session{allTotals.sessions===1?"":"s"} · {allTotals.minutes} min</div></div>
     <button type="button" onClick={()=>onMinimizedChange?.(false)} aria-label="Show cardio activity chart" style={showSectionBtn}>Show</button>
@@ -4666,7 +4674,7 @@ function CardioTab({ data, setData, latestBW, user, stepsOn }) {
 
     <CardioOverview cardio={data.cardio} minimized={!!minimizedSections.cardioActivity} onMinimizedChange={value=>setCardioMinimized("cardioActivity",value)} />
 
-    {minimizedSections.cardioCalendar ? <div className="card" style={{display:"flex",alignItems:"center",gap:10,padding:"11px 14px"}}>
+    {minimizedSections.cardioCalendar ? <div className="card compact-card" style={{display:"flex",alignItems:"center",gap:8}}>
       <span style={{fontSize:18}}>🗓️</span>
       <div style={{minWidth:0,flex:1}}><div className="h" style={{fontSize:14,color:T.tealDk}}>Cardio calendar</div><div style={{fontSize:11,color:T.sub}}>{cardioSummary.days} active day{cardioSummary.days===1?"":"s"}</div></div>
       <button type="button" onClick={()=>setCardioMinimized("cardioCalendar",false)} aria-label="Show cardio calendar" style={showSectionBtn}>Show</button>
@@ -6877,7 +6885,7 @@ function CoachCard({ data, exMap, user, setData, onOpenLog }) {
   const minimized = !!data.profile?.minimizedSections?.aiCoach;
   if (minimized) {
     return (
-      <div className="card" style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 14px" }}>
+      <div className="card compact-card" style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <span style={{ fontSize: 16 }}>💪</span>
         <span style={{ fontSize: 13, color: T.sub, fontWeight: 600, flex: 1, minWidth: 0 }}>Lab's AI Coach minimized{workoutStartedToday&&workoutPlan.rows.length ? " — today's workout is active" : ""}.</span>
         <button onClick={() => setMinimized(false)} style={showSectionBtn}>Show</button>
