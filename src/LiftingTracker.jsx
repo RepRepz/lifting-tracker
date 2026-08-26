@@ -6451,7 +6451,7 @@ const coachPrefsOf = (data) => ({ ...DEFAULT_COACH_PREFS, ...(data.profile?.coac
    overdue work, weekly gaps, today's credited sets, and the selected goal mode. */
 function todayWorkoutPlan(data, exMap) {
   const log=Array.isArray(data.log)?data.log:[];
-  const today=todayStr(), wk=weekStart(today), split=data.profile?.split||"";
+  const today=gymDayStr(), wk=weekStart(today), split=data.profile?.split||"";
   const prefs=coachPrefsOf(data), targets=setTargetsOf(data), frequency=splitFrequencyOf(data);
   const weekly=Object.fromEntries(MUSCLES.map(m=>[m,0]));
   const todayDone=Object.fromEntries(MUSCLES.map(m=>[m,0]));
@@ -6840,6 +6840,7 @@ function CoachCard({ data, exMap, user, setData, onOpenLog }) {
   const all = (groupTip && coachPrefs.balance ? [...tips, groupTip] : tips).filter(t => !dismissed.includes(t.key));
   const otherTips = all.filter(t => t.cat !== "Training focus");
   const workoutPlan = useMemo(()=>todayWorkoutPlan(data,exMap),[data,exMap]);
+  const workoutStartedToday = useMemo(()=>groupsLoggedOn(data.log||[],exMap,gymDayStr()).size>0,[data.log,exMap]);
   const CAT_COLOR = { Progression: T.green, "Training focus": STEP_BLUE, Projection: "#9D5CFF", Plateau: "#E9C46A", Volume: STEP_BLUE, Balance: STEP_BLUE, Recovery: "#00D1B2", "Weak point": "#FF7A45" };
 
   const setMinimized = (value) => setData(d => ({ ...d, profile: { ...(d.profile || {}), minimizedSections:{ ...(d.profile?.minimizedSections||{}), aiCoach:value } } }));
@@ -6848,7 +6849,7 @@ function CoachCard({ data, exMap, user, setData, onOpenLog }) {
     return (
       <div className="card" style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 14px" }}>
         <span style={{ fontSize: 16 }}>💪</span>
-        <span style={{ fontSize: 13, color: T.sub, fontWeight: 600, flex: 1, minWidth: 0 }}>Lab's AI Coach minimized{workoutPlan.rows.length ? " — today's workout is ready" : ""}.</span>
+        <span style={{ fontSize: 13, color: T.sub, fontWeight: 600, flex: 1, minWidth: 0 }}>Lab's AI Coach minimized{workoutStartedToday&&workoutPlan.rows.length ? " — today's workout is active" : ""}.</span>
         <button onClick={() => setMinimized(false)} style={showSectionBtn}>Show</button>
       </div>
     );
@@ -6869,8 +6870,9 @@ function CoachCard({ data, exMap, user, setData, onOpenLog }) {
         </div>
       </div>
 
-      {/* TODAY'S WORKOUT — only the muscles the coach recommends for this session */}
-      <div style={{ borderRadius: 15, padding: "14px 15px", marginBottom: 13,
+      {/* Wait for the first real set: targets should guide an active session, not
+          greet somebody with unfinished work before they have even started. */}
+      {workoutStartedToday && <div style={{ borderRadius: 15, padding: "14px 15px", marginBottom: 13,
         background: workoutPlan.complete ? "linear-gradient(135deg, rgba(var(--accent-rgb),.22), rgba(var(--accent-rgb),.06))" : "rgba(255,255,255,.03)",
         border: "1px solid " + (workoutPlan.rows.length ? "rgba(var(--accent-rgb),.4)" : T.line) }}>
         <div className="eyebrow" style={{ fontSize: 9.5, color: workoutPlan.rows.length ? T.green : T.sub, marginBottom: 7, display: "flex", alignItems: "center", gap: 6 }}>
@@ -6916,7 +6918,7 @@ function CoachCard({ data, exMap, user, setData, onOpenLog }) {
             <span style={{fontSize:10.5, color:T.sub}}>{canUndoRestart ? "Restores your exact previous split position." : "Use only when you want to begin the rotation again."}</span>
           </div>
         )}
-      </div>
+      </div>}
 
       {/* SPLIT SETUP — collapsible; clickable options, no typing */}
       {editing && (
