@@ -1396,8 +1396,8 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
     return raw === null ? 90 : Number(raw);
   });
   const [customRestOpen, setCustomRestOpen] = useState(false);
-  const [customRestMin, setCustomRestMin] = useState(()=>Math.floor(restDur/60));
-  const [customRestSec, setCustomRestSec] = useState(()=>restDur%60);
+  const [customRestMin, setCustomRestMin] = useState("");
+  const [customRestSec, setCustomRestSec] = useState("");
   const [showRestOvertime, setShowRestOvertime] = useState(() => localStorage.getItem("lt-rest-overtime") === "1");
   const restEndAt = () => Number(localStorage.getItem("lt-rest-end")) || 0;
   const restFinishedAt = () => Number(localStorage.getItem("lt-rest-finished")) || 0;
@@ -1417,9 +1417,10 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
     setRestOver(0); setRestDone(false); setRestLeft(restDur);
   };
   const saveCustomRest = () => {
-    const total=Math.max(1,Math.min(3600,(parseInt(customRestMin)||0)*60+(parseInt(customRestSec)||0)));
+    const blank=String(customRestMin).trim()===""&&String(customRestSec).trim()==="";
+    const total=Math.max(1,Math.min(3600,blank?300:(parseInt(customRestMin)||0)*60+(parseInt(customRestSec)||0)));
     setRestDur(total);
-    setCustomRestMin(Math.floor(total/60)); setCustomRestSec(total%60);
+    setCustomRestMin(""); setCustomRestSec("");
     setCustomRestOpen(false);
   };
   const restPresets = [0,60,90,120,180];
@@ -1857,7 +1858,7 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
         <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
           <span style={{fontSize:12.5,color:T.ink,fontWeight:800}}>⏱ Rest timer</span>
           <span style={{fontSize:10.5,color:T.sub,flex:1}}>{restDur===0?"Off":"Auto-starts"}</span>
-          <button type="button" onClick={()=>{setCustomRestMin(Math.floor((restDur||90)/60));setCustomRestSec((restDur||90)%60);setCustomRestOpen(v=>!v);}} style={{padding:"5px 8px",background:customRestOpen?T.mint:"none",border:"1px solid "+(customRestOpen?T.green:T.line),color:customRestOpen?T.green:T.sub,fontSize:10.5,fontWeight:750,whiteSpace:"nowrap"}}>Custom</button>
+          <button type="button" onClick={()=>{setCustomRestMin("");setCustomRestSec("");setCustomRestOpen(v=>!v);}} style={{padding:"5px 8px",background:customRestOpen?T.mint:"none",border:"1px solid "+(customRestOpen?T.green:T.line),color:customRestOpen?T.green:T.sub,fontSize:10.5,fontWeight:750,whiteSpace:"nowrap"}}>Custom</button>
           {restDur>0&&<button type="button" onClick={()=>setShowRestOvertime(v=>!v)} style={{padding:"5px 8px",background:showRestOvertime?T.mint:"none",border:"1px solid "+(showRestOvertime?T.green:T.line),color:showRestOvertime?T.green:T.sub,fontSize:10.5,fontWeight:750,whiteSpace:"nowrap"}}>{showRestOvertime?"✓ Count up":"Count up"}</button>}
         </div>
         <div style={{display:"grid",gridTemplateColumns:`repeat(${restChoices.length},minmax(0,1fr))`,gap:5}}>
@@ -1866,9 +1867,9 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
           ))}
         </div>
         {customRestOpen&&<div style={{display:"flex",alignItems:"center",justifyContent:"flex-end",gap:5,marginTop:7,paddingTop:7,borderTop:"1px solid "+T.line}}>
-          <input aria-label="Custom rest minutes" type="number" inputMode="numeric" min="0" max="60" value={customRestMin} onChange={e=>setCustomRestMin(e.target.value)} style={{width:48,minHeight:32,padding:"5px 6px",textAlign:"center",fontSize:12.5}} />
+          <input aria-label="Custom rest minutes" type="text" inputMode="numeric" pattern="[0-9]*" placeholder="5" value={customRestMin} onFocus={e=>e.target.select()} onChange={e=>setCustomRestMin(e.target.value.replace(/\D/g,"").slice(0,2))} style={{width:48,minHeight:36,padding:"5px 6px",textAlign:"center",fontSize:16}} />
           <span style={{fontSize:10.5,color:T.sub}}>min</span>
-          <input aria-label="Custom rest seconds" type="number" inputMode="numeric" min="0" max="59" value={customRestSec} onChange={e=>setCustomRestSec(e.target.value)} style={{width:48,minHeight:32,padding:"5px 6px",textAlign:"center",fontSize:12.5}} />
+          <input aria-label="Custom rest seconds" type="text" inputMode="numeric" pattern="[0-9]*" placeholder="00" value={customRestSec} onFocus={e=>e.target.select()} onChange={e=>setCustomRestSec(e.target.value.replace(/\D/g,"").slice(0,2))} style={{width:48,minHeight:36,padding:"5px 6px",textAlign:"center",fontSize:16}} />
           <span style={{fontSize:10.5,color:T.sub}}>sec</span>
           <button type="button" onClick={saveCustomRest} style={{padding:"7px 12px",background:T.green,color:"#061006",fontSize:11.5,fontWeight:850}}>Set</button>
         </div>}
