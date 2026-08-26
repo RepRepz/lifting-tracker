@@ -1637,41 +1637,6 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
   };
 
   return (<>
-    {restDone && restLeft <= 0 && (
-      <div className="card" style={{ padding:"12px 16px", marginBottom:14, borderColor:T.green, display:"flex", alignItems:"center", gap:10 }}>
-        <span style={{ fontSize:15, fontWeight:800, color:T.green }}>✅ Rest done — next set!</span>
-        {showRestOvertime && <span style={{fontSize:16,fontWeight:900,color:T.ink,fontVariantNumeric:"tabular-nums"}}>+{Math.floor(restOver/60)}:{String(restOver%60).padStart(2,"0")}</span>}
-        <button onClick={()=>{setRestDone(false);localStorage.removeItem("lt-rest-finished");}} style={{ marginLeft:"auto", background:T.input, color:T.sub, padding:"6px 12px", fontSize:13, fontWeight:600 }}>{showRestOvertime?"Done":"OK"}</button>
-      </div>
-    )}
-    {restLeft > 0 && (
-      <div className="card" style={{ padding:"12px 16px", marginBottom:14, borderColor:T.green }}>
-        <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-          <span style={{ fontSize:26, fontWeight:800, color:T.green, fontVariantNumeric:"tabular-nums", minWidth:74 }}>
-            {Math.floor(restLeft/60)}:{String(restLeft%60).padStart(2,"0")}
-          </span>
-          <span style={{ fontSize:13, color:T.sub, flex:1 }}>Rest timer</span>
-          <button onClick={()=>{ localStorage.setItem("lt-rest-end", String((restEndAt() || Date.now()) + 30000)); setRestLeft(s=>s+30); }} style={{ background:T.input, color:T.ink, border:`1px solid ${T.line}`, padding:"7px 12px", fontSize:13, fontWeight:600 }}>+30s</button>
-          <button onClick={stopRest} style={{ background:T.input, color:T.sub, padding:"7px 12px", fontSize:13, fontWeight:600 }}>Skip</button>
-        </div>
-        <div style={{ height:5, background:T.input, borderRadius:99, marginTop:10, overflow:"hidden" }}>
-          <div style={{ height:"100%", width:`${restDur>0 ? Math.min(100, restLeft/restDur*100) : 100}%`, background:T.green, borderRadius:99, transition:"width 1s linear" }} />
-        </div>
-      </div>
-    )}
-    <div className="card" style={{padding:"11px 14px",marginBottom:14}}>
-      <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-        <span style={{fontSize:12.5,color:T.ink,fontWeight:800}}>⏱ Rest timer</span>
-        {[0,60,90,120,180].map(s=>(
-          <button key={s} onClick={()=>{ setRestDur(s); if (s===0) stopRest(); }} style={{
-            background:restDur===s?T.mint:T.input,color:restDur===s?T.green:T.sub,
-            border:`1px solid ${restDur===s?T.green:T.line}`,padding:"6px 11px",fontSize:12.5,fontWeight:750,
-          }}>{s===0?"Off":`${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`}</button>
-        ))}
-        {restDur>0 && <button type="button" onClick={()=>setShowRestOvertime(v=>!v)} style={{marginLeft:"auto",padding:"6px 10px",background:showRestOvertime?T.mint:"none",border:`1px solid ${showRestOvertime?T.green:T.line}`,color:showRestOvertime?T.green:T.sub,fontSize:11.5,fontWeight:750}}>{showRestOvertime?"✓ Count up after zero":"Count up after zero"}</button>}
-      </div>
-      <div style={{fontSize:10.5,color:T.sub,marginTop:6}}>{restDur===0?"Off until you choose a time.":"Starts automatically after every working set."}</div>
-    </div>
     {routinesOn && <RoutinesPanel data={data} setData={setData} onPick={pickFromRoutine} />}
     <QuickWorkoutLogger defaultDate={gymDay} exercises={data.exercises} onSave={addQuickWorkout} onAddExercise={addQuickSets}
       minimized={!!data.profile?.minimizedSections?.quickWorkout}
@@ -1854,6 +1819,39 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
           </div>
         </div>
       )}
+    </div>
+
+    <div style={{marginBottom:14}}>
+      {restDone && restLeft <= 0 && (
+        <div className="card" style={{padding:"12px 16px",marginBottom:10,borderColor:T.green,display:"flex",alignItems:"center",gap:10}}>
+          <span style={{fontSize:15,fontWeight:800,color:T.green}}>✅ Rest done — next set!</span>
+          {showRestOvertime&&<span style={{fontSize:16,fontWeight:900,color:T.ink,fontVariantNumeric:"tabular-nums"}}>+{Math.floor(restOver/60)}:{String(restOver%60).padStart(2,"0")}</span>}
+          <button onClick={()=>{setRestDone(false);localStorage.removeItem("lt-rest-finished");}} style={{marginLeft:"auto",background:T.input,color:T.sub,padding:"6px 12px",fontSize:13,fontWeight:600}}>{showRestOvertime?"Done":"OK"}</button>
+        </div>
+      )}
+      {restLeft>0&&(
+        <div className="card" style={{padding:"12px 16px",marginBottom:10,borderColor:T.green}}>
+          <div style={{display:"flex",alignItems:"center",gap:12}}>
+            <span style={{fontSize:26,fontWeight:800,color:T.green,fontVariantNumeric:"tabular-nums",minWidth:74}}>{Math.floor(restLeft/60)}:{String(restLeft%60).padStart(2,"0")}</span>
+            <span style={{fontSize:13,color:T.sub,flex:1}}>Rest timer</span>
+            <button onClick={()=>{localStorage.setItem("lt-rest-end",String((restEndAt()||Date.now())+30000));setRestLeft(s=>s+30);}} style={{background:T.input,color:T.ink,border:"1px solid "+T.line,padding:"7px 12px",fontSize:13,fontWeight:600}}>+30s</button>
+            <button onClick={stopRest} style={{background:T.input,color:T.sub,padding:"7px 12px",fontSize:13,fontWeight:600}}>Skip</button>
+          </div>
+          <div style={{height:5,background:T.input,borderRadius:99,marginTop:10,overflow:"hidden"}}>
+            <div style={{height:"100%",width:(restDur>0?Math.min(100,restLeft/restDur*100):100)+"%",background:T.green,borderRadius:99,transition:"width 1s linear"}} />
+          </div>
+        </div>
+      )}
+      <div className="card" style={{padding:"11px 14px",marginBottom:0}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+          <span style={{fontSize:12.5,color:T.ink,fontWeight:800}}>⏱ Rest timer</span>
+          {[0,60,90,120,180].map(s=>(
+            <button key={s} onClick={()=>{setRestDur(s);if(s===0)stopRest();}} style={{background:restDur===s?T.mint:T.input,color:restDur===s?T.green:T.sub,border:"1px solid "+(restDur===s?T.green:T.line),padding:"6px 11px",fontSize:12.5,fontWeight:750}}>{s===0?"Off":Math.floor(s/60)+":"+String(s%60).padStart(2,"0")}</button>
+          ))}
+          {restDur>0&&<button type="button" onClick={()=>setShowRestOvertime(v=>!v)} style={{marginLeft:"auto",padding:"6px 10px",background:showRestOvertime?T.mint:"none",border:"1px solid "+(showRestOvertime?T.green:T.line),color:showRestOvertime?T.green:T.sub,fontSize:11.5,fontWeight:750}}>{showRestOvertime?"✓ Count up after zero":"Count up after zero"}</button>}
+        </div>
+        <div style={{fontSize:10.5,color:T.sub,marginTop:6}}>{restDur===0?"Off until you choose a time.":"Starts automatically after every working set."}</div>
+      </div>
     </div>
 
     <div className="card">
