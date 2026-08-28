@@ -181,8 +181,9 @@ export async function runBackup({ fixture = false, initialize = false, fullCheck
     await writeFile(path.join(root, 'manifest.json'), JSON.stringify(manifest, null, 2), { mode: 0o600 });
     const losses = suspiciousLoss(oldManifest, manifest);
     stage = 'encrypted off-site upload';
+    // Use the absolute path so the archive tree matches snapshot.paths on later reads.
     const output = await restic(['backup', '--json', '--host', HOST, '--tag', TAG,
-      '--tag', 'candidate', '--force', 'payload']);
+      '--tag', 'candidate', '--force', root]);
     const summary = output.trim().split('\n').map(line => JSON.parse(line)).find(line => line.message_type === 'summary');
     if (!summary?.snapshot_id) throw new Error('No completed off-site snapshot returned');
     const id = summary.snapshot_id;
