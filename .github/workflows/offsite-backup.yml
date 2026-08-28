@@ -1,7 +1,8 @@
 name: Encrypted off-site backup
 on:
   schedule:
-    - cron: '23 5,17 * * *'
+    # One project-wide backup per day, not one backup per user.
+    - cron: '23 9 * * *'
   workflow_dispatch:
     inputs:
       initialize:

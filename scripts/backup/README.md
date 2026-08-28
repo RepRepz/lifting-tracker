@@ -61,8 +61,11 @@ extending and testing recovery coverage.
 7. Run it a second time normally, then restore a production archive into an isolated,
    compatible Supabase test instance. Verify logs, auth, RLS, steps and media before
    declaring the deployment fully recovery-tested.
-8. Only then set repository variable `BACKUPS_ENABLED=true`. The schedule is 05:23 and
-   17:23 UTC (roughly every 12 hours). GitHub scheduling can be delayed and public-repo
+8. Only then set repository variable `BACKUPS_ENABLED=true`. The schedule is once daily
+   at 09:23 UTC (05:23 in New York during daylight saving, 04:23 in winter). One run covers
+   the entire project, not one run per user. A total source loss can lose changes made
+   since the last successful off-site copy: roughly 24 hours if the schedule is healthy,
+   longer after failed/delayed runs. GitHub scheduling can be delayed and public-repo
    schedules can be disabled after inactivity. Enable failure notifications for this
    workflow and use an independent dead-man monitor with a 26-hour threshold before
    relying on unattended operation. No independent monitor is configured by this repo.
@@ -75,8 +78,10 @@ can accept a value privately from stdin; do not put values in command-line argum
 - All required account/log/step/group/history/auth/storage tables are readable and present.
 - Database counts and the dump use the same repeatable-read snapshot.
 - Missing media, size mismatches, or concurrent Storage updates cause failure.
-- Database + downloaded media cannot exceed 64 MiB per run (about 4 GiB/31 days at
-  twice daily, before protocol overhead). This is a safety ceiling, not a quota meter:
+- Database + downloaded media cannot exceed 64 MiB per successful run (about 1.94 GiB,
+  or 2.08 decimal GB, for 31 daily runs, before protocol overhead). The database is
+  exported before its size is checked, so failed exports/retries can use MORE transfer.
+  This is a payload acceptance ceiling, not a hard network or billing cap:
   normal app traffic and other exports ALSO consume Supabase egress. Review actual usage.
 - The encrypted archive is downloaded again and every recorded file's SHA-256/size is
   checked. `pg_restore --list` checks archive readability; it is NOT a real DB restore.
@@ -95,6 +100,41 @@ Initially **no automatic deletion**: keep the last good recovery copy safe while
 the new system. Restic deduplicates/compresses repeated data. Review growth monthly; do
 not promise zero cost solely from this configuration. R2 Standard currently includes
 10 GB-month and request allowances, while overages can be billed.
+
+### Planning math (not a measured production export)
+
+The dashboard's approximately 31 MB is the physical database for ALL 13 saved accounts,
+including indexes, internal tables, and existing recovery histories. It is not 31 MB
+per active user, and it is NOT a measured pg_dump size. A logical dump can be smaller
+or larger than the physical database. Two recently updated accounts also do not prove
+that only two people have workout entries: settings changes update the same timestamp.
+
+For one daily project-wide export, using decimal MB/GB and ignoring deduplication:
+
+| Assumed payload per run | 31 daily exports from Supabase | 90 retained full copies |
+| --- | --- | --- |
+| 31 MB (illustrative only) | 0.961 GB | 2.790 GB |
+| 50 MB (larger illustrative workload) | 1.550 GB | 4.500 GB |
+| 64 MiB acceptance ceiling | 2.080 GB | 6.040 GB |
+
+These are payload-only scenarios, not user-count forecasts or hard bill limits. They
+assume a stable size; metadata/repository overhead, failed runs, manual runs, other
+projects, and growing histories/media are additional. R2 storage is retained space
+(billed as GB-month), not the sum of bytes transferred each month. Restic compression
+and chunk deduplication normally reduce retained data versus these full-copy scenarios.
+Request charges are separate; the verification download and weekly repository check
+also perform R2 requests. The 90-copy column is only a comparison, NOT an enforced
+retention limit: the scheduled job still never prunes automatically.
+
+For workload intuition only: 20 people each logging 20 sets, four times weekly, for
+4.3 weeks produce about 6,880 set records/month. At an ASSUMED 500 bytes per record that
+is about 3.44 MB of new raw set JSON, excluding indexes, repeated full-state histories,
+other features and media. Real serialized record sizes and account activity must be
+measured; this example cannot predict the entire database or backup size.
+
+Before activation, measure a real export and two subsequent deduplicated backups,
+review R2 request/storage usage, and establish the retention/alert procedure below.
+Do not extrapolate 20% storage per two active users, or claim a $0 guarantee.
 
 After a verified restore and a privacy/retention review, the intended off-site window is
 90 days. An administrator can preview `restic forget --host the-lab-backup --tag

@@ -2,9 +2,9 @@ name: Backup recovery tests
 on:
   push:
     branches: [main]
-    paths: ['scripts/backup/**', 'src/lib/save-errors.js', 'src/lib/storage.js', 'package*.json', '.github/workflows/backup-test.yml']
+    paths: ['scripts/backup/**', 'src/lib/save-errors.js', 'src/lib/storage.js', 'package*.json', '.github/workflows/backup-test.yml', '.github/workflows/offsite-backup.yml']
   pull_request:
-    paths: ['scripts/backup/**', 'src/lib/save-errors.js', 'src/lib/storage.js', 'package*.json', '.github/workflows/backup-test.yml']
+    paths: ['scripts/backup/**', 'src/lib/save-errors.js', 'src/lib/storage.js', 'package*.json', '.github/workflows/backup-test.yml', '.github/workflows/offsite-backup.yml']
   workflow_dispatch:
 permissions:
   contents: read

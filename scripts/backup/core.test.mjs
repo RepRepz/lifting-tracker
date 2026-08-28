@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import { configuration, PROJECT, REQUIRED_TABLES, validateInventory, suspiciousLoss, safeFile,
   storageFingerprint, sha } from './core.mjs';
 import { verifyPayload } from './run.mjs';
@@ -11,6 +11,11 @@ import { normalizeSaveError } from '../../src/lib/save-errors.js';
 const valid = { BACKUP_DATABASE_URL: `postgresql://postgres.${PROJECT}:secret@aws-0-us-east-2.pooler.supabase.com:5432/postgres`,
   RESTIC_REPOSITORY: 's3:https://example.r2.cloudflarestorage.com/the-lab-backups',
   RESTIC_PASSWORD: 'random-password-placeholder-32-characters', AWS_ACCESS_KEY_ID: 'test', AWS_SECRET_ACCESS_KEY: 'test' };
+test('scheduled backups run once daily and remain opt-in', async () => {
+  const workflow = await readFile(new URL('../../.github/workflows/offsite-backup.yml', import.meta.url), 'utf8');
+  assert.deepEqual([...workflow.matchAll(/cron:\s*'([^']+)'/g)].map(m => m[1]), ['23 9 * * *']);
+  assert.ok(workflow.includes("vars.BACKUPS_ENABLED == 'true'"));
+});
 test('production requires TLS off-site and the correct Supabase project', () => {
   assert.equal(configuration(valid).port, 5432);
   for (const db of [valid.BACKUP_DATABASE_URL.replace('5432', '6543'),
