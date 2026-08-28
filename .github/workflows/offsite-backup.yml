@@ -36,6 +36,9 @@ jobs:
       - name: Install database and encryption tools
         run: |
           sudo apt-get update -qq
+          sudo apt-get install -y postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get update -qq
           sudo apt-get install -y postgresql-client-18 restic
           echo '/usr/lib/postgresql/18/bin' >> "$GITHUB_PATH"
       - name: Export, encrypt, upload, download and verify
