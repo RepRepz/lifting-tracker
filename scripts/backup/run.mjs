@@ -16,17 +16,18 @@ export function command(program, args, options = {}) {
   return new Promise((resolve, reject) => {
     const proc = spawn(program, args, { env: options.env || process.env,
       cwd: options.cwd, shell: false, stdio: ['ignore', 'pipe', 'pipe'] });
-    let output = '', overflow = false;
+    let output = '', diagnostic = '', overflow = false;
     proc.stdout.on('data', chunk => {
       if (output.length + chunk.length > 8 * 1024 * 1024) { overflow = true; proc.kill(); }
       else output += chunk;
     });
-    proc.stderr.resume();
+    // Detailed diagnostics are allowed ONLY by callers running the synthetic local fixture.
+    proc.stderr.on('data', chunk => { if (options.fixture && diagnostic.length < 4096) diagnostic += chunk; });
     const timer = setTimeout(() => proc.kill(), options.timeout || 15 * 60_000);
     proc.on('error', () => { clearTimeout(timer); reject(new Error(`${program} could not start`)); });
     proc.on('close', code => {
       clearTimeout(timer);
-      if (code !== 0 || overflow) reject(new Error(`${program} failed (${code ?? 'timeout'})`));
+      if (code !== 0 || overflow) reject(new Error(`${program} failed (${code ?? 'timeout'})${options.fixture ? ': ' + diagnostic : ''}`));
       else resolve(output);
     });
   });
@@ -94,7 +95,7 @@ export async function runBackup({ fixture = false, initialize = false, fullCheck
       PGSSLMODE: fixture ? 'disable' : 'verify-full', PGSSLROOTCERT: ca ? caPath : 'system',
       PGCONNECT_TIMEOUT: '20', PGOPTIONS: '-c default_transaction_read_only=on -c statement_timeout=900000' };
     const resticEnv = { ...process.env, RESTIC_CACHE_DIR: path.join(taskRoot, 'cache') };
-    const restic = args => command('restic', args, { env: resticEnv, cwd: taskRoot });
+    const restic = args => command('restic', args, { env: resticEnv, cwd: taskRoot, fixture });
     if (initialize) await restic(['init']); // Explicit only; a missing repo during normal runs MUST fail.
     const oldSnapshots = JSON.parse(await restic(['snapshots', '--json', '--host', HOST, '--tag', `${TAG},verified`]));
     const previous = oldSnapshots.sort((a, b) => a.time.localeCompare(b.time)).at(-1);
@@ -129,9 +130,9 @@ export async function runBackup({ fixture = false, initialize = false, fullCheck
     const roles = (await client.query("select rolname from pg_roles where rolname not like 'pg\\_%' escape '\\' order by rolname")).rows.map(r => r.rolname);
     const serverVersion = (await client.query('show server_version')).rows[0].server_version;
     await command('pg_dump', ['--format=custom', '--compress=0', '--lock-wait-timeout=30s',
-      `--snapshot=${snapshot}`, '--file', path.join(root, 'database.dump')], { env: pgEnv });
+      `--snapshot=${snapshot}`, '--file', path.join(root, 'database.dump')], { env: pgEnv, fixture });
     // Auth password hashes ARE in auth.users; database-role passwords are intentionally omitted.
-    await command('pg_dumpall', ['--roles-only', '--no-role-passwords', '--file', path.join(root, 'roles.sql')], { env: pgEnv });
+    await command('pg_dumpall', ['--roles-only', '--no-role-passwords', '--file', path.join(root, 'roles.sql')], { env: pgEnv, fixture });
     await command('pg_restore', ['--list', path.join(root, 'database.dump')]);
     stage = 'media export';
     await mkdir(path.join(root, 'media'));
@@ -201,6 +202,7 @@ export async function runBackup({ fixture = false, initialize = false, fullCheck
     // No automatic forgetting/pruning: suspected loss must NEVER delete the last good copy.
     console.log('Encrypted backup uploaded, downloaded, and integrity-verified. No backup history was deleted.');
   } catch (error) {
+    if (fixture) console.error('Synthetic fixture diagnostic:', error.message);
     // Only operational stage is public; row values, account IDs and upstream error text stay private.
     throw new Error(`Backup failed during ${stage}. No old backups were deleted. Check credentials/configuration and investigate privately.`, { cause: error });
   } finally {
