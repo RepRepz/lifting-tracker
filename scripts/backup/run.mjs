@@ -92,7 +92,7 @@ export async function runBackup({ fixture = false, initialize = false, fullCheck
     if (ca) await writeFile(caPath, ca, { mode: 0o600 });
     const pgEnv = { ...process.env, PGHOST: config.host, PGPORT: String(config.port),
       PGUSER: config.user, PGPASSWORD: config.password, PGDATABASE: config.database,
-      PGSSLMODE: fixture ? 'disable' : 'verify-full', PGSSLROOTCERT: ca ? caPath : 'system',
+      PGSSLMODE: fixture ? 'disable' : 'verify-full', PGSSLROOTCERT: fixture ? '' : ca ? caPath : 'system',
       PGCONNECT_TIMEOUT: '20', PGOPTIONS: '-c default_transaction_read_only=on -c statement_timeout=900000' };
     const resticEnv = { ...process.env, RESTIC_CACHE_DIR: path.join(taskRoot, 'cache') };
     const restic = args => command('restic', args, { env: resticEnv, cwd: taskRoot, fixture });
