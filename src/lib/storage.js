@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { normalizeSaveError } from "./save-errors.js";
 
 export const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,
@@ -44,10 +45,7 @@ export async function saveUserState(userId, value, expectedUpdatedAt = null) {
     p_expected_updated_at: expectedUpdatedAt,
   });
   if (error) {
-    if (error.code === "P0001" || String(error.message || "").includes("STATE_CONFLICT")) {
-      const err = new Error("Cloud state changed on another device"); err.code = "STATE_CONFLICT"; throw err;
-    }
-    throw error;
+    throw normalizeSaveError(error);
   }
   const row = Array.isArray(data) ? data[0] : data;
   if (!row?.updated_at) {

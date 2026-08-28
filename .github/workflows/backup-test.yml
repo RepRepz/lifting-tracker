@@ -1,0 +1,54 @@
+name: Backup recovery tests
+on:
+  push:
+    branches: [main]
+    paths: ['scripts/backup/**', 'src/lib/save-errors.js', 'src/lib/storage.js', 'package*.json', '.github/workflows/backup-test.yml']
+  pull_request:
+    paths: ['scripts/backup/**', 'src/lib/save-errors.js', 'src/lib/storage.js', 'package*.json', '.github/workflows/backup-test.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  recovery-drill:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: synthetic-ci-only
+          POSTGRES_DB: lab_backup_source
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      BACKUP_DATABASE_URL: postgresql://postgres:synthetic-ci-only@127.0.0.1:5432/lab_backup_source
+      RESTORE_DRILL_DATABASE_URL: postgresql://postgres:synthetic-ci-only@127.0.0.1:5432/lab_backup_drill
+      RESTIC_PASSWORD: synthetic-ci-only-not-used-in-production
+      BACKUP_FIXTURE_TEST: 'true'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+      - run: npm ci --ignore-scripts
+      - run: node --test scripts/backup/core.test.mjs
+      - name: Install database and encryption tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y postgresql-client-18 restic
+          echo '/usr/lib/postgresql/18/bin' >> "$GITHUB_PATH"
+          echo "RESTIC_REPOSITORY=$RUNNER_TEMP/fixture-restic" >> "$GITHUB_ENV"
+      - run: node scripts/backup/fixture.mjs
+      - run: node scripts/backup/run.mjs --fixture --init --full-check
+      - name: Second backup tests previous-manifest comparison
+        run: node scripts/backup/run.mjs --fixture
+      - name: Create isolated restore database
+        env:
+          PGPASSWORD: synthetic-ci-only
+        run: createdb -h 127.0.0.1 -U postgres lab_backup_drill
+      - run: node scripts/backup/restore-drill.mjs
+      - name: No private artifacts
+        run: echo 'Only synthetic data is used here. Production backup archives are never uploaded to GitHub.'

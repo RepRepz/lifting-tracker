@@ -7,6 +7,17 @@ supabase/.temp/
 *.local
 .DS_Store
 
+# Private recovery material must never enter this public repository.
+.backups/
+backup-work/
+*.dump
+*.backup
+*.age
+*.pgpass
+roles.sql
+backup-manifest.json
+restic-password*
+
 harness.html
 src/harness.jsx
 shot.mjs

@@ -780,7 +780,7 @@ export default function LiftingTracker({ user }) {
             return;
           } catch(conflictError) { console.error("conflict recovery failed",conflictError); }
         }
-        if(e?.code==="P0001" || String(e?.message||"").includes("STATE_SHRINK_BLOCKED")) {
+        if(e?.code==="STATE_SHRINK_BLOCKED" || String(e?.message||"").includes("STATE_SHRINK_BLOCKED")) {
           localStorage.setItem(protectedKey,"1"); setSyncState("protected"); return;
         }
         console.error("save failed",e); setSyncState("offline");

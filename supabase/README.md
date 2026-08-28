@@ -1,5 +1,12 @@
 # Backend security and recovery setup
 
+## Encrypted off-site backups
+
+See [backup setup and recovery runbook](../scripts/backup/README.md). The pipeline is
+implemented but is **not active until production credentials, a private repository,
+first-run verification and an isolated restore drill are complete**. Existing in-database
+history continues unchanged. No production backup is implied by a successful CI fixture test.
+
 The SQL in `migrations/` is the source of truth for the production database. Apply migrations in filename order through the Supabase CLI or dashboard before deploying matching frontend code.
 
 ## Public signup rollout
