@@ -15,12 +15,14 @@ function NiceTip({ active, payload, label, unit }) {
     <div style={{
       background: "rgba(18,19,20,.96)", border: `1px solid ${T.line}`, borderRadius: 10,
       padding: "8px 12px", boxShadow: "0 6px 18px rgba(0,0,0,.55)", pointerEvents: "none",
+      maxWidth:"min(260px,calc(100vw - 44px))",
     }}>
       <div style={{ fontSize: 11, color: T.sub, marginBottom: 2 }}>{p.payload?.tipLabel || label}</div>
       <div style={{ fontSize: 15, fontWeight: 700, color: "#FFF", display: "flex", alignItems: "center", gap: 6 }}>
         <span style={{ width: 8, height: 8, borderRadius: 99, background: p.payload?.dotColor || p.stroke || p.color, display: "inline-block" }} />
         {p.value}{unit ? <span style={{ fontSize: 11.5, color: T.sub, fontWeight: 500 }}>{unit}</span> : null}
       </div>
+      {p.payload?.detail && <div style={{fontSize:12,color:"#FFF",fontWeight:700,marginTop:4}}>{p.payload.detail}</div>}
       {p.payload?.sub && <div style={{ fontSize: 11.5, color: T.sub, marginTop: 3 }}>{p.payload.sub}</div>}
     </div>
   );

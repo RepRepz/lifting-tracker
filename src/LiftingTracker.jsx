@@ -2108,7 +2108,7 @@ function QuickWorkoutLogger({ defaultDate, exercises, onSave, onAddExercise, min
         <button onClick={()=>onMinimizedChange?.(true)} title="Minimize quick workout" aria-label="Minimize quick workout" aria-expanded={true} style={minimizeBtn}>➖</button>
       </div>
       <>
-        <div style={{fontSize:12, color:T.sub, lineHeight:1.45, margin:"5px 0 12px"}}>For days you only want to track what you trained. It fills your calendar, streak, muscle charts, weekly goals, and group activity—never strength records.</div>
+        <div style={{fontSize:12, color:T.sub, lineHeight:1.45, margin:"5px 0 12px"}}>For days you only want to track what you trained. Sets fill muscle charts and weekly goals; calendar, streak, and group-day credit follow your workout-day minimum. Never creates strength records.</div>
         <div style={{maxWidth:230, marginBottom:11}}><DateField label="Workout date" value={date} max={todayStr()} onChange={v=>{setDate(v);setSaved(false);}} /></div>
         <div style={{display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))", gap:8}}>
           {MUSCLES.map((muscle,i)=>{
@@ -2991,6 +2991,7 @@ function Dashboard({ data, exMap, setData, own = true, user, sharedSteps = null,
   /* Pinned charts live in account data (data.pins) so they sync across devices and
      friends' profiles show THEIR pins. Local state first, then persisted when it's your own. */
   const [pins, setPins] = useState(() => Array.isArray(data.pins) ? data.pins : []);
+  const [chartChoices, setChartChoices] = useState({});
   useEffect(() => {
     if (!own) return;
     setData(d => {
@@ -3015,25 +3016,27 @@ function Dashboard({ data, exMap, setData, own = true, user, sharedSteps = null,
 
   const validPins = pins.filter(p => exMap[p]);
   const picks = useMemo(() => {
-    const out = [...validPins];
-    for (const name of logged) {
-      if (out.length >= 4) break;
-      if (!out.includes(name)) out.push(name);
+    const pool=[...validPins,...logged.filter(name=>!validPins.includes(name))], out=[];
+    for(let i=0;i<4;i++){
+      const requested=chartChoices[i];
+      const name=requested&&exMap[requested]&&!out.includes(requested)?requested:pool.find(p=>!out.includes(p));
+      if(name) out.push(name);
     }
-    return out.slice(0, 4);
-  }, [pins, logged, exMap]); // eslint-disable-line react-hooks/exhaustive-deps
+    return out;
+  }, [validPins, logged, exMap, chartChoices]);
 
-  const isPinned = (i) => i < validPins.length;
-  /* choosing from the dropdown pins that slot; the 📌 button toggles */
-  const changePick = (i, name) => setPins(() => {
-    const without = validPins.filter(p => p !== name);
-    without.splice(Math.min(i, without.length), 0, name);
-    return without;
-  });
+  const isPinned = (i) => validPins.includes(picks[i]);
+  /* Dropdown changes are just browsing. Pinning is a separate, explicit action. */
+  const changePick = (i, name) => {
+    const previous=picks[i];
+    setChartChoices(cur=>({...cur,[i]:name}));
+    setPins(cur=>cur.filter(p=>p!==previous&&p!==name));
+    if(own) setData(d=>({...d,profile:{...(d.profile||{}),minimizedCharts:{...(d.profile?.minimizedCharts||{}),[name]:false}}}));
+  };
   const togglePin = (i) => setPins(() => {
-    if (i < validPins.length) return validPins.filter((_, j) => j !== i);
     const name = picks[i];
-    return name && !validPins.includes(name) ? [...validPins, name] : validPins;
+    if(!name) return validPins;
+    return validPins.includes(name)?validPins.filter(p=>p!==name):[...validPins,name].slice(-4);
   });
 
   const chartOpts = useMemo(() => [...logged].sort((a, b) => a.localeCompare(b)), [logged]);
@@ -3085,21 +3088,25 @@ function Dashboard({ data, exMap, setData, own = true, user, sharedSteps = null,
     /* longer ranges: one point per day */
     const byDate = {};
     for (const e of entries) {
-      const b = byDate[e.date] || (byDate[e.date] = { reps:0, sets:0, bestSet:0, best1rm:0, gym:e.gym });
+      const b = byDate[e.date] || (byDate[e.date] = { reps:0, sets:0, bestSet:0, best1rm:0, bestWeight:null, bestReps:0, gym:e.gym, bestGym:e.gym });
       b.sets++; b.reps += e.reps; b.bestSet = Math.max(b.bestSet, e.reps); b.gym = e.gym || b.gym; // last entry's gym for the day
-      if (!isBWex) b.best1rm = Math.max(b.best1rm, dispW(e1rm(e.weight||0, e.reps), units));
+      if (!isBWex) {
+        const estimate=dispW(e1rm(e.weight||0,e.reps),units);
+        if(estimate>b.best1rm){b.best1rm=estimate;b.bestWeight=dispW(e.weight||0,units);b.bestReps=e.reps;b.bestGym=e.gym;}
+      }
     }
     let pts = Object.entries(byDate).sort((a,b)=>a[0].localeCompare(b[0]))
       .map(([d,b])=>{
         const setTxt = `${b.sets} set${b.sets>1?"s":""}`;
-        const gymTag = showingAll && b.gym ? ` · ${gymName(gyms, b.gym)}` : "";
+        const gymTag = showingAll && (b.bestGym||b.gym) ? ` · ${gymName(gyms, b.bestGym||b.gym)}` : "";
         if (isBWex && best) return { date:d, label:fmtDate(d),
           value: b.bestSet, sub: `${setTxt} · ${b.reps} total reps${gymTag}`, dotColor:dotColorFor(b.gym) };
         if (isBWex) return { date:d, label:fmtDate(d),
           value: b.reps, sub: `${setTxt} · best set ${b.bestSet} reps${gymTag}`, dotColor:dotColorFor(b.gym) };
         return { date:d, label:fmtDate(d),
           value: Math.round(b.best1rm*10)/10,
-          sub: `${b.reps} total reps · ${setTxt}${gymTag}`, dotColor:dotColorFor(b.gym) };
+          detail: `Best set: ${b.bestWeight} ${uLabel(units)} × ${b.bestReps}`,
+          sub: `${b.reps} total reps · ${setTxt}${gymTag}`, dotColor:dotColorFor(b.bestGym||b.gym) };
       });
     const days = RANGE_DAYS[range];
     if (days!==Infinity && pts.length) {
@@ -6681,7 +6688,7 @@ const coachPrefsOf = (data) => ({ ...DEFAULT_COACH_PREFS, ...(data.profile?.coac
 
 /* Build one practical session from the same inputs as the coach: split position,
    overdue work, weekly gaps, today's credited sets, and the selected goal mode. */
-function todayWorkoutPlan(data, exMap) {
+function todayWorkoutPlan(data, exMap, nowMs=Date.now()) {
   const log=Array.isArray(data.log)?data.log:[];
   const today=gymDayStr(), split=data.profile?.split||"";
   const prefs=coachPrefsOf(data), targets=setTargetsOf(data), frequency=splitFrequencyOf(data);
@@ -6741,6 +6748,12 @@ function todayWorkoutPlan(data, exMap) {
   const primaryVolume=Object.fromEntries(MUSCLES.map(m=>[m,0]));
   for(const e of todayEntries) for(const m of entryPrimaryMuscles(e,exMap)) if(MUSCLES.includes(m)) primaryVolume[m]+=setCountOf(e);
   const totalPrimary=Object.values(primaryVolume).reduce((sum,n)=>sum+n,0);
+  const latestEntryMs=Math.max(0,...todayEntries.map(e=>Number(e.id)||0).filter(id=>id>1e12&&id<=nowMs+60000));
+  const pushupOnly=todayEntries.length>0&&todayEntries.every(isPushupEntry);
+  const pushupReps=pushupOnly?todayEntries.reduce((sum,e)=>sum+(Number(e.reps)||0),0):0;
+  const tokenActivity=todayEntries.length>0&&!qualifyingLiftDates(data,exMap).has(today);
+  const tokenExpired=tokenActivity&&(latestEntryMs===0||nowMs-latestEntryMs>=2*60*60*1000);
+  const tokenLabel=pushupOnly?`${pushupReps} push-up rep${pushupReps===1?"":"s"}`:`${fmtSets(todayEntries.reduce((sum,e)=>sum+setCountOf(e),0))} working set${todayEntries.reduce((sum,e)=>sum+setCountOf(e),0)===1?"":"s"}`;
   const matchScore=c=>{
     const matches=c.muscles.filter(m=>todayGroups.has(m)).length;
     const matchingVolume=c.muscles.reduce((sum,m)=>sum+(primaryVolume[m]||0),0);
@@ -6778,12 +6791,12 @@ function todayWorkoutPlan(data, exMap) {
       started=ranked.filter(c=>Math.abs(matchScore(c)-matchScore(ranked[0]))<.05).find(c=>c.id===queued?.id)||started;
     }
     const progress=started?splitSessionProgress(data,log,exMap,today,started.muscles):null;
-    if(started&&(matchScore(started)>=.5||mixedPair||savedCandidate)&&progress?.total>0){
+    if((!tokenExpired||savedCandidate)&&started&&(matchScore(started)>=.5||mixedPair||savedCandidate)&&progress?.total>0){
       chosen=started;
       actualProgress=progress;
       reason=mixedPair&&!savedCandidate
         ? `Mixed primary work detected. I'm showing ${naturalList(started.muscles)} because it was scheduled—choose below if that is not today's workout.`
-        : progress.complete?"Tracking the split day your logged volume matches.":"Tracking the workout you started. These sets count now, but the day will not advance until its volume and coverage are meaningful.";
+        : progress.complete?"Tracking the split day your logged volume matches.":tokenActivity?`Tentatively tracking the workout your ${tokenLabel} matched. Add meaningful matching volume to confirm it; otherwise your planned workout returns after 2 hours.`:"Tracking the workout you started. These sets count now, but the day will not advance until its volume and coverage are meaningful.";
     }
   }
   if(!chosen&&split==="custom"&&prefs.focusStyle!=="volume"){
@@ -6809,7 +6822,7 @@ function todayWorkoutPlan(data, exMap) {
     chosen=scheduled||candidates.slice().sort((a,b)=>overdueScore(b)-overdueScore(a))[0]||null;
     if(chosen){
       const gap=Math.round(overdueScore(chosen));
-      reason=gap>=prefs.staleDays?"This workout is the most overdue — about "+gap+" day"+(gap===1?"":"s")+" since training.":"Best next fit for your "+splitLabelOf(data)+".";
+      reason=tokenExpired?`${tokenLabel[0].toUpperCase()+tokenLabel.slice(1)} still counts as extra volume, but it wasn't enough to replace your planned ${naturalList(chosen.muscles)} workout.`:gap>=prefs.staleDays?"This workout is the most overdue — about "+gap+" day"+(gap===1?"":"s")+" since training.":"Best next fit for your "+splitLabelOf(data)+".";
     }
   }
   const diverged=!!(todayGroups.size&&scheduled&&chosen&&splitSignature(scheduled.muscles)!==splitSignature(chosen.muscles));
@@ -7042,6 +7055,8 @@ function coachTips(data, exMap, units) {
    again"), stored per-account in data.profile.coachDismissed. */
 function CoachCard({ data, exMap, user, setData, onOpenLog }) {
   const units = useUnit();
+  const [coachClock,setCoachClock]=useState(()=>Date.now());
+  useEffect(()=>{const id=setInterval(()=>setCoachClock(Date.now()),5*60*1000);return()=>clearInterval(id);},[]);
   const tips = useMemo(() => coachTips(data, exMap, units), [data, exMap, units]);
   const [groupTip, setGroupTip] = useState(null);
   const dismissed = data.profile?.coachDismissed || [];
@@ -7132,7 +7147,7 @@ function CoachCard({ data, exMap, user, setData, onOpenLog }) {
 
   const all = (groupTip && coachPrefs.balance ? [...tips, groupTip] : tips).filter(t => !dismissed.includes(t.key));
   const otherTips = all.filter(t => t.cat !== "Training focus");
-  const workoutPlan = useMemo(()=>todayWorkoutPlan(data,exMap),[data,exMap]);
+  const workoutPlan = useMemo(()=>todayWorkoutPlan(data,exMap,coachClock),[data,exMap,coachClock]);
   const workoutStartedToday = useMemo(()=>groupsLoggedOn(data.log||[],exMap,gymDayStr()).size>0,[data.log,exMap]);
   const manualFinished=manualSplitFinished(data,gymDayStr(),workoutPlan.muscles);
   const finishWorkout=()=>setData(d=>({...d,profile:{...(d.profile||{}),coachFinishedWorkouts:{...(d.profile?.coachFinishedWorkouts||{}),[gymDayStr()]:splitSignature(workoutPlan.muscles)}}}));
@@ -7436,8 +7451,8 @@ function CoachCard({ data, exMap, user, setData, onOpenLog }) {
         <div style={{marginTop:8, padding:"9px 11px", background:T.input, border:`1px solid ${T.line}`, borderRadius:11, fontSize:10.5, color:T.sub, lineHeight:1.65}}>
           <div>✓ Uses your {goalModeInfo.label.toLowerCase()} goals{customTargetCount ? `, including ${customTargetCount} custom` : ""}.</div>
           <div>✓ Uses your coach style, split, rolling 7-day volume, reps, and optional effort.</div>
-          <div>✓ The first working set immediately identifies today's actual split day; completion is judged separately.</div>
-          <div>✓ Small sessions add volume without resetting an overdue muscle or completing a whole split day.</div>
+          <div>✓ Early sets can identify today's workout provisionally. Meaningful matching volume confirms it.</div>
+          <div>✓ A small unmatched session still adds volume, but your planned workout returns after two hours instead of being replaced all day.</div>
           <div>✓ Your actual workout and scheduled workout stay separate. Training something else updates today's card without erasing the queued day.</div>
           <div>✓ If meaningful primary sets match two split days, the coach asks which workout you meant. Incidental secondary work does not trigger it.</div>
           <div>✓ A split day advances after meaningful target-based volume and coverage, or when you explicitly finish it. Manual finishes can be undone.</div>
