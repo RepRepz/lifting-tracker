@@ -6468,7 +6468,9 @@ const meaningfulLastTrained = (data, log, exMap) => {
 /* Find a recent split day somebody started but did not cover. It becomes a compact
    carry-forward item instead of either disappearing or freezing the whole rotation. */
 const splitCatchUp = (data,log,exMap,candidates,today) => {
-  const last=meaningfulLastTrained(data,log,exMap);
+  const last=meaningfulLastTrained(data,log,exMap),targets=setTargetsOf(data),frequency=splitFrequencyOf(data),wk=weekStart(today);
+  const weekly=Object.fromEntries(MUSCLES.map(m=>[m,0]));
+  for(const e of (log||[])) if(e.effort!=="Warm-up"&&weekStart(e.date)===wk) for(const [m,credit] of entryMuscleCredits(e,exMap)) if(MUSCLES.includes(m)) weekly[m]+=credit*setCountOf(e);
   const dates=[...new Set((log||[]).filter(e=>e.date<today&&dayGap(today,e.date)<=14&&e.effort!=="Warm-up").map(e=>e.date))].sort().reverse();
   for(const date of dates){
     const groups=groupsLoggedOn(log,exMap,date);
@@ -6481,11 +6483,18 @@ const splitCatchUp = (data,log,exMap,candidates,today) => {
     if(!attempted||attempted.score<.65) continue;
     const progress=splitSessionProgress(data,log,exMap,date,attempted.muscles);
     if(progress.complete) continue;
-    const missing=attempted.muscles.filter(m=>(progress.credited[m]||0)<meaningfulDoseFor(data,m)&&(!last[m]||last[m]<date));
+    const missing=attempted.muscles.filter(m=>(progress.credited[m]||0)<meaningfulDoseFor(data,m)&&(!last[m]||last[m]<date)&&(weekly[m]||0)<(targets[m]||0));
     if(!missing.length) continue;
     const maxGap=Math.max(...missing.map(m=>last[m]?dayGap(today,last[m]):30));
-    return {date,muscles:missing,sourceMuscles:attempted.muscles,priority:maxGap>=coachPrefsOf(data).staleDays,
-      suggested:Object.fromEntries(missing.map(m=>[m,Math.max(2,Math.min(4,Math.ceil(meaningfulDoseFor(data,m)-(progress.credited[m]||0))))]))};
+    const suggested=Object.fromEntries(missing.map(m=>{
+      const weeklyGap=Math.max(0,(targets[m]||0)-(weekly[m]||0));
+      const normalDose=(targets[m]||0)/Math.max(1,frequency[m]||1);
+      return [m,Math.round(Math.min(10,weeklyGap,normalDose)*2)/2];
+    }));
+    return {date,muscles:missing,sourceMuscles:attempted.muscles,
+      priority:maxGap>=coachPrefsOf(data).staleDays&&missing.some(m=>suggested[m]>=meaningfulDoseFor(data,m)),suggested,
+      weekly:Object.fromEntries(missing.map(m=>[m,Math.round((weekly[m]||0)*10)/10])),
+      targets:Object.fromEntries(missing.map(m=>[m,targets[m]||0]))};
   }
   return null;
 };
@@ -7034,7 +7043,7 @@ function CoachCard({ data, exMap, user, setData, onOpenLog }) {
             <span style={{fontSize:10,color:T.sub}}>from {naturalList(workoutPlan.catchUp.sourceMuscles)} · {fmtDate(workoutPlan.catchUp.date)}</span>
           </div>
           <div style={{fontSize:13,color:T.ink,fontWeight:800,lineHeight:1.4,marginTop:4}}>{naturalList(workoutPlan.catchUp.muscles)} still needs a meaningful dose</div>
-          <div style={{fontSize:10.5,color:T.sub,lineHeight:1.45,marginTop:3}}>{workoutPlan.catchUp.muscles.map(m=>`${m}: about ${workoutPlan.catchUp.suggested[m]} sets`).join(" · ")}. {workoutPlan.catchUp.priority?"Do it first if recovered, then continue today's plan.":"Add it if recovered, or carry it into the next compatible workout."}</div>
+          <div style={{fontSize:10.5,color:T.sub,lineHeight:1.45,marginTop:3}}>{workoutPlan.catchUp.muscles.map(m=>`${m}: ${fmtSets(workoutPlan.catchUp.weekly[m])}/${fmtSets(workoutPlan.catchUp.targets[m])} this week · up to ${fmtSets(workoutPlan.catchUp.suggested[m])} sets next`).join(" · ")}. {workoutPlan.catchUp.priority?"Prioritize it when recovered; you can combine it with today's plan.":"Train it when recovered, or carry it into the next compatible workout."}</div>
         </div>}
         {split === "custom" && cycle.length > 0 && !editing && (
           <div style={{display:"flex", alignItems:"center", gap:8, marginTop:11, paddingTop:10, borderTop:`1px solid ${T.line}`, flexWrap:"wrap"}}>
@@ -7197,6 +7206,7 @@ function CoachCard({ data, exMap, user, setData, onOpenLog }) {
           <div>✓ Uses your coach style, split, recent sets, reps, and effort.</div>
           <div>✓ Small sessions add volume without resetting an overdue muscle or completing a whole split day.</div>
           <div>✓ A split day advances after meaningful target-based volume and coverage; doing another workout still tracks that workout while keeping missed work due.</div>
+          <div>✓ Catch-up amounts use your remaining weekly goal and normal split dose, count secondary work as ½, and never recommend cramming more than 10 sets for one muscle into a session.</div>
           {split === "custom" && <div>✓ An out-of-order workout does not erase older missed muscle groups.</div>}
           <div>✓ Main muscle = 1 set · secondary = ½ · warm-ups ignored.</div>
         </div>
