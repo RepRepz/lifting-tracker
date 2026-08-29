@@ -6752,7 +6752,7 @@ function todayWorkoutPlan(data, exMap, nowMs=Date.now()) {
   const pushupOnly=todayEntries.length>0&&todayEntries.every(isPushupEntry);
   const pushupReps=pushupOnly?todayEntries.reduce((sum,e)=>sum+(Number(e.reps)||0),0):0;
   const tokenActivity=todayEntries.length>0&&!qualifyingLiftDates(data,exMap).has(today);
-  const tokenExpired=tokenActivity&&(latestEntryMs===0||nowMs-latestEntryMs>=2*60*60*1000);
+  const tokenTimedOut=tokenActivity&&(latestEntryMs===0||nowMs-latestEntryMs>=90*60*1000);
   const tokenLabel=pushupOnly?`${pushupReps} push-up rep${pushupReps===1?"":"s"}`:`${fmtSets(todayEntries.reduce((sum,e)=>sum+setCountOf(e),0))} working set${todayEntries.reduce((sum,e)=>sum+setCountOf(e),0)===1?"":"s"}`;
   const matchScore=c=>{
     const matches=c.muscles.filter(m=>todayGroups.has(m)).length;
@@ -6762,7 +6762,7 @@ function todayWorkoutPlan(data, exMap, nowMs=Date.now()) {
     const firstMatch=c.muscles.some(m=>firstGroups.has(m))?1:0;
     return coverage*.6+specificity*.2+firstMatch*.2;
   };
-  let chosen=null, reason="", actualProgress=null, clarification=null, staleChoice=false;
+  let chosen=null, reason="", actualProgress=null, clarification=null, staleChoice=false, provisional=false, tokenExpired=false;
   // Once the log clearly matches a split day, make the visible session follow what
   // the person is actually doing; missed-work coaching is still evaluated separately.
   if(todayGroups.size){
@@ -6785,18 +6785,23 @@ function todayWorkoutPlan(data, exMap, nowMs=Date.now()) {
       clarification={options:mixedPair.map(c=>({id:c.id,muscles:c.muscles,signature:splitSignature(c.muscles)})),selected:savedCandidate?splitSignature(savedCandidate.muscles):null};
     }
     let started=savedCandidate||(mixedPair?(mixedPair.find(c=>c.id===scheduled?.id||splitSignature(c.muscles)===splitSignature(scheduled?.muscles))||mixedPair[0]):ranked[0]);
+    // During a tiny, still-unconfirmed session, even one primary set from the planned
+    // day is stronger evidence than an earlier random set from somewhere else.
+    if(tokenActivity&&scheduled&&candidatePrimary(scheduled)>0) started=scheduled;
     if(!savedCandidate&&!mixedPair&&split==="custom"&&started&&ranked[1]&&Math.abs(matchScore(started)-matchScore(ranked[1]))<.05){
       const pos=customCyclePosition(data,log.filter(e=>e.date<today),exMap);
       const queued=pos.idx>=0?pos.cycle[pos.idx]:null;
       started=ranked.filter(c=>Math.abs(matchScore(c)-matchScore(ranked[0]))<.05).find(c=>c.id===queued?.id)||started;
     }
+    provisional=!!(tokenActivity&&started&&scheduled&&splitSignature(started.muscles)!==splitSignature(scheduled.muscles));
+    tokenExpired=provisional&&tokenTimedOut;
     const progress=started?splitSessionProgress(data,log,exMap,today,started.muscles):null;
     if((!tokenExpired||savedCandidate)&&started&&(matchScore(started)>=.5||mixedPair||savedCandidate)&&progress?.total>0){
       chosen=started;
       actualProgress=progress;
       reason=mixedPair&&!savedCandidate
         ? `Mixed primary work detected. I'm showing ${naturalList(started.muscles)} because it was scheduled—choose below if that is not today's workout.`
-        : progress.complete?"Tracking the split day your logged volume matches.":tokenActivity?`Tentatively tracking the workout your ${tokenLabel} matched. Add meaningful matching volume to confirm it; otherwise your planned workout returns after 2 hours.`:"Tracking the workout you started. These sets count now, but the day will not advance until its volume and coverage are meaningful.";
+        : progress.complete?"Tracking the split day your logged volume matches.":provisional?`${tokenLabel[0].toUpperCase()+tokenLabel.slice(1)} suggests ${naturalList(started.muscles)}. Add matching volume to confirm it; otherwise ${naturalList(scheduled.muscles)} returns after 90 minutes.`:"Tracking the workout you started. These sets count now, but the day will not advance until its volume and coverage are meaningful.";
     }
   }
   if(!chosen&&split==="custom"&&prefs.focusStyle!=="volume"){
@@ -6845,8 +6850,8 @@ function todayWorkoutPlan(data, exMap, nowMs=Date.now()) {
   const catchUpMuscles=(catchUp?.muscles||[]).filter(m=>!chosen?.muscles?.includes(m));
   const carriedCatchUp=catchUp&&catchUpMuscles.length?{...catchUp,muscles:catchUpMuscles}:null;
   const complete=rows.length>0&&rows.every(r=>r.goal===0||r.done>=r.goal);
-  if(!rows.length&&chosen) return {muscles:chosen.muscles,scheduledMuscles:scheduled?.muscles||[],rows:[],addedRows,reason:"Your rolling 7-day targets for this workout are already covered.",complete:true,catchUp:carriedCatchUp,diverged,progress:actualProgress,clarification,staleChoice};
-  return {muscles:chosen?.muscles||[],scheduledMuscles:scheduled?.muscles||[],rows,addedRows,reason:complete?"Today's recommended targets are complete.":reason,complete,catchUp:carriedCatchUp,diverged,progress:actualProgress,clarification,staleChoice};
+  if(!rows.length&&chosen) return {muscles:chosen.muscles,scheduledMuscles:scheduled?.muscles||[],rows:[],addedRows,reason:"Your rolling 7-day targets for this workout are already covered.",complete:true,catchUp:carriedCatchUp,diverged,progress:actualProgress,clarification,staleChoice,provisional:provisional&&!tokenExpired};
+  return {muscles:chosen?.muscles||[],scheduledMuscles:scheduled?.muscles||[],rows,addedRows,reason:complete?"Today's recommended targets are complete.":reason,complete,catchUp:carriedCatchUp,diverged,progress:actualProgress,clarification,staleChoice,provisional:provisional&&!tokenExpired};
 }
 
 function coachTips(data, exMap, units) {
@@ -7056,7 +7061,7 @@ function coachTips(data, exMap, units) {
 function CoachCard({ data, exMap, user, setData, onOpenLog }) {
   const units = useUnit();
   const [coachClock,setCoachClock]=useState(()=>Date.now());
-  useEffect(()=>{const id=setInterval(()=>setCoachClock(Date.now()),5*60*1000);return()=>clearInterval(id);},[]);
+  useEffect(()=>{const id=setInterval(()=>setCoachClock(Date.now()),60*1000);return()=>clearInterval(id);},[]);
   const tips = useMemo(() => coachTips(data, exMap, units), [data, exMap, units]);
   const [groupTip, setGroupTip] = useState(null);
   const dismissed = data.profile?.coachDismissed || [];
@@ -7226,7 +7231,7 @@ function CoachCard({ data, exMap, user, setData, onOpenLog }) {
         background: workoutPlan.complete ? "linear-gradient(135deg, rgba(var(--accent-rgb),.22), rgba(var(--accent-rgb),.06))" : "rgba(255,255,255,.03)",
         border: "1px solid " + (workoutPlan.rows.length ? "rgba(var(--accent-rgb),.4)" : T.line) }}>
         <div className="eyebrow" style={{ fontSize: 9.5, color: workoutPlan.rows.length ? T.green : T.sub, marginBottom: 7, display: "flex", alignItems: "center", gap: 6 }}>
-          <span className="status-dot" style={{ width: 5, height: 5 }} />Today's workout
+          <span className="status-dot" style={{ width: 5, height: 5, background:workoutPlan.provisional?"#E9C46A":undefined }} />{workoutPlan.provisional?"Possible workout":"Today's workout"}
         </div>
         {!split ? (
           <div style={{ fontSize: 14, color: T.ink, fontWeight: 600, lineHeight: 1.5 }}>Pick your training split below so reminders match how you actually lift.</div>
@@ -7452,7 +7457,7 @@ function CoachCard({ data, exMap, user, setData, onOpenLog }) {
           <div>✓ Uses your {goalModeInfo.label.toLowerCase()} goals{customTargetCount ? `, including ${customTargetCount} custom` : ""}.</div>
           <div>✓ Uses your coach style, split, rolling 7-day volume, reps, and optional effort.</div>
           <div>✓ Early sets can identify today's workout provisionally. Meaningful matching volume confirms it.</div>
-          <div>✓ A small unmatched session still adds volume, but your planned workout returns after two hours instead of being replaced all day.</div>
+          <div>✓ A small unmatched session still adds volume, but your planned workout returns after 90 minutes of inactivity instead of being replaced all day.</div>
           <div>✓ Your actual workout and scheduled workout stay separate. Training something else updates today's card without erasing the queued day.</div>
           <div>✓ If meaningful primary sets match two split days, the coach asks which workout you meant. Incidental secondary work does not trigger it.</div>
           <div>✓ A split day advances after meaningful target-based volume and coverage, or when you explicitly finish it. Manual finishes can be undone.</div>
