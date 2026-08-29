@@ -102,10 +102,11 @@ export async function runBackup({ fixture = false, initialize = false, fullCheck
     const previous = oldSnapshots.sort((a, b) => a.time.localeCompare(b.time)).at(-1);
     let oldManifest;
     if (previous) oldManifest = JSON.parse(await restic(['dump', previous.id, archivePath(previous, 'manifest.json')]));
-    stage = 'database export';
+    stage = 'database connection';
     client = new Client({ ...config, ssl: fixture ? false : { rejectUnauthorized: true, ...(ca ? { ca } : {}) },
       connectionTimeoutMillis: 20_000, statement_timeout: 900_000 });
     await client.connect();
+    stage = 'database inventory';
     await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
     const snapshot = (await client.query('SELECT pg_export_snapshot() as id')).rows[0].id;
     const tableRows = (await client.query(`select n.nspname as schema,c.relname as name
@@ -130,6 +131,7 @@ export async function runBackup({ fixture = false, initialize = false, fullCheck
       throw new Error('Media export exceeds configured transfer budget');
     const roles = (await client.query("select rolname from pg_roles where rolname not like 'pg\\_%' escape '\\' order by rolname")).rows.map(r => r.rolname);
     const serverVersion = (await client.query('show server_version')).rows[0].server_version;
+    stage = 'database dump';
     await command('pg_dump', ['--format=custom', '--compress=0', '--lock-wait-timeout=30s',
       `--snapshot=${snapshot}`, '--file', path.join(root, 'database.dump')], { env: pgEnv, fixture });
     // Auth password hashes ARE in auth.users; database-role passwords are intentionally omitted.
