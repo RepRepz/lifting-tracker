@@ -1,6 +1,6 @@
 # Integration access and backup handoff
 
-Last checked: 2026-08-28. These are setup notes, not credentials or a guarantee of future access.
+Last checked: 2026-08-29. These are setup notes, not credentials or a guarantee of future access.
 
 ## Cloudflare: Codex connected; Claude not connected for now
 
@@ -12,26 +12,26 @@ Last checked: 2026-08-28. These are setup notes, not credentials or a guarantee 
   Cloudflare operations until it is separately connected and access is verified.
 - This is an integration-access distinction, not a filesystem restriction: both
   assistants may read this note. No OAuth token or secret belongs in these files.
-- Verified: listing R2 buckets succeeds. The selected account returned zero buckets.
-- Blocked: creating the planned private `the-lab-backups` Standard bucket returned
-  Cloudflare error `10000: Authentication error`. A subsequent list still returned
-  zero buckets. Reading notification policies also returned `9109: Unauthorized to
-  access requested resource`. The connection does not currently authorize the
-  required setup operations; do not describe it as full administrative access.
-- Next: the owner must reauthorize the Cloudflare connection with the necessary
-  R2 write permissions for the intended account. Use a narrowly scoped Custom grant
-  where available; notification/analytics access must be checked separately. Do not
-  bypass a denied operation using another credential or assume reconnecting grants
-  every permission. Recheck before making changes.
+- Reauthorized and verified 2026-08-29: R2 read/write operations now succeed. The
+  private Standard bucket `the-lab-backups` was created in ENAM. Its managed r2.dev
+  domain is disabled, it has no custom domains, and it has no age-based object
+  expiration rule. The default seven-day incomplete multipart-upload abort rule is
+  enabled and does not delete completed backup objects.
+- The owner temporarily selected the Full access OAuth template to complete setup.
+  After the required R2 configuration is finished and verified, revoke this grant and
+  reconnect with read-only access for monitoring. The unattended backup must use its
+  own bucket-scoped S3 credential, not this interactive OAuth grant.
 
 ## Off-site backups are NOT active
 
 See [the backup setup and recovery runbook](scripts/backup/README.md).
 
-- R2 enrollment is complete per the owner, but no bucket, S3 credential, billing
-  alert, or production backup was created by this setup attempt.
-- The GitHub `backups` environment secret-list request returned 404; its setup still
-  needs verification/completion. The repository variable `BACKUPS_ENABLED` is absent.
+- R2 enrollment and the private `the-lab-backups` bucket are complete. No bucket-scoped
+  S3 credential, billing alert, or production backup has been created yet.
+- The GitHub `backups` environment now exists and its deployment branch policy permits
+  only `main`. `RESTIC_REPOSITORY` is configured; the remaining required secrets are
+  not. The repository variable `BACKUPS_ENABLED` remains absent so scheduled backups
+  cannot run prematurely.
 - The prepared workflow runs once daily only after explicit activation. It still
   needs the production database connection, bucket-scoped S3 credentials, independent
   restic encryption password with an owner-held recovery copy, and a server-only
