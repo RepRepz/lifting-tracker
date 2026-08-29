@@ -537,8 +537,9 @@ function keepDeviceSnapshot(userId, value) {
 }
 
 /* weekly streak (lifting OR cardio) with mid-week protection */
-function computeStreak(log, cardio) {
-  const weeks = new Set([...(log||[]).map(e=>weekStart(e.date)), ...(cardio||[]).map(e=>weekStart(e.date))]);
+function computeStreak(log, cardio, data = null, exMap = {}) {
+  const liftDates = data ? qualifyingLiftDates(data, exMap) : new Set((log||[]).map(e=>e.date));
+  const weeks = new Set([...liftDates].map(weekStart).concat((cardio||[]).map(e=>weekStart(e.date))));
   if (!weeks.size) return { cur:0, best:0 };
   let best=0, cur=0;
   const thisWk = weekStart(todayStr());
@@ -2675,7 +2676,7 @@ const download = (name, content, type) => {
 /* Workout calendar: last 90 days, built for thumbs — the 13-week grid fits the
    screen with no sideways scrolling, and TAPPING a day shows its details below. */
 const CAL_VIEWS = { "1M": 5, "3M": 13, "6M": 26, "1Y": 52 }; // label -> weeks shown
-function WorkoutHeatmap({ log, cardio, exMap = {}, storageKey="lt-cal-view", emptyPast="rest day 😴", steps = null, stepGoal = 10000, rewardMode = false }) {
+function WorkoutHeatmap({ log, cardio, exMap = {}, workoutData = null, storageKey="lt-cal-view", emptyPast="rest day 😴", steps = null, stepGoal = 10000, rewardMode = false }) {
   const [sel, setSel] = useState(todayStr());
   // view choice sticks (remembered on this device)
   const [view, setView] = useState(() => {
@@ -2685,12 +2686,16 @@ function WorkoutHeatmap({ log, cardio, exMap = {}, storageKey="lt-cal-view", emp
   useEffect(() => { localStorage.setItem(storageKey, view); }, [view, storageKey]);
   const { cols, monthMarks, info } = useMemo(() => {
     const info = {}; // date -> lifting, cardio and optional step details
+    const qualifiedLiftDates = workoutData ? qualifyingLiftDates(workoutData, exMap) : new Set((log||[]).filter(e=>e.effort!=="Warm-up").map(e=>e.date));
     for (const e of (log||[])) if (e.effort !== "Warm-up") {
       const d = (info[e.date] ||= { n:0, ms:new Set(), ex:{}, cd:[], cardioMin:0, cardioCal:0, steps:null });
       const sets = setCountOf(e), label = entryLabel(e);
+      if(d.pushupOnly==null) d.pushupOnly=true;
+      if(isPushupEntry(e)) d.pushupReps=(d.pushupReps||0)+Math.max(0,Number(e.reps)||0); else d.pushupOnly=false;
       d.n += sets; d.ex[label] = (d.ex[label]||0) + sets;
       for (const [m] of entryMuscleCredits(e, exMap)) d.ms.add(m);
     }
+    for (const date of qualifiedLiftDates) if (info[date]) info[date].liftQualified = true;
     for (const c of (cardio||[])) {
       const d = (info[c.date] ||= { n:0, ms:new Set(), ex:{}, cd:[], cardioMin:0, cardioCal:0, steps:null });
       d.cd.push(`${c.activity} · ${c.duration || 0} min${c.calories!=null?` · ${c.calories} cal`:""}`);
@@ -2718,7 +2723,7 @@ function WorkoutHeatmap({ log, cardio, exMap = {}, storageKey="lt-cal-view", emp
       cols.push(days);
     }
     return { cols, monthMarks, info };
-  }, [log, cardio, exMap, steps, view]);
+  }, [log, cardio, exMap, workoutData, steps, view]);
 
   const shade = (n, future) => {
     if (future) return "transparent";
@@ -2732,7 +2737,7 @@ function WorkoutHeatmap({ log, cardio, exMap = {}, storageKey="lt-cal-view", emp
 
   const rewardOf = (day) => {
     if (!rewardMode || !day) return null;
-    const lifted = day.n > 0;
+    const lifted = !!day.liftQualified;
     const cardioHit = day.cardioMin >= 30 || day.cardioCal >= 200;
     const stepHit = (day.steps||0) >= stepGoal;
     const wins = Number(lifted) + Number(cardioHit) + Number(stepHit);
@@ -2746,6 +2751,7 @@ function WorkoutHeatmap({ log, cardio, exMap = {}, storageKey="lt-cal-view", emp
   };
   const cellStyle = (d) => {
     const reward = rewardOf(info[d.key]);
+    if (rewardMode && !reward) return {background:d.future?"transparent":T.input,color:T.sub};
     if (!reward) return {background:shade(d.n,d.future),color:d.n>4?"#000":T.sub};
     return {background:reward.color,color:reward.ink,boxShadow:reward.key==="combo"?`0 0 11px color-mix(in srgb, ${reward.color} 42%, transparent)`:"none"};
   };
@@ -2845,6 +2851,7 @@ function WorkoutHeatmap({ log, cardio, exMap = {}, storageKey="lt-cal-view", emp
                 {muscles.length > 0 && <span style={{ color:T.sub }}> · {muscles.join(", ")}</span>}
               </div>
             )}
+            {rewardMode && day.n>0 && !day.liftQualified && <div style={{fontSize:11.5,color:T.sub,marginBottom:5}}>Activity saved · {day.pushupOnly?`${day.pushupReps||0} / 50 push-up reps`:`${day.n} / ${workoutDayMinSetsOf(workoutData)} working sets`} for workout-day credit.</div>}
             {Object.keys(day.ex).length > 0 && (
               <div style={{ fontSize:12, color:T.sub, lineHeight:1.6 }}>
                 {Object.entries(day.ex).map(([n,c]) => `${n} ×${c}`).join(" · ")}
@@ -2871,7 +2878,7 @@ function YearRecap({ data, setData }) {
   const stats = useMemo(() => {
     const log = (data.log||[]).filter(e => e.date.startsWith(String(year)));
     const cardio = (data.cardio||[]).filter(c => c.date.startsWith(String(year)));
-    const days = new Set([...log.map(e=>e.date), ...cardio.map(c=>c.date)]);
+    const days = new Set([...qualifyingLiftDates(data), ...cardio.map(c=>c.date)]);
     const volume = log.reduce((s,e)=>s + (e.weight||0)*(e.reps||0), 0);
     const byMuscle = {};
     const exCred = Object.fromEntries((data.exercises||[]).map(x=>[x.name,muscleCredits(x)]));
@@ -2951,7 +2958,7 @@ function Dashboard({ data, exMap, setData, own = true, user, sharedSteps = null,
   const dashStepData = useMemo(()=>mergeSteps(stepSource, data.cardio),[stepSource,data.cardio]);
   const dashStepGoal = data.profile?.stepGoal || 10000;
   const showDashSteps = own ? !!stepsEnabled : sharedSteps != null;
-  const [researchMode, setResearchMode] = useState(() => goalModeOf(data));
+  const [researchMode, setResearchMode] = useState(() => goalModeOf(data)==="strength"?"strength":"hypertrophy");
   const [targetDetail, setTargetDetail] = useState(null); // { muscle, pinned }
   const minimizedSections = data.profile?.minimizedSections || {};
   const setSectionMinimized = (key, value) => setData(d=>({ ...d, profile:{ ...(d.profile||{}), minimizedSections:{ ...(d.profile?.minimizedSections||{}), [key]:value } } }));
@@ -2962,7 +2969,7 @@ function Dashboard({ data, exMap, setData, own = true, user, sharedSteps = null,
   const minimizedCharts = own ? (data.profile?.minimizedCharts || {}) : {};
   const minimizeChart = (name, value) => setData(d=>({ ...d, profile:{ ...(d.profile||{}), minimizedCharts:{ ...(d.profile?.minimizedCharts||{}), [name]:value } } }));
   const targetCardRef = useRef(null);
-  useEffect(() => { setResearchMode(goalModeOf(data)); }, [data.profile?.setGoalMode]);
+  useEffect(() => { const mode=goalModeOf(data); if(mode!=="custom") setResearchMode(mode); }, [data.profile?.setGoalMode]);
   useEffect(() => {
     if (!targetDetail) return;
     const closeOutside = (e) => { if (targetCardRef.current && !targetCardRef.current.contains(e.target)) setTargetDetail(null); };
@@ -3140,7 +3147,7 @@ function Dashboard({ data, exMap, setData, own = true, user, sharedSteps = null,
   }, [data.log, exMap]);
 
   /* weekly streak (lifting OR cardio) with mid-week protection */
-  const streak = useMemo(() => computeStreak(data.log, data.cardio), [data.log, data.cardio]);
+  const streak = useMemo(() => computeStreak(data.log, data.cardio, data, exMap), [data, exMap]);
 
   const cardioMin = data.cardio.filter(e=>weekStart(e.date)===wkStart).reduce((s,e)=>s+(e.duration||0),0);
 
@@ -3279,7 +3286,13 @@ function Dashboard({ data, exMap, setData, own = true, user, sharedSteps = null,
       const key = targetOverrideKeyOf(d);
       return { ...d, profile: { ...(d.profile || {}), [key]: {} } };
     });
-    const setGoalMode = (mode) => setData(d => ({ ...d, profile: { ...(d.profile || {}), setGoalMode: mode } }));
+    const setGoalMode = (mode) => setData(d => {
+      const profile={...(d.profile||{})};
+      if(mode==="custom"&&!profile.customGoalSetTargets) profile.customGoalSetTargets={...setTargetsOf(d)};
+      profile.setGoalMode=mode;
+      return {...d,profile};
+    });
+    const setWorkoutDayMinimum = (n) => setData(d=>({...d,profile:{...(d.profile||{}),workoutDayMinSets:n}}));
     const toggleTargetDetail = (muscle) => setTargetDetail(cur => cur?.muscle===muscle && cur.pinned ? null : {muscle, pinned:true});
     const previewTargetDetail = (muscle) => setTargetDetail(cur => cur?.pinned ? cur : {muscle, pinned:false});
     const leaveTargetDetail = (muscle) => setTargetDetail(cur => cur?.muscle===muscle && !cur.pinned ? null : cur);
@@ -3327,17 +3340,17 @@ function Dashboard({ data, exMap, setData, own = true, user, sharedSteps = null,
         {activeTargetMuscle && <TargetBreakdown muscle={activeTargetMuscle} rows={weekSetBreakdown[activeTargetMuscle] || []} count={weekSets[activeTargetMuscle]} goal={targets[activeTargetMuscle]} color={MUSCLE_COLORS[MUSCLES.indexOf(activeTargetMuscle)]} />}
         {own && <div style={{display:"flex", gap:10, marginTop:6, flexWrap:"wrap"}}>
           <details style={{width:"100%"}}>
-            <summary style={{...dropdownSummary, color:T.green}}>🎛 Modify your own {goalModeInfo.label.toLowerCase()} goals <span style={{fontSize:9}}>▾</span></summary>
+            <summary style={{...dropdownSummary, color:T.green}}>🎛 {goalMode==="custom"?"Set your custom weekly goals":`Modify your own ${goalModeInfo.label.toLowerCase()} goals`} <span style={{fontSize:9}}>▾</span></summary>
             <div style={{marginTop:10, padding:"13px", background:`linear-gradient(145deg, ${T.input}, ${T.card})`, border:`1px solid ${T.line}`, borderRadius:13, boxShadow:"0 10px 28px rgba(0,0,0,.14)"}}>
               <div style={{display:"flex", alignItems:"center", justifyContent:"space-between", gap:10, marginBottom:9}}>
-                <div><div style={{fontSize:13, color:T.ink, fontWeight:800}}>{goalModeInfo.label} targets</div><div style={{fontSize:10.5, color:T.sub, marginTop:2}}>Your changes are saved separately for each goal type.</div></div>
+                <div><div style={{fontSize:13, color:T.ink, fontWeight:800}}>{goalModeInfo.label} targets</div><div style={{fontSize:10.5, color:T.sub, marginTop:2}}>{goalMode==="custom"?"These are completely yours. The coach turns them into per-workout targets using your split frequency.":"Your changes are saved separately for each goal type."}</div></div>
                 {Object.keys(customTargets).length>0 && <button type="button" onClick={resetAllDashTargets} style={{background:T.card, color:T.sub, border:`1px solid ${T.line}`, padding:"6px 9px", fontSize:10.5, fontWeight:700, whiteSpace:"nowrap"}}>Reset all</button>}
               </div>
               {MUSCLES.map(m => {
                 const isCustom = customTargets[m] != null;
                 return (
                   <div key={m} style={{display:"grid", gridTemplateColumns:"minmax(78px,1fr) auto", alignItems:"center", gap:10, padding:"9px 0", borderTop:`1px solid ${T.line}`}}>
-                    <div><span style={{fontSize:12.5, fontWeight:750, color:T.ink}}>{m}</span><span style={{display:"block", fontSize:9.5, color:isCustom?T.green:T.sub, marginTop:1}}>{isCustom ? `Custom · research default ${goalModeInfo.targets[m]}` : `Research default ${goalModeInfo.targets[m]}`}</span></div>
+                    <div><span style={{fontSize:12.5, fontWeight:750, color:T.ink}}>{m}</span><span style={{display:"block", fontSize:9.5, color:isCustom?T.green:T.sub, marginTop:1}}>{goalMode==="custom"?"Your weekly target":isCustom ? `Custom · research default ${goalModeInfo.targets[m]}` : `Research default ${goalModeInfo.targets[m]}`}</span></div>
                     <div style={{display:"flex", alignItems:"center", gap:6}}>
                       <button onClick={()=>bumpDashTarget(m,-1)} aria-label={`Lower ${m} goal`} style={{width:30, height:30, borderRadius:8, background:T.card, border:`1px solid ${T.line}`, color:T.ink, fontSize:17, lineHeight:1, padding:0}}>−</button>
                       <span style={{fontSize:15, fontWeight:850, minWidth:28, textAlign:"center", color:isCustom?T.green:T.ink, fontVariantNumeric:"tabular-nums"}}>{targets[m]}</span>
@@ -3351,10 +3364,18 @@ function Dashboard({ data, exMap, setData, own = true, user, sharedSteps = null,
           </details>
         </div>}
         {own && <details style={{marginTop:10}}>
+          <summary style={{...dropdownSummary,color:T.sub}}>✓ What counts as a workout day? <span style={{fontSize:9}}>▾</span></summary>
+          <div style={{marginTop:8,padding:"11px 12px",background:T.input,border:`1px solid ${T.line}`,borderRadius:12}}>
+            <div style={{fontSize:11.5,color:T.sub,lineHeight:1.5,marginBottom:8}}>Sets always count toward your muscle goals. Calendar and streak credit starts at:</div>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{[2,3,4,5,6].map(n=>{const on=workoutDayMinSetsOf(data)===n;return <button key={n} type="button" onClick={()=>setWorkoutDayMinimum(n)} style={{padding:"6px 10px",borderRadius:99,background:on?T.mint:T.card,color:on?T.green:T.sub,border:`1px solid ${on?T.green:T.line}`,fontSize:11.5,fontWeight:800}}>{n}+ sets</button>;})}</div>
+            <div style={{fontSize:10.5,color:T.sub,lineHeight:1.5,marginTop:8}}>Default: 3 sets. A push-up-only session also qualifies at 50 total reps. Warm-ups never count.</div>
+          </div>
+        </details>}
+        {own && <details style={{marginTop:10}}>
           <summary style={{...dropdownSummary, color:T.sub}}>🔬 Why these numbers? <span style={{fontSize:9}}>▾</span></summary>
           <div style={{marginTop:8, padding:"12px", background:T.input, border:`1px solid ${T.line}`, borderRadius:12}}>
             <div style={{display:"flex", gap:5, marginBottom:11, padding:3, background:T.card, borderRadius:10}}>
-              {Object.entries(GOAL_MODES).map(([mode, info]) => <button key={mode} type="button" onClick={()=>setResearchMode(mode)} aria-pressed={researchMode===mode} style={{flex:1, background:researchMode===mode?T.mint:"transparent", color:researchMode===mode?T.green:T.sub, border:`1px solid ${researchMode===mode?T.green:"transparent"}`, borderRadius:8, padding:"7px 8px", fontSize:11.5, fontWeight:800}}>{info.label}</button>)}
+              {["hypertrophy","strength"].map(mode=>{const info=GOAL_MODES[mode];return <button key={mode} type="button" onClick={()=>setResearchMode(mode)} aria-pressed={researchMode===mode} style={{flex:1, background:researchMode===mode?T.mint:"transparent", color:researchMode===mode?T.green:T.sub, border:`1px solid ${researchMode===mode?T.green:"transparent"}`, borderRadius:8, padding:"7px 8px", fontSize:11.5, fontWeight:800}}>{info.label}</button>;})}
             </div>
             <div style={{display:"flex", flexDirection:"column", gap:7}}>
             {MUSCLES.map(m => (
@@ -3384,8 +3405,8 @@ function Dashboard({ data, exMap, setData, own = true, user, sharedSteps = null,
   widgets.calendar = (
     <div className="card" style={{background:"radial-gradient(90% 68% at 100% 0%,color-mix(in srgb,var(--cal-combo) 8%,transparent),transparent 58%),radial-gradient(80% 65% at 0% 100%,color-mix(in srgb,var(--cal-cardio) 7%,transparent),transparent 60%),linear-gradient(180deg,color-mix(in srgb,var(--card) 92%,#fff 5%),var(--card))",borderColor:"color-mix(in srgb,var(--cal-lift) 22%,var(--line))"}}>
       <div className="h" style={{fontSize:17, color:T.tealDk, marginBottom:2}}>Workout calendar</div>
-      <div style={{fontSize:12, color:T.sub, marginBottom:10}}>Lifting, cardio or step goals, and combined days each use a different color matched to your theme. Tap a day for details.</div>
-      <WorkoutHeatmap log={data.log} cardio={data.cardio} exMap={exMap} steps={showDashSteps?dashStepData.map:null} stepGoal={dashStepGoal} rewardMode />
+      <div style={{fontSize:12, color:T.sub, marginBottom:10}}>Only completed lifting days earn the lift color; smaller logs still save their volume. Cardio, step goals, and combined days use their own theme colors.</div>
+      <WorkoutHeatmap log={data.log} cardio={data.cardio} exMap={exMap} workoutData={data} steps={showDashSteps?dashStepData.map:null} stepGoal={dashStepGoal} rewardMode />
     </div>
   );
 
@@ -6442,6 +6463,7 @@ const ARNOLD_NAME = { cb: "chest & back", sa: "shoulders & arms", legs: "legs" }
 const GOAL_MODES = {
   hypertrophy: { label:"Hypertrophy", short:"Muscle growth", targets:{ Chest:14, Back:16, Shoulders:14, Biceps:12, Triceps:12, Legs:16, Abs:10 } },
   strength: { label:"Strength", short:"Strength & heavier work", targets:{ Chest:8, Back:10, Shoulders:8, Biceps:6, Triceps:6, Legs:10, Abs:6 } },
+  custom: { label:"Custom", short:"Your own weekly targets", targets:{ Chest:10, Back:10, Shoulders:10, Biceps:8, Triceps:8, Legs:10, Abs:8 } },
 };
 const GOAL_RESEARCH = {
   hypertrophy: {
@@ -6468,10 +6490,28 @@ const GOAL_RESEARCH = {
 const GROUP_MUSCLES = { push: ["Chest", "Shoulders", "Triceps"], pull: ["Back", "Biceps"], legs: ["Legs"] };
 const ARNOLD_MUSCLES = { cb: ["Chest", "Back"], sa: ["Shoulders", "Biceps", "Triceps"], legs: ["Legs"] };
 const ALL_UPPER = ["Chest", "Back", "Shoulders", "Biceps", "Triceps"];
-const goalModeOf = (data) => data.profile?.setGoalMode === "strength" ? "strength" : "hypertrophy";
-const targetOverrideKeyOf = (data) => goalModeOf(data) === "strength" ? "strengthSetTargets" : "setTargets";
+const goalModeOf = (data) => ["hypertrophy","strength","custom"].includes(data.profile?.setGoalMode) ? data.profile.setGoalMode : "hypertrophy";
+const targetOverrideKeyOf = (data) => goalModeOf(data) === "strength" ? "strengthSetTargets" : goalModeOf(data)==="custom" ? "customGoalSetTargets" : "setTargets";
 const customSetTargetsOf = (data) => data.profile?.[targetOverrideKeyOf(data)] || {};
 const setTargetsOf = (data) => ({ ...GOAL_MODES[goalModeOf(data)].targets, ...customSetTargetsOf(data) });
+const workoutDayMinSetsOf = (data) => Math.max(2, Math.min(8, Number(data?.profile?.workoutDayMinSets) || 3));
+const isPushupEntry = (e) => /push[- ]?up/i.test(String(e?.exercise||""));
+/* Workout-day credit is intentionally stricter than volume credit. Every working set
+   still fills muscle targets, but a token log does not earn a calendar/streak day. A
+   push-up-only session can qualify through 50 total reps even when done in very few sets. */
+const qualifyingLiftDates = (data, exMap = {}) => {
+  const byDate={};
+  for(const e of (data?.log||[])){
+    if(e.effort==="Warm-up") continue;
+    const d=byDate[e.date]||(byDate[e.date]={sets:0,reps:0,pushupOnly:true});
+    d.sets+=setCountOf(e);
+    d.reps+=isPushupEntry(e)?Math.max(0,Number(e.reps)||0):0;
+    if(!isPushupEntry(e)) d.pushupOnly=false;
+  }
+  const minimum=workoutDayMinSetsOf(data), out=new Set();
+  for(const [date,d] of Object.entries(byDate)) if(d.pushupOnly ? d.reps>=50 : d.sets>=minimum) out.add(date);
+  return out;
+};
 const splitLabelOf = (data) => SPLITS[data.profile?.split]?.short || "current plan";
 /* Estimated weekly frequency for converting the weekly target into a practical
    per-workout number. Custom rotations use their real cycle and muscle days. */
@@ -6924,7 +6964,7 @@ function coachTips(data, exMap, units) {
         : `Had 1–2 reps left? Try ${dispW(p.next, units)}${uLabel(units)}. If not, add 1 clean rep.`;
     tips.push({ key: `prog-${p.ex}-${p.cur}-${p.curReps}`, icon: "📈", cat: "Progression",
       text: `${p.ex}: ${recent}. ${action}`,
-      basis: `${goalMode === "strength" ? "Strength" : "Hypertrophy"} mode · warm-ups excluded · effort ${p.failed || p.canAdd ? "was logged" : "wasn't logged"}` });
+      basis: `${GOAL_MODES[goalMode].label} mode · warm-ups excluded · effort ${p.failed || p.canAdd ? "was logged" : "wasn't logged"}` });
   }
 
   // ---- PR PROJECTION / ETA: a big lift trending up → project the next milestone ----
@@ -8070,12 +8110,12 @@ function FriendsTab({ user, data, setData, exMap = {}, nutritionOn, streaksOn, i
     return members.map(m => {
       const st = states[m.user_id] || {};
       const days = new Set([
-        ...(st.log || []).filter(e=>weekStart(e.date)===thisWk).map(e=>e.date),
+        ...[...qualifyingLiftDates(st,exMap)].filter(date=>weekStart(date)===thisWk),
         ...(st.cardio || []).filter(e=>weekStart(e.date)===thisWk).map(e=>e.date),
       ]);
-      return { user: m.username, uid: m.user_id, workouts: days.size, streak: computeStreak(st.log, st.cardio).cur };
+      return { user: m.username, uid: m.user_id, workouts: days.size, streak: computeStreak(st.log, st.cardio, st, exMap).cur };
     }).sort((a,b)=>b.workouts-a.workouts || b.streak-a.streak);
-  }, [members, states]);
+  }, [members, states, exMap]);
 
   /* steps leaderboard — this week's total per member (only shown if anyone logged steps) */
   const stepBoard = useMemo(() => {
@@ -8134,7 +8174,7 @@ function FriendsTab({ user, data, setData, exMap = {}, nutritionOn, streaksOn, i
     let sessionsBest=null, setsBest=null, prBest=null, streakBest=null, weekMost=null, cardioLong=null;
     for (const m of members) {
       const st = states[m.user_id]; if (!st) continue;
-      const trainDays = new Set([...(st.log||[]).map(e=>e.date), ...(st.cardio||[]).map(e=>e.date)]);
+      const trainDays = new Set([...qualifyingLiftDates(st,exMap), ...(st.cardio||[]).map(e=>e.date)]);
       if (trainDays.size > 0 && (!sessionsBest || trainDays.size > sessionsBest.v))
         sessionsBest = { v:trainDays.size, text:`${trainDays.size} sessions`, who:m.username, uid:m.user_id };
       const setCount = (st.log || []).reduce((sum,e)=>sum+setCountOf(e),0);
@@ -8149,11 +8189,11 @@ function FriendsTab({ user, data, setData, exMap = {}, nutritionOn, streaksOn, i
       }
       if (top1rm > 0 && (!prBest || top1rm > prBest.v))
         prBest = { v:top1rm, text:`${Math.round(dispW(top1rm,units)).toLocaleString()} ${uLabel(units)} ${LIFT_SHORT[top1rmLift]||top1rmLift}`, who:m.username, uid:m.user_id };
-      const s = computeStreak(st.log, st.cardio);
+      const s = computeStreak(st.log, st.cardio, st, exMap);
       if (s.best > 0 && (!streakBest || s.best > streakBest.v))
         streakBest = { v:s.best, text:`${s.best} week${s.best===1?"":"s"} in a row`, who:m.username, uid:m.user_id };
       const byWeek = {};
-      for (const d of new Set([...(st.log||[]).map(e=>e.date), ...(st.cardio||[]).map(e=>e.date)]))
+      for (const d of new Set([...qualifyingLiftDates(st,exMap), ...(st.cardio||[]).map(e=>e.date)]))
         byWeek[weekStart(d)] = (byWeek[weekStart(d)] || 0) + 1;
       for (const [wk, c] of Object.entries(byWeek)) {
         if (!weekMost || c > weekMost.v)
@@ -8172,7 +8212,7 @@ function FriendsTab({ user, data, setData, exMap = {}, nutritionOn, streaksOn, i
       weekMost     && { icon:"📅", label:"Most workout days in a week", ...weekMost },
       cardioLong   && { icon:"🏃", label:"Longest cardio", ...cardioLong },
     ].filter(Boolean);
-  }, [members, states, units, recordLifts]);
+  }, [members, states, units, recordLifts, exMap]);
 
   /* ---- read-only profile view ---- */
   if (profile) {
