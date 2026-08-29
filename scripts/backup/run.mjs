@@ -9,7 +9,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PROJECT, HOST, TAG, LIMIT, REQUIRED_TABLES, configuration, quote, sha,
-  validateInventory, suspiciousLoss, storageFingerprint, safeFile, archivePath } from './core.mjs';
+  validateInventory, suspiciousLoss, storageFingerprint, safeFile, archivePath,
+  storageRequestHeaders } from './core.mjs';
 
 // Never forward child stderr: pg_dump/HTTP errors can contain connection credentials or user data.
 export function command(program, args, options = {}) {
@@ -143,8 +144,8 @@ export async function runBackup({ fixture = false, initialize = false, fullCheck
     for (const object of objects) {
       const file = `media/${sha(`${object.bucket_id}/${object.name}`)}`;
       const url = `https://${PROJECT}.supabase.co/storage/v1/object/${encodeURIComponent(object.bucket_id)}/${object.name.split('/').map(encodeURIComponent).join('/')}`;
-      const response = await fetch(url, { headers: { apikey: process.env.BACKUP_STORAGE_SERVICE_KEY,
-        Authorization: `Bearer ${process.env.BACKUP_STORAGE_SERVICE_KEY}` }, redirect: 'error', signal: AbortSignal.timeout(120_000) });
+      const response = await fetch(url, { headers: storageRequestHeaders(process.env.BACKUP_STORAGE_SERVICE_KEY),
+        redirect: 'error', signal: AbortSignal.timeout(120_000) });
       if (!response.ok || !response.body) throw new Error('A storage object could not be downloaded');
       let bytes = 0;
       const budget = new Transform({ transform(chunk, encoding, callback) {

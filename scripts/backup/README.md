@@ -50,7 +50,7 @@ extending and testing recovery coverage.
    | --- | --- |
    | `BACKUP_DATABASE_URL` | `postgresql://postgres.PROJECT:URL_ENCODED_PASSWORD@SESSION_POOLER_HOST:5432/postgres` (no query string) |
    | `BACKUP_DB_CA_PEM` | Supabase's database CA certificate, if required by its TLS chain |
-   | `BACKUP_STORAGE_SERVICE_KEY` | Server-only service-role/secret API key; required whenever Storage contains files |
+   | `BACKUP_STORAGE_SERVICE_KEY` | Dedicated server-only `sb_secret_...` key (recommended) or legacy service-role key; required whenever Storage contains files |
    | `RESTIC_REPOSITORY` | `s3:https://ACCOUNT_ID.r2.cloudflarestorage.com/the-lab-backups` |
    | `RESTIC_PASSWORD` | Independent randomly generated encryption password |
    | `BACKUP_S3_ACCESS_KEY_ID` | Bucket-scoped R2 access key |

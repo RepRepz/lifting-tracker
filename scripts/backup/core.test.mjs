@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import { configuration, PROJECT, REQUIRED_TABLES, validateInventory, suspiciousLoss, safeFile,
-  storageFingerprint, sha } from './core.mjs';
+  storageFingerprint, storageRequestHeaders, sha } from './core.mjs';
 import { verifyPayload } from './run.mjs';
 import { normalizeSaveError } from '../../src/lib/save-errors.js';
 
@@ -56,6 +56,13 @@ test('storage changes are detected, list order does not matter', () => {
   const b = { ...a, id: '2', name: 'two' };
   assert.equal(storageFingerprint([a, b]), storageFingerprint([b, a]));
   assert.notEqual(storageFingerprint([a]), storageFingerprint([{ ...a, version: 'b' }]));
+});
+test('storage authentication supports modern secret keys and legacy service-role JWTs', () => {
+  assert.deepEqual(storageRequestHeaders('sb_secret_backup'), { apikey: 'sb_secret_backup' });
+  assert.deepEqual(storageRequestHeaders('legacy.jwt.value'), {
+    apikey: 'legacy.jwt.value', Authorization: 'Bearer legacy.jwt.value'
+  });
+  assert.throws(() => storageRequestHeaders(''));
 });
 test('shrink errors stop saving instead of entering conflict merge', () => {
   assert.equal(normalizeSaveError({ code: 'P0001', message: 'STATE_SHRINK_BLOCKED' }).code, 'STATE_SHRINK_BLOCKED');

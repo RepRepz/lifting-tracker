@@ -11,6 +11,15 @@ export const REQUIRED_TABLES = ['public.user_state', 'public.profiles', 'public.
 export const sha = value => createHash('sha256').update(value).digest('hex');
 export const quote = identifier => '"' + identifier.replaceAll('"', '""') + '"';
 
+export function storageRequestHeaders(key) {
+  if (!key) throw new Error('Storage download credential is missing');
+  const headers = { apikey: key };
+  // Modern sb_secret keys are opaque API keys, not JWTs. Legacy service_role keys
+  // still need the bearer header for Storage authorization.
+  if (!key.startsWith('sb_secret_')) headers.Authorization = `Bearer ${key}`;
+  return headers;
+}
+
 export function configuration(env, fixture = false) {
   const required = ['BACKUP_DATABASE_URL', 'RESTIC_REPOSITORY', 'RESTIC_PASSWORD'];
   for (const name of required) if (!env[name]) throw new Error(`Missing ${name}`);
