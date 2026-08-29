@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import { configuration, PROJECT, REQUIRED_TABLES, validateInventory, suspiciousLoss, safeFile,
-  storageFingerprint, storageRequestHeaders, sha } from './core.mjs';
+  storageFingerprint, storageRequestHeaders, safeFailureStage, sha } from './core.mjs';
 import { verifyPayload } from './run.mjs';
 import { normalizeSaveError } from '../../src/lib/save-errors.js';
 
@@ -63,6 +63,16 @@ test('storage authentication supports modern secret keys and legacy service-role
     apikey: 'legacy.jwt.value', Authorization: 'Bearer legacy.jwt.value'
   });
   assert.throws(() => storageRequestHeaders(''));
+});
+test('connection diagnostics expose only a safe failure category', () => {
+  assert.equal(safeFailureStage('database connection', { code: '28P01',
+    message: 'password authentication failed for private-user' }),
+  'database authentication (password rejected)');
+  assert.equal(safeFailureStage('database connection', { code: 'CERT_HAS_EXPIRED',
+    message: 'certificate has expired' }), 'database TLS verification');
+  assert.equal(safeFailureStage('database connection', { code: 'ENOTFOUND' }),
+    'database network connection');
+  assert.equal(safeFailureStage('database dump', new Error('sensitive')), 'database dump');
 });
 test('shrink errors stop saving instead of entering conflict merge', () => {
   assert.equal(normalizeSaveError({ code: 'P0001', message: 'STATE_SHRINK_BLOCKED' }).code, 'STATE_SHRINK_BLOCKED');

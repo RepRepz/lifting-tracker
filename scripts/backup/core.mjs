@@ -20,6 +20,20 @@ export function storageRequestHeaders(key) {
   return headers;
 }
 
+export function safeFailureStage(stage, error) {
+  if (stage !== 'database connection') return stage;
+  const code = String(error?.code || '').toUpperCase();
+  const message = String(error?.message || '');
+  if (code === '28P01' || /password authentication failed|SASL.*password/i.test(message))
+    return 'database authentication (password rejected)';
+  if (/tenant or user not found/i.test(message)) return 'database pooler identity';
+  if (['ENOTFOUND', 'EAI_AGAIN', 'ETIMEDOUT', 'ECONNREFUSED'].includes(code))
+    return 'database network connection';
+  if (/certificate|self[- ]signed|unable to verify/i.test(message) || code.includes('CERT'))
+    return 'database TLS verification';
+  return stage;
+}
+
 export function configuration(env, fixture = false) {
   const required = ['BACKUP_DATABASE_URL', 'RESTIC_REPOSITORY', 'RESTIC_PASSWORD'];
   for (const name of required) if (!env[name]) throw new Error(`Missing ${name}`);

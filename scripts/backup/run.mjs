@@ -10,7 +10,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PROJECT, HOST, TAG, LIMIT, REQUIRED_TABLES, configuration, quote, sha,
   validateInventory, suspiciousLoss, storageFingerprint, safeFile, archivePath,
-  storageRequestHeaders } from './core.mjs';
+  storageRequestHeaders, safeFailureStage } from './core.mjs';
 
 // Never forward child stderr: pg_dump/HTTP errors can contain connection credentials or user data.
 export function command(program, args, options = {}) {
@@ -207,7 +207,7 @@ export async function runBackup({ fixture = false, initialize = false, fullCheck
   } catch (error) {
     if (fixture) console.error('Synthetic fixture diagnostic:', error.message);
     // Only operational stage is public; row values, account IDs and upstream error text stay private.
-    throw new Error(`Backup failed during ${stage}. No old backups were deleted. Check credentials/configuration and investigate privately.`, { cause: error });
+    throw new Error(`Backup failed during ${safeFailureStage(stage, error)}. No old backups were deleted. Check credentials/configuration and investigate privately.`, { cause: error });
   } finally {
     if (client) await client.end().catch(() => {});
     // Only remove the uniquely-created temporary directory, never caller-provided paths.
