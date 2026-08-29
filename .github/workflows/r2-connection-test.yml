@@ -1,0 +1,56 @@
+name: Verify R2 backup credentials
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    environment: backups
+    timeout-minutes: 5
+    steps:
+      - name: Verify private bucket read and write access
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.BACKUP_S3_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_S3_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          RESTIC_REPOSITORY: ${{ secrets.RESTIC_REPOSITORY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +x
+
+          if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
+            echo '::error::The R2 backup credentials are not configured.'
+            exit 1
+          fi
+
+          endpoint="${RESTIC_REPOSITORY#s3:}"
+          endpoint="${endpoint%/the-lab-backups}"
+          probe_key="_credential-check/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.txt"
+          probe_file="$(mktemp)"
+
+          cleanup() {
+            aws s3api delete-object \
+              --endpoint-url "$endpoint" \
+              --bucket the-lab-backups \
+              --key "$probe_key" >/dev/null 2>&1 || true
+            rm -f -- "$probe_file"
+          }
+          trap cleanup EXIT
+
+          printf 'R2 credential verification only.\n' > "$probe_file"
+          aws s3api put-object \
+            --endpoint-url "$endpoint" \
+            --bucket the-lab-backups \
+            --key "$probe_key" \
+            --body "$probe_file" >/dev/null
+          aws s3api head-object \
+            --endpoint-url "$endpoint" \
+            --bucket the-lab-backups \
+            --key "$probe_key" >/dev/null
+
+          echo 'R2 bucket-scoped read/write credentials verified.'
