@@ -6443,6 +6443,26 @@ const splitSessionProgress = (data, log, exMap, date, muscles) => {
   const requiredVolume=Math.max(2,Math.min(planned.length*3,expected*.5));
   return {credited,total,covered,requiredCoverage,requiredVolume,complete:planned.length>0&&covered>=requiredCoverage&&total>=requiredVolume};
 };
+/* Recency should mean a useful training exposure, not merely the last date a muscle
+   appeared anywhere. Small sets remain in weekly volume but do not reset overdue work. */
+const meaningfulLastTrained = (data, log, exMap) => {
+  const targets=setTargetsOf(data),frequency=splitFrequencyOf(data),byDate={};
+  for(const e of (log||[])){
+    if(e.effort==="Warm-up") continue;
+    for(const [m,credit] of entryMuscleCredits(e,exMap)){
+      if(!MUSCLES.includes(m)) continue;
+      byDate[e.date] ||= {};
+      byDate[e.date][m]=(byDate[e.date][m]||0)+credit*setCountOf(e);
+    }
+  }
+  const last={};
+  for(const date of Object.keys(byDate).sort()) for(const m of MUSCLES){
+    const expected=(targets[m]||0)/Math.max(1,frequency[m]||1);
+    const usefulDose=Math.max(1.5,Math.min(4,expected*.35));
+    if((byDate[date][m]||0)>=usefulDose) last[m]=date;
+  }
+  return last;
+};
 /* Where you are in a custom rotation TODAY. Training days are sticky: a missed workout
    stays next until a matching session is logged. Explicit rest days still pass with the
    calendar. A manual restart ignores older logs and puts Day 1 back at the front. */
@@ -6505,7 +6525,7 @@ function todayWorkoutPlan(data, exMap) {
   const prefs=coachPrefsOf(data), targets=setTargetsOf(data), frequency=splitFrequencyOf(data);
   const weekly=Object.fromEntries(MUSCLES.map(m=>[m,0]));
   const todayDone=Object.fromEntries(MUSCLES.map(m=>[m,0]));
-  const lastByMuscle={};
+  const lastByMuscle=meaningfulLastTrained(data,log,exMap);
   for (const e of log) {
     if (e.effort==="Warm-up") continue;
     for (const [m,credit] of entryMuscleCredits(e,exMap)) {
@@ -6514,7 +6534,6 @@ function todayWorkoutPlan(data, exMap) {
       if (weekStart(e.date)===wk) weekly[m]+=amount;
       if (e.date===today) todayDone[m]+=amount;
     }
-    for (const m of entryPrimaryMuscles(e,exMap)) if(!lastByMuscle[m]||e.date>lastByMuscle[m]) lastByMuscle[m]=e.date;
   }
   const goalFor=(m)=>{
     const base=Math.round((targets[m]/Math.max(1,frequency[m]))*2)/2;
@@ -6558,7 +6577,12 @@ function todayWorkoutPlan(data, exMap) {
     if(queued&&!queued.rest){
       const match=queued.muscles.filter(m=>todayGroups.has(m)).length/Math.max(1,queued.muscles.length);
       if(match<.5) chosen=candidates.find(c=>c.id===queued.id)||null;
-      if(chosen) reason="Next unfinished day in your custom split.";
+      if(chosen){
+        const partial=[...new Set(log.filter(e=>e.date<today&&dayGap(today,e.date)<=7).map(e=>e.date))].sort().reverse().map(date=>({date,...splitSessionProgress(data,log,exMap,date,queued.muscles)})).find(x=>x.total>0&&!x.complete);
+        const gap=Math.round(queued.muscles.reduce((sum,m)=>sum+gapFor(m),0)/Math.max(1,queued.muscles.length));
+        if(partial) reason=`Catch-up day: your ${fmtDate(partial.date)} session added ${fmtSets(partial.total)} credited sets, but not enough volume and coverage to finish this split day.`;
+        else reason=gap>=prefs.staleDays?`Catch-up day: this workout is still due and its muscles are about ${gap} days overdue.`:"Next unfinished day in your custom split.";
+      }
     }
   }
   if(!chosen&&prefs.focusStyle==="volume"){
@@ -6627,11 +6651,7 @@ function coachTips(data, exMap, units) {
   const todayList = naturalList([...todayGroups].map(m=>m.toLowerCase()));
   const pushTrain = (key, text, icon = "🎯") => tips.push({ key, icon, cat: "Training focus", text });
   let focusMuscles = null;
-  const lastByMuscle = {};
-  for (const e of log) {
-    if (e.effort === "Warm-up") continue;
-    for (const m of entryPrimaryMuscles(e, exMap)) if (!lastByMuscle[m] || e.date > lastByMuscle[m]) lastByMuscle[m] = e.date;
-  }
+  const lastByMuscle = meaningfulLastTrained(data,log,exMap);
   let candidates = [];
   if (split === "custom") candidates = (data.profile?.customSplit || []).filter(d=>!d.rest&&d.muscles?.length).map(d=>({id:d.id,muscles:d.muscles}));
   else if (split === "ppl") candidates = Object.entries(GROUP_MUSCLES).map(([id,muscles])=>({id,muscles}));
@@ -7138,6 +7158,8 @@ function CoachCard({ data, exMap, user, setData, onOpenLog }) {
         <div style={{marginTop:8, padding:"9px 11px", background:T.input, border:`1px solid ${T.line}`, borderRadius:11, fontSize:10.5, color:T.sub, lineHeight:1.65}}>
           <div>✓ Uses your {goalModeInfo.label.toLowerCase()} goals{customTargetCount ? `, including ${customTargetCount} custom` : ""}.</div>
           <div>✓ Uses your coach style, split, recent sets, reps, and effort.</div>
+          <div>✓ Small sessions add volume without resetting an overdue muscle or completing a whole split day.</div>
+          <div>✓ A split day advances after meaningful target-based volume and coverage; doing another workout still tracks that workout while keeping missed work due.</div>
           {split === "custom" && <div>✓ An out-of-order workout does not erase older missed muscle groups.</div>}
           <div>✓ Main muscle = 1 set · secondary = ½ · warm-ups ignored.</div>
         </div>
