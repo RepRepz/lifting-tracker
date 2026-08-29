@@ -953,6 +953,9 @@ export default function LiftingTracker({ user }) {
         @media(hover:hover){ .profile-chip:hover { border-color:color-mix(in srgb, var(--accent) 30%, var(--line)); } }
         @keyframes rise { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:none; } }
         @keyframes pop { 0% { transform:scale(.6); opacity:0; } 70% { transform:scale(1.06); opacity:1; } 100% { transform:scale(1); opacity:1; } }
+        @keyframes effortPick { 0%{transform:scale(.92);box-shadow:0 0 0 0 rgba(var(--accent-rgb),.45)} 65%{transform:scale(1.035);box-shadow:0 0 0 5px rgba(var(--accent-rgb),0)} 100%{transform:scale(1);box-shadow:0 0 0 0 rgba(var(--accent-rgb),0)} }
+        .effort-chip.on { animation:effortPick .34s cubic-bezier(.16,1,.3,1); }
+        .effort-chip:active { transform:scale(.94); }
         @keyframes grow { from { transform:scaleY(0); } }
         .vbar { transform-origin:bottom; animation:grow .5s ease-out both; }
         .chip { animation:pop .25s ease-out both; }
@@ -1421,6 +1424,7 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
   const [weight, setWeight] = useState("");
   const [reps, setReps] = useState("");
   const [effort, setEffort] = useState("");
+  const [effortInfoOpen, setEffortInfoOpen] = useState(false);
   const [notes, setNotes] = useState("");
   const [justSaved, setJustSaved] = useState(null);
   const [visualOpen, setVisualOpen] = useState(null);
@@ -1854,11 +1858,12 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
           )}
         </div>
       )}
-      <div style={{marginBottom:12}}>
-        <div style={{...lbl,marginBottom:6}}>Effort <span style={{fontWeight:500,color:T.sub}}>(optional)</span></div>
+      <div style={{marginBottom:12,position:"relative"}}>
+        <div style={{...lbl,marginBottom:6,display:"flex",alignItems:"center",gap:6}}>Effort <span style={{fontWeight:500,color:T.sub}}>(optional)</span>{effort&&<button type="button" onClick={()=>setEffortInfoOpen(v=>!v)} aria-expanded={effortInfoOpen} aria-label={`About ${effort}`} style={{marginLeft:"auto",width:24,height:24,minHeight:0,padding:0,borderRadius:99,background:effortInfoOpen?T.mint:T.input,border:`1px solid ${effortInfoOpen?T.green:T.line}`,color:effortInfoOpen?T.green:T.sub,fontSize:12,fontWeight:900}}>i</button>}</div>
         <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}>
-          {EFFORTS.map(x=>{const on=effort===x;const short=x==="Warm-up"?"Warm-up":x.split(" · ")[0];return <button key={x} type="button" onClick={()=>setEffort(on?"":x)} aria-pressed={on} title={x} style={{flex:"1 1 82px",minHeight:35,padding:"7px 8px",borderRadius:9,background:on?T.mint:T.input,color:on?T.green:T.sub,border:`1px solid ${on?T.green:T.line}`,fontSize:11.5,fontWeight:800,whiteSpace:"nowrap"}}>{on?"✓ ":""}{short}</button>;})}
+          {EFFORTS.map(x=>{const on=effort===x;const short=x==="Warm-up"?"Warm-up":x.split(" · ")[0];return <button key={x} type="button" className={`effort-chip${on?" on":""}`} onClick={()=>{setEffort(on?"":x);setEffortInfoOpen(false);}} aria-pressed={on} title={x} style={{flex:"1 1 82px",minHeight:35,padding:"7px 8px",borderRadius:9,background:on?"linear-gradient(180deg,rgba(var(--accent-rgb),.22),rgba(var(--accent-rgb),.10))":T.input,color:on?T.green:T.sub,border:`1px solid ${on?T.green:T.line}`,boxShadow:on?"0 0 0 1px rgba(var(--accent-rgb),.14) inset":"none",fontSize:11.5,fontWeight:800,whiteSpace:"nowrap"}}>{on?"✓ ":""}{short}</button>;})}
         </div>
+        {effortInfoOpen&&effort&&<div role="status" className="member-menu-pop" style={{position:"absolute",zIndex:12,right:0,top:27,width:"min(310px,100%)",padding:"9px 11px",borderRadius:10,background:`linear-gradient(145deg,${T.card},${T.input})`,border:`1px solid ${T.green}`,boxShadow:"0 14px 34px rgba(0,0,0,.45)",color:T.sub,fontSize:10.5,lineHeight:1.45}}>{effortKind(effort)==="warmup"?"Warm-up sets are saved in your log, but do not count toward set targets or AI Coach volume.":effortKind(effort)==="easy"?"About 4+ reps left. It counts as a working set, but records that the effort was intentionally lighter.":effortKind(effort)==="productive"?"About 1–3 reps left. It counts normally and marks the set as close to failure without reaching it.":"No clean reps left. It counts normally, but failure does not earn extra set credit."}</div>}
         <label style={lbl}>Notes<input value={notes} onChange={e=>setNotes(e.target.value)} placeholder="optional" /></label>
       </div>
       <button onClick={addSet} disabled={!exName || !reps || (!isBW && !weight)} className="btn-primary"
@@ -6712,22 +6717,38 @@ function todayWorkoutPlan(data, exMap) {
     const firstMatch=c.muscles.some(m=>firstGroups.has(m))?1:0;
     return coverage*.6+specificity*.2+firstMatch*.2;
   };
-  let chosen=null, reason="", actualProgress=null;
+  let chosen=null, reason="", actualProgress=null, clarification=null;
   // Once the log clearly matches a split day, make the visible session follow what
   // the person is actually doing; missed-work coaching is still evaluated separately.
   if(todayGroups.size){
     const ranked=candidates.slice().sort((a,b)=>matchScore(b)-matchScore(a));
-    let started=ranked[0];
-    if(split==="custom"&&started&&ranked[1]&&Math.abs(matchScore(started)-matchScore(ranked[1]))<.05){
+    const candidatePrimary=c=>c.muscles.reduce((sum,m)=>sum+(primaryVolume[m]||0),0);
+    const significant=ranked.filter(c=>candidatePrimary(c)>=Math.max(1.5,totalPrimary*.3));
+    let mixedPair=null;
+    for(let i=0;i<significant.length&&!mixedPair;i++) for(let j=i+1;j<significant.length&&!mixedPair;j++){
+      const a=significant[i],b=significant[j];
+      const aExclusive=a.muscles.filter(m=>!b.muscles.includes(m)).reduce((s,m)=>s+(primaryVolume[m]||0),0);
+      const bExclusive=b.muscles.filter(m=>!a.muscles.includes(m)).reduce((s,m)=>s+(primaryVolume[m]||0),0);
+      if(aExclusive>=.5&&bExclusive>=.5) mixedPair=[a,b];
+    }
+    const savedChoice=data.profile?.coachWorkoutChoices?.[today];
+    const savedCandidate=savedChoice?candidates.find(c=>splitSignature(c.muscles)===savedChoice):null;
+    if(mixedPair){
+      clarification={options:mixedPair.map(c=>({id:c.id,muscles:c.muscles,signature:splitSignature(c.muscles)})),selected:savedCandidate?splitSignature(savedCandidate.muscles):null};
+    }
+    let started=savedCandidate||(mixedPair?(mixedPair.find(c=>c.id===scheduled?.id||splitSignature(c.muscles)===splitSignature(scheduled?.muscles))||mixedPair[0]):ranked[0]);
+    if(!savedCandidate&&!mixedPair&&split==="custom"&&started&&ranked[1]&&Math.abs(matchScore(started)-matchScore(ranked[1]))<.05){
       const pos=customCyclePosition(data,log.filter(e=>e.date<today),exMap);
       const queued=pos.idx>=0?pos.cycle[pos.idx]:null;
       started=ranked.filter(c=>Math.abs(matchScore(c)-matchScore(ranked[0]))<.05).find(c=>c.id===queued?.id)||started;
     }
     const progress=started?splitSessionProgress(data,log,exMap,today,started.muscles):null;
-    if(started&&matchScore(started)>=.5&&progress?.total>0){
+    if(started&&(matchScore(started)>=.5||mixedPair||savedCandidate)&&progress?.total>0){
       chosen=started;
       actualProgress=progress;
-      reason=progress.complete?"Tracking the split day your logged volume matches.":"Tracking the workout you started. These sets count now, but the day will not advance until its volume and coverage are meaningful.";
+      reason=mixedPair&&!savedCandidate
+        ? `Mixed primary work detected. I'm showing ${naturalList(started.muscles)} because it was scheduled—choose below if that is not today's workout.`
+        : progress.complete?"Tracking the split day your logged volume matches.":"Tracking the workout you started. These sets count now, but the day will not advance until its volume and coverage are meaningful.";
     }
   }
   if(!chosen&&split==="custom"&&prefs.focusStyle!=="volume"){
@@ -6773,8 +6794,8 @@ function todayWorkoutPlan(data, exMap) {
   const catchUpMuscles=(catchUp?.muscles||[]).filter(m=>!chosen?.muscles?.includes(m));
   const carriedCatchUp=catchUp&&catchUpMuscles.length?{...catchUp,muscles:catchUpMuscles}:null;
   const complete=rows.length>0&&rows.every(r=>r.goal===0||r.done>=r.goal);
-  if(!rows.length&&chosen) return {muscles:chosen.muscles,scheduledMuscles:scheduled?.muscles||[],rows:[],reason:"Your rolling 7-day targets for this workout are already covered.",complete:true,catchUp:carriedCatchUp,diverged,progress:actualProgress};
-  return {muscles:chosen?.muscles||[],scheduledMuscles:scheduled?.muscles||[],rows,reason:complete?"Today's recommended targets are complete.":reason,complete,catchUp:carriedCatchUp,diverged,progress:actualProgress};
+  if(!rows.length&&chosen) return {muscles:chosen.muscles,scheduledMuscles:scheduled?.muscles||[],rows:[],reason:"Your rolling 7-day targets for this workout are already covered.",complete:true,catchUp:carriedCatchUp,diverged,progress:actualProgress,clarification};
+  return {muscles:chosen?.muscles||[],scheduledMuscles:scheduled?.muscles||[],rows,reason:complete?"Today's recommended targets are complete.":reason,complete,catchUp:carriedCatchUp,diverged,progress:actualProgress,clarification};
 }
 
 function coachTips(data, exMap, units) {
@@ -7078,6 +7099,8 @@ function CoachCard({ data, exMap, user, setData, onOpenLog }) {
   const manualFinished=manualSplitFinished(data,gymDayStr(),workoutPlan.muscles);
   const finishWorkout=()=>setData(d=>({...d,profile:{...(d.profile||{}),coachFinishedWorkouts:{...(d.profile?.coachFinishedWorkouts||{}),[gymDayStr()]:splitSignature(workoutPlan.muscles)}}}));
   const undoFinishWorkout=()=>setData(d=>{const finished={...(d.profile?.coachFinishedWorkouts||{})};delete finished[gymDayStr()];return {...d,profile:{...(d.profile||{}),coachFinishedWorkouts:finished}};});
+  const chooseWorkout=(signature)=>setData(d=>({...d,profile:{...(d.profile||{}),coachWorkoutChoices:{...(d.profile?.coachWorkoutChoices||{}),[gymDayStr()]:signature}}}));
+  const clearWorkoutChoice=()=>setData(d=>{const choices={...(d.profile?.coachWorkoutChoices||{})};delete choices[gymDayStr()];return {...d,profile:{...(d.profile||{}),coachWorkoutChoices:choices}};});
   // Persist the scheduled day only when today's real workout differs. This prevents an
   // out-of-order custom workout from silently advancing past unfinished work tomorrow.
   useEffect(()=>{
@@ -7101,11 +7124,14 @@ function CoachCard({ data, exMap, user, setData, onOpenLog }) {
   const hiddenCatchUps=data.profile?.coachCatchupDismissed||[];
   const delayedCatchUp=data.profile?.coachCatchupLater;
   const catchUpDelayed=workoutPlan.catchUp&&delayedCatchUp?.key===workoutPlan.catchUp.key&&delayedCatchUp?.until===gymDayStr();
-  const visibleCatchUp=workoutPlan.catchUp&&!hiddenCatchUps.includes(workoutPlan.catchUp.key)&&!catchUpDelayed?workoutPlan.catchUp:null;
+  const catchUpHidden=!!(workoutPlan.catchUp&&hiddenCatchUps.includes(workoutPlan.catchUp.key));
+  const visibleCatchUp=workoutPlan.catchUp&&!catchUpHidden&&!catchUpDelayed?workoutPlan.catchUp:null;
+  const suppressedCatchUp=(catchUpHidden||catchUpDelayed)?workoutPlan.catchUp:null;
   const catchUpAdded=!!(visibleCatchUp&&data.profile?.coachCatchupAdded?.[gymDayStr()]===visibleCatchUp.key);
   const addCatchUpToday=()=>visibleCatchUp&&setData(d=>({...d,profile:{...(d.profile||{}),coachCatchupAdded:{...(d.profile?.coachCatchupAdded||{}),[gymDayStr()]:visibleCatchUp.key}}}));
   const saveCatchUpForLater=()=>visibleCatchUp&&setData(d=>({...d,profile:{...(d.profile||{}),coachCatchupLater:{key:visibleCatchUp.key,until:gymDayStr()}}}));
   const hideCatchUp=()=>visibleCatchUp&&setData(d=>({...d,profile:{...(d.profile||{}),coachCatchupDismissed:[...new Set([...(d.profile?.coachCatchupDismissed||[]),visibleCatchUp.key])]}}));
+  const showCatchUpAgain=()=>suppressedCatchUp&&setData(d=>{const profile={...(d.profile||{}),coachCatchupDismissed:(d.profile?.coachCatchupDismissed||[]).filter(key=>key!==suppressedCatchUp.key)};if(profile.coachCatchupLater?.key===suppressedCatchUp.key) delete profile.coachCatchupLater;return {...d,profile};});
   const restoreCatchUps=()=>setData(d=>({...d,profile:{...(d.profile||{}),coachCatchupDismissed:[]}}));
 
   const setMinimized = (value) => setData(d => ({ ...d, profile: { ...(d.profile || {}), minimizedSections:{ ...(d.profile?.minimizedSections||{}), aiCoach:value } } }));
@@ -7163,6 +7189,10 @@ function CoachCard({ data, exMap, user, setData, onOpenLog }) {
               </div>
               <span style={{flexShrink:0,background:T.mint,color:T.green,border:"1px solid "+T.green,borderRadius:99,padding:"4px 8px",fontSize:9.5,fontWeight:850}}>{goalModeInfo.label}</span>
             </div>
+            {workoutPlan.clarification&&<div className="member-menu-pop" style={{marginTop:9,padding:"9px 10px",borderRadius:10,background:"color-mix(in srgb,var(--cal-cardio) 8%,var(--input))",border:"1px solid color-mix(in srgb,var(--cal-cardio) 38%,var(--line))"}}>{workoutPlan.clarification.selected
+              ? <div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:10.5,color:T.sub,flex:1}}>Using <b style={{color:T.ink}}>{naturalList(workoutPlan.muscles)}</b> for today.</span><button type="button" onClick={clearWorkoutChoice} style={{padding:"5px 8px",borderRadius:7,background:T.input,border:`1px solid ${T.line}`,color:T.sub,fontSize:10,fontWeight:800}}>Change</button></div>
+              : <><div style={{fontSize:11.5,color:T.ink,fontWeight:850,marginBottom:6}}>Which workout are you doing?</div><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{workoutPlan.clarification.options.map(option=><button type="button" key={option.signature} onClick={()=>chooseWorkout(option.signature)} style={{flex:"1 1 125px",padding:"7px 9px",borderRadius:8,background:T.input,border:`1px solid ${T.line}`,color:T.ink,fontSize:10.5,fontWeight:800}}>{naturalList(option.muscles)}</button>)}</div><div style={{fontSize:9.5,color:T.sub,marginTop:6}}>Asked because both had meaningful primary sets. Secondary work alone will not trigger this.</div></>}
+            </div>}
             <div style={{marginTop:11,borderTop:"1px solid "+T.line}}>
               {workoutPlan.rows.map((row,i)=>{
                 const hit=row.goal===0||row.done>=row.goal;
@@ -7201,6 +7231,7 @@ function CoachCard({ data, exMap, user, setData, onOpenLog }) {
             <button type="button" onClick={hideCatchUp} style={{padding:"6px 9px",borderRadius:8,background:"transparent",border:`1px solid ${T.line}`,color:T.sub,fontSize:10.5,fontWeight:800}}>Hide</button>
           </div>
         </div>}
+        {suppressedCatchUp&&<div className="member-menu-pop" style={{display:"flex",alignItems:"center",gap:8,marginTop:9,padding:"7px 9px",borderRadius:9,background:T.input,border:`1px solid ${T.line}`}}><span style={{fontSize:10.5,color:T.sub,flex:1,minWidth:0}}>{catchUpDelayed?"Catch-up saved for later.":"Catch-up hidden."}</span><button type="button" onClick={showCatchUpAgain} style={{padding:"5px 8px",borderRadius:7,background:T.mint,border:`1px solid ${T.green}`,color:T.green,fontSize:10,fontWeight:850}}>Show again</button></div>}
         {split === "custom" && cycle.length > 0 && !editing && (
           <div style={{display:"flex", alignItems:"center", gap:8, marginTop:11, paddingTop:10, borderTop:`1px solid ${T.line}`, flexWrap:"wrap"}}>
             {canUndoRestart
@@ -7363,6 +7394,7 @@ function CoachCard({ data, exMap, user, setData, onOpenLog }) {
           <div>✓ The first working set immediately identifies today's actual split day; completion is judged separately.</div>
           <div>✓ Small sessions add volume without resetting an overdue muscle or completing a whole split day.</div>
           <div>✓ Your actual workout and scheduled workout stay separate. Training something else updates today's card without erasing the queued day.</div>
+          <div>✓ If meaningful primary sets match two split days, the coach asks which workout you meant. Incidental secondary work does not trigger it.</div>
           <div>✓ A split day advances after meaningful target-based volume and coverage, or when you explicitly finish it. Manual finishes can be undone.</div>
           <div>✓ Catch-up amounts use your remaining rolling goal and normal split dose, count secondary work as ½, and never suggest cramming more than 10 sets for one muscle.</div>
           {!!hiddenCatchUps.length&&<button type="button" onClick={restoreCatchUps} style={{marginTop:7,padding:"5px 9px",borderRadius:8,background:T.input,border:`1px solid ${T.line}`,color:T.green,fontSize:10.5,fontWeight:800}}>Show hidden catch-ups</button>}
