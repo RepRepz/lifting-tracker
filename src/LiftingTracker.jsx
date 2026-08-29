@@ -2960,6 +2960,7 @@ function Dashboard({ data, exMap, setData, own = true, user, sharedSteps = null,
   const showDashSteps = own ? !!stepsEnabled : sharedSteps != null;
   const [researchMode, setResearchMode] = useState(() => goalModeOf(data)==="strength"?"strength":"hypertrophy");
   const [targetDetail, setTargetDetail] = useState(null); // { muscle, pinned }
+  const [targetEditor, setTargetEditor] = useState(null);
   const minimizedSections = data.profile?.minimizedSections || {};
   const setSectionMinimized = (key, value) => setData(d=>({ ...d, profile:{ ...(d.profile||{}), minimizedSections:{ ...(d.profile?.minimizedSections||{}), [key]:value } } }));
   const targetMinimized = own && !!minimizedSections.weeklyTargets;
@@ -2972,7 +2973,7 @@ function Dashboard({ data, exMap, setData, own = true, user, sharedSteps = null,
   useEffect(() => { const mode=goalModeOf(data); if(mode!=="custom") setResearchMode(mode); }, [data.profile?.setGoalMode]);
   useEffect(() => {
     if (!targetDetail) return;
-    const closeOutside = (e) => { if (targetCardRef.current && !targetCardRef.current.contains(e.target)) setTargetDetail(null); };
+    const closeOutside = (e) => { if (targetCardRef.current && !targetCardRef.current.contains(e.target)) { setTargetDetail(null); setTargetEditor(null); } };
     document.addEventListener("pointerdown", closeOutside);
     return () => document.removeEventListener("pointerdown", closeOutside);
   }, [targetDetail]);
@@ -3277,18 +3278,12 @@ function Dashboard({ data, exMap, setData, own = true, user, sharedSteps = null,
       const key = targetOverrideKeyOf(d);
       return { ...d, profile: { ...(d.profile || {}), [key]: { ...(d.profile?.[key] || {}), [m]: Math.max(0, Math.min(40, (cur[m] || 0) + delta)) } } };
     });
-    const resetDashTarget = (m) => setData(d => {
-      const key = targetOverrideKeyOf(d);
-      const rest = { ...(d.profile?.[key] || {}) }; delete rest[m];
-      return { ...d, profile: { ...(d.profile || {}), [key]: rest } };
-    });
-    const resetAllDashTargets = () => setData(d => {
-      const key = targetOverrideKeyOf(d);
-      return { ...d, profile: { ...(d.profile || {}), [key]: {} } };
-    });
     const setGoalMode = (mode) => setData(d => {
       const profile={...(d.profile||{})};
-      if(mode==="custom"&&!profile.customGoalSetTargets) profile.customGoalSetTargets={...setTargetsOf(d)};
+      if(mode==="custom"&&!profile.customGoalSetTargets){
+        const prior=goalModeOf(d), legacy=prior==="strength"?profile.strengthSetTargets:profile.setTargets;
+        profile.customGoalSetTargets={...GOAL_MODES[prior].targets,...(legacy||{})};
+      }
       profile.setGoalMode=mode;
       return {...d,profile};
     });
@@ -3300,7 +3295,16 @@ function Dashboard({ data, exMap, setData, own = true, user, sharedSteps = null,
     const dropdownSummary = { fontSize:12.5, color:T.green, fontWeight:700, cursor:"pointer", listStyle:"none", display:"inline-flex", alignItems:"center", gap:6, background:T.input, border:`1px solid ${T.line}`, borderRadius:99, padding:"6px 13px" };
     const targetDone = Object.values(weekSets).reduce((sum,n)=>sum+n,0);
     const targetGoal = Object.values(targets).reduce((sum,n)=>sum+n,0);
-    widgets.target = targetMinimized ? (
+    const workoutDayAnswered = !own || Number.isFinite(Number(data.profile?.workoutDayMinSets));
+    widgets.target = !workoutDayAnswered ? (
+      <div className="card" style={{borderColor:`color-mix(in srgb,${T.green} 35%,${T.line})`,background:`linear-gradient(145deg,${T.card},color-mix(in srgb,${T.green} 7%,${T.card}))`}}>
+        <div className="h" style={{fontSize:17,color:T.tealDk,marginBottom:4}}>Weekly set target</div>
+        <div style={{fontSize:13,color:T.ink,fontWeight:800,marginTop:10}}>First, what should count as a workout day?</div>
+        <div style={{fontSize:11.5,color:T.sub,lineHeight:1.5,margin:"4px 0 10px"}}>Answer this question to view your targets. Sets still save even when they don’t earn calendar or streak credit.</div>
+        <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>{[2,3,4,5,6].map(n=><button key={n} type="button" onClick={()=>setWorkoutDayMinimum(n)} style={{padding:"7px 12px",borderRadius:99,background:n===3?T.mint:T.input,color:n===3?T.green:T.sub,border:`1px solid ${n===3?T.green:T.line}`,fontSize:12,fontWeight:850}}>{n}+ working sets</button>)}</div>
+        <div style={{fontSize:10.5,color:T.sub,lineHeight:1.5,marginTop:9}}>Recommended: 3. Push-up-only days require 50 total reps regardless of this choice. Warm-ups don’t count.</div>
+      </div>
+    ) : targetMinimized ? (
       <div className="card compact-card" style={{display:"flex", alignItems:"center", gap:8}}>
         <span style={{fontSize:17}}>🎯</span>
         <div style={{minWidth:0, flex:1}}><div className="h" style={{fontSize:14, color:T.tealDk}}>Weekly set target</div><div style={{fontSize:11, color:T.sub}}>{fmtSets(targetDone)} / {fmtSets(targetGoal)} credited sets this week</div></div>
@@ -3326,43 +3330,19 @@ function Dashboard({ data, exMap, setData, own = true, user, sharedSteps = null,
           const n = weekSets[m];
           const status = n < goal ? `${goal-n} under` : n === goal ? "✓ goal hit" : `${n-goal} over`;
           const sColor = n < goal ? T.ink : T.green;
-          return (
-            <div key={m} style={{display:"grid", gridTemplateColumns:"78px 1fr 96px", gap:10, alignItems:"center", marginBottom:9}}>
+          return <Fragment key={m}>
+            <div style={{display:"grid", gridTemplateColumns:"78px 1fr 96px", gap:10, alignItems:"center", marginBottom:targetEditor===m?4:9}}>
               <button type="button" onClick={()=>toggleTargetDetail(m)} style={{padding:0, background:"none", color:T.ink, textAlign:"left", fontSize:13, fontWeight:600}}>{m}</button>
               <TargetBar muscle={m} count={n} color={MUSCLE_COLORS[i]} goal={goal} max={Math.max(20, goal+4, n)} open={activeTargetMuscle===m} onHover={()=>previewTargetDetail(m)} onLeave={()=>leaveTargetDetail(m)} onToggle={()=>toggleTargetDetail(m)} />
               <button type="button" onClick={()=>toggleTargetDetail(m)} aria-expanded={activeTargetMuscle===m} style={{padding:0, background:"none", fontSize:11.5, textAlign:"right", whiteSpace:"nowrap", lineHeight:1.25}}>
-                <span style={{display:"block", color:T.sub}}><b style={{color:T.ink, fontSize:13}}>{n}</b> / {goal}</span>
+                <span style={{display:"block", color:T.sub}}><b style={{color:T.ink, fontSize:13}}>{n}</b> / {goalMode==="custom"?<span role="button" tabIndex={0} title={`Edit ${m} weekly target`} onClick={e=>{e.stopPropagation();setTargetEditor(cur=>cur===m?null:m);setTargetDetail(null);}} onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();e.stopPropagation();setTargetEditor(cur=>cur===m?null:m);}}} style={{display:"inline-flex",alignItems:"center",gap:3,color:T.green,fontWeight:850,padding:"2px 5px",borderRadius:6,border:`1px dashed ${T.green}`,cursor:"pointer"}}>{goal}<span aria-hidden="true" style={{fontSize:9}}>✎</span></span>:goal}</span>
                 <span style={{display:"block", color:sColor, fontWeight:700}}>{status}</span>
               </button>
             </div>
-          );
+            {goalMode==="custom"&&targetEditor===m&&<div style={{display:"flex",alignItems:"center",justifyContent:"flex-end",gap:7,margin:"0 0 9px",padding:"7px 9px",background:T.input,border:`1px solid ${T.line}`,borderRadius:9}}><span style={{marginRight:"auto",fontSize:10.5,color:T.sub}}>Weekly target · AI uses {fmtSets(goal/Math.max(1,splitFrequencyOf(data)[m]||1))} per workout</span><button type="button" onClick={()=>bumpDashTarget(m,-1)} aria-label={`Lower ${m} goal`} style={{width:29,height:29,padding:0,borderRadius:8,background:T.card,border:`1px solid ${T.line}`,color:T.ink,fontSize:17}}>−</button><b style={{minWidth:24,textAlign:"center",color:T.green}}>{goal}</b><button type="button" onClick={()=>bumpDashTarget(m,1)} aria-label={`Raise ${m} goal`} style={{width:29,height:29,padding:0,borderRadius:8,background:T.card,border:`1px solid ${T.line}`,color:T.ink,fontSize:17}}>+</button><button type="button" onClick={()=>setTargetEditor(null)} style={{padding:"6px 8px",borderRadius:8,background:T.mint,border:`1px solid ${T.green}`,color:T.green,fontSize:10.5,fontWeight:850}}>Done</button></div>}
+          </Fragment>;
         })}
         {activeTargetMuscle && <TargetBreakdown muscle={activeTargetMuscle} rows={weekSetBreakdown[activeTargetMuscle] || []} count={weekSets[activeTargetMuscle]} goal={targets[activeTargetMuscle]} color={MUSCLE_COLORS[MUSCLES.indexOf(activeTargetMuscle)]} />}
-        {own && <div style={{display:"flex", gap:10, marginTop:6, flexWrap:"wrap"}}>
-          <details style={{width:"100%"}}>
-            <summary style={{...dropdownSummary, color:T.green}}>🎛 {goalMode==="custom"?"Set your custom weekly goals":`Modify your own ${goalModeInfo.label.toLowerCase()} goals`} <span style={{fontSize:9}}>▾</span></summary>
-            <div style={{marginTop:10, padding:"13px", background:`linear-gradient(145deg, ${T.input}, ${T.card})`, border:`1px solid ${T.line}`, borderRadius:13, boxShadow:"0 10px 28px rgba(0,0,0,.14)"}}>
-              <div style={{display:"flex", alignItems:"center", justifyContent:"space-between", gap:10, marginBottom:9}}>
-                <div><div style={{fontSize:13, color:T.ink, fontWeight:800}}>{goalModeInfo.label} targets</div><div style={{fontSize:10.5, color:T.sub, marginTop:2}}>{goalMode==="custom"?"These are completely yours. The coach turns them into per-workout targets using your split frequency.":"Your changes are saved separately for each goal type."}</div></div>
-                {Object.keys(customTargets).length>0 && <button type="button" onClick={resetAllDashTargets} style={{background:T.card, color:T.sub, border:`1px solid ${T.line}`, padding:"6px 9px", fontSize:10.5, fontWeight:700, whiteSpace:"nowrap"}}>Reset all</button>}
-              </div>
-              {MUSCLES.map(m => {
-                const isCustom = customTargets[m] != null;
-                return (
-                  <div key={m} style={{display:"grid", gridTemplateColumns:"minmax(78px,1fr) auto", alignItems:"center", gap:10, padding:"9px 0", borderTop:`1px solid ${T.line}`}}>
-                    <div><span style={{fontSize:12.5, fontWeight:750, color:T.ink}}>{m}</span><span style={{display:"block", fontSize:9.5, color:isCustom?T.green:T.sub, marginTop:1}}>{goalMode==="custom"?"Your weekly target":isCustom ? `Custom · research default ${goalModeInfo.targets[m]}` : `Research default ${goalModeInfo.targets[m]}`}</span></div>
-                    <div style={{display:"flex", alignItems:"center", gap:6}}>
-                      <button onClick={()=>bumpDashTarget(m,-1)} aria-label={`Lower ${m} goal`} style={{width:30, height:30, borderRadius:8, background:T.card, border:`1px solid ${T.line}`, color:T.ink, fontSize:17, lineHeight:1, padding:0}}>−</button>
-                      <span style={{fontSize:15, fontWeight:850, minWidth:28, textAlign:"center", color:isCustom?T.green:T.ink, fontVariantNumeric:"tabular-nums"}}>{targets[m]}</span>
-                      <button onClick={()=>bumpDashTarget(m,1)} aria-label={`Raise ${m} goal`} style={{width:30, height:30, borderRadius:8, background:T.card, border:`1px solid ${T.line}`, color:T.ink, fontSize:17, lineHeight:1, padding:0}}>+</button>
-                      {isCustom && <button onClick={()=>resetDashTarget(m)} title="Reset this muscle" aria-label={`Reset ${m} goal`} style={{width:30, height:30, background:T.mint, color:T.green, border:`1px solid ${T.green}`, borderRadius:8, fontSize:13, fontWeight:800, padding:0}}>↺</button>}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </details>
-        </div>}
         {own && <details style={{marginTop:10}}>
           <summary style={{...dropdownSummary,color:T.sub}}>✓ What counts as a workout day? <span style={{fontSize:9}}>▾</span></summary>
           <div style={{marginTop:8,padding:"11px 12px",background:T.input,border:`1px solid ${T.line}`,borderRadius:12}}>
@@ -6492,7 +6472,7 @@ const ARNOLD_MUSCLES = { cb: ["Chest", "Back"], sa: ["Shoulders", "Biceps", "Tri
 const ALL_UPPER = ["Chest", "Back", "Shoulders", "Biceps", "Triceps"];
 const goalModeOf = (data) => ["hypertrophy","strength","custom"].includes(data.profile?.setGoalMode) ? data.profile.setGoalMode : "hypertrophy";
 const targetOverrideKeyOf = (data) => goalModeOf(data) === "strength" ? "strengthSetTargets" : goalModeOf(data)==="custom" ? "customGoalSetTargets" : "setTargets";
-const customSetTargetsOf = (data) => data.profile?.[targetOverrideKeyOf(data)] || {};
+const customSetTargetsOf = (data) => goalModeOf(data)==="custom" ? (data.profile?.customGoalSetTargets || {}) : {};
 const setTargetsOf = (data) => ({ ...GOAL_MODES[goalModeOf(data)].targets, ...customSetTargetsOf(data) });
 const workoutDayMinSetsOf = (data) => Math.max(2, Math.min(8, Number(data?.profile?.workoutDayMinSets) || 3));
 const isPushupEntry = (e) => /push[- ]?up/i.test(String(e?.exercise||""));
@@ -7413,13 +7393,13 @@ function CoachCard({ data, exMap, user, setData, onOpenLog }) {
               </button>
               {showTargets && (
                 <div style={{ marginTop: 9 }}>
-                  <div style={{ fontSize: 11.5, color: T.sub, lineHeight: 1.55, marginBottom: 10 }}><b style={{ color: T.ink }}>{goalModeInfo.label}</b> goals · synced with Dashboard.</div>
+                  <div style={{ fontSize: 11.5, color: T.sub, lineHeight: 1.55, marginBottom: 10 }}><b style={{ color: T.ink }}>{goalModeInfo.label}</b> goals · synced with Dashboard.{goalMode!=="custom"&&" Switch to Custom there to edit the numbers."}</div>
                   {MUSCLES.map(m => (
                     <div key={m} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 2px", borderTop: `1px solid ${T.creamLine}` }}>
                       <span style={{ flex: 1, fontSize: 13.5, fontWeight: 700, color: T.ink }}>{m}</span>
-                      <button onClick={() => bumpTarget(m, -1)} style={{ width: 30, height: 30, borderRadius: 8, background: T.card, border: `1px solid ${T.line}`, color: T.ink, fontSize: 17, lineHeight: 1 }}>−</button>
+                      {goalMode==="custom"&&<button onClick={() => bumpTarget(m, -1)} style={{ width: 30, height: 30, borderRadius: 8, background: T.card, border: `1px solid ${T.line}`, color: T.ink, fontSize: 17, lineHeight: 1 }}>−</button>}
                       <span style={{ minWidth: 42, textAlign: "center", fontSize: 15, fontWeight: 800, color: T.green, fontVariantNumeric: "tabular-nums" }}>{targets[m]}</span>
-                      <button onClick={() => bumpTarget(m, 1)} style={{ width: 30, height: 30, borderRadius: 8, background: T.card, border: `1px solid ${T.line}`, color: T.ink, fontSize: 17, lineHeight: 1 }}>+</button>
+                      {goalMode==="custom"&&<button onClick={() => bumpTarget(m, 1)} style={{ width: 30, height: 30, borderRadius: 8, background: T.card, border: `1px solid ${T.line}`, color: T.ink, fontSize: 17, lineHeight: 1 }}>+</button>}
                     </div>
                   ))}
                 </div>
