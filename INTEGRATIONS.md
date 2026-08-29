@@ -26,12 +26,15 @@ Last checked: 2026-08-29. These are setup notes, not credentials or a guarantee 
 
 See [the backup setup and recovery runbook](scripts/backup/README.md).
 
-- R2 enrollment and the private `the-lab-backups` bucket are complete. No bucket-scoped
-  S3 credential, billing alert, or production backup has been created yet.
+- R2 enrollment and the private `the-lab-backups` bucket are complete. A bucket-scoped
+  S3 credential is stored in the GitHub `backups` environment and passed a live
+  write/head/delete probe on 2026-08-29 (Actions run `33272395115`). No billing alert
+  or production backup has been created yet.
 - The GitHub `backups` environment now exists and its deployment branch policy permits
-  only `main`. `RESTIC_REPOSITORY` is configured; the remaining required secrets are
-  not. The repository variable `BACKUPS_ENABLED` remains absent so scheduled backups
-  cannot run prematurely.
+  only `main`. `RESTIC_REPOSITORY`, `BACKUP_S3_ACCESS_KEY_ID`, and
+  `BACKUP_S3_SECRET_ACCESS_KEY` are configured; the remaining required secrets are not.
+  The repository variable `BACKUPS_ENABLED` remains absent so scheduled backups cannot
+  run prematurely.
 - The prepared workflow runs once daily only after explicit activation. It still
   needs the production database connection, bucket-scoped S3 credentials, independent
   restic encryption password with an owner-held recovery copy, and a server-only
