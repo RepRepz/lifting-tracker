@@ -6443,10 +6443,14 @@ const splitSessionProgress = (data, log, exMap, date, muscles) => {
   const requiredVolume=Math.max(2,Math.min(planned.length*3,expected*.5));
   return {credited,total,covered,requiredCoverage,requiredVolume,complete:planned.length>0&&covered>=requiredCoverage&&total>=requiredVolume};
 };
+const meaningfulDoseFor = (data,m) => {
+  const expected=(setTargetsOf(data)[m]||0)/Math.max(1,splitFrequencyOf(data)[m]||1);
+  return Math.max(1.5,Math.min(4,expected*.35));
+};
 /* Recency should mean a useful training exposure, not merely the last date a muscle
    appeared anywhere. Small sets remain in weekly volume but do not reset overdue work. */
 const meaningfulLastTrained = (data, log, exMap) => {
-  const targets=setTargetsOf(data),frequency=splitFrequencyOf(data),byDate={};
+  const byDate={};
   for(const e of (log||[])){
     if(e.effort==="Warm-up") continue;
     for(const [m,credit] of entryMuscleCredits(e,exMap)){
@@ -6457,11 +6461,33 @@ const meaningfulLastTrained = (data, log, exMap) => {
   }
   const last={};
   for(const date of Object.keys(byDate).sort()) for(const m of MUSCLES){
-    const expected=(targets[m]||0)/Math.max(1,frequency[m]||1);
-    const usefulDose=Math.max(1.5,Math.min(4,expected*.35));
-    if((byDate[date][m]||0)>=usefulDose) last[m]=date;
+    if((byDate[date][m]||0)>=meaningfulDoseFor(data,m)) last[m]=date;
   }
   return last;
+};
+/* Find a recent split day somebody started but did not cover. It becomes a compact
+   carry-forward item instead of either disappearing or freezing the whole rotation. */
+const splitCatchUp = (data,log,exMap,candidates,today) => {
+  const last=meaningfulLastTrained(data,log,exMap);
+  const dates=[...new Set((log||[]).filter(e=>e.date<today&&dayGap(today,e.date)<=14&&e.effort!=="Warm-up").map(e=>e.date))].sort().reverse();
+  for(const date of dates){
+    const groups=groupsLoggedOn(log,exMap,date);
+    if(!groups.size) continue;
+    const scored=candidates.map(c=>{
+      const matches=c.muscles.filter(m=>groups.has(m)).length;
+      return {...c,score:(matches/Math.max(1,groups.size))*.75+(matches/Math.max(1,c.muscles.length))*.25};
+    }).sort((a,b)=>b.score-a.score);
+    const attempted=scored[0];
+    if(!attempted||attempted.score<.65) continue;
+    const progress=splitSessionProgress(data,log,exMap,date,attempted.muscles);
+    if(progress.complete) continue;
+    const missing=attempted.muscles.filter(m=>(progress.credited[m]||0)<meaningfulDoseFor(data,m)&&(!last[m]||last[m]<date));
+    if(!missing.length) continue;
+    const maxGap=Math.max(...missing.map(m=>last[m]?dayGap(today,last[m]):30));
+    return {date,muscles:missing,sourceMuscles:attempted.muscles,priority:maxGap>=coachPrefsOf(data).staleDays,
+      suggested:Object.fromEntries(missing.map(m=>[m,Math.max(2,Math.min(4,Math.ceil(meaningfulDoseFor(data,m)-(progress.credited[m]||0))))]))};
+  }
+  return null;
 };
 /* Where you are in a custom rotation TODAY. Training days are sticky: a missed workout
    stays next until a matching session is logged. Explicit rest days still pass with the
@@ -6550,6 +6576,7 @@ function todayWorkoutPlan(data, exMap) {
   else if(split==="bro") candidates=MUSCLES.filter(m=>m!=="Abs").map(m=>({id:m,muscles:[m]}));
   else candidates=MUSCLES.map(m=>({id:m,muscles:[m]}));
   candidates=candidates.map(c=>({...c,muscles:[...new Set(c.muscles)].filter(m=>MUSCLES.includes(m))})).filter(c=>c.muscles.length);
+  const catchUp=splitCatchUp(data,log,exMap,candidates,today);
   const gapFor=m=>lastByMuscle[m]?dayGap(today,lastByMuscle[m]):30;
   const overdueScore=c=>c.muscles.reduce((sum,m)=>sum+gapFor(m),0)/c.muscles.length;
   const todayGroups=groupsLoggedOn(log,exMap,today);
@@ -6573,7 +6600,7 @@ function todayWorkoutPlan(data, exMap) {
   if(!chosen&&split==="custom"&&prefs.focusStyle!=="volume"){
     const pos=customCyclePosition(data,log.filter(e=>e.date<today),exMap);
     const queued=pos.idx>=0?pos.cycle[pos.idx]:null;
-    if(queued?.rest) return {muscles:[],rows:[],reason:"😴 Rest day in your custom split. Recovery is the plan today.",complete:true,rest:true};
+    if(queued?.rest) return {muscles:[],rows:[],reason:"😴 Rest day in your custom split. Recovery is the plan today.",complete:true,rest:true,catchUp};
     if(queued&&!queued.rest){
       const match=queued.muscles.filter(m=>todayGroups.has(m)).length/Math.max(1,queued.muscles.length);
       if(match<.5) chosen=candidates.find(c=>c.id===queued.id)||null;
@@ -6597,9 +6624,11 @@ function todayWorkoutPlan(data, exMap) {
     }
   }
   const rows=(chosen?.muscles||[]).map(m=>({muscle:m,done:Math.round(todayDone[m]*10)/10,goal:goalFor(m),weekly:Math.round(weekly[m]*10)/10,weeklyGoal:targets[m]})).filter(r=>r.goal>0||r.done>0);
+  const catchUpMuscles=(catchUp?.muscles||[]).filter(m=>!chosen?.muscles?.includes(m));
+  const carriedCatchUp=catchUp&&catchUpMuscles.length?{...catchUp,muscles:catchUpMuscles}:null;
   const complete=rows.length>0&&rows.every(r=>r.goal===0||r.done>=r.goal);
-  if(!rows.length&&chosen) return {muscles:chosen.muscles,rows:[],reason:"Your weekly targets for this workout are already covered.",complete:true};
-  return {muscles:chosen?.muscles||[],rows,reason:complete?"Today's recommended targets are complete.":reason,complete};
+  if(!rows.length&&chosen) return {muscles:chosen.muscles,rows:[],reason:"Your weekly targets for this workout are already covered.",complete:true,catchUp:carriedCatchUp};
+  return {muscles:chosen?.muscles||[],rows,reason:complete?"Today's recommended targets are complete.":reason,complete,catchUp:carriedCatchUp};
 }
 
 function coachTips(data, exMap, units) {
@@ -6999,6 +7028,14 @@ function CoachCard({ data, exMap, user, setData, onOpenLog }) {
         ) : (
           <div style={{ fontSize: 14, color: workoutPlan.complete?T.green:T.ink, fontWeight: 600, lineHeight: 1.5 }}>{workoutPlan.reason||"No workout target is available yet. Add a training day to your split."}</div>
         )}
+        {workoutPlan.catchUp && <div style={{marginTop:11,padding:"10px 11px",borderRadius:11,background:"color-mix(in srgb,var(--cal-cardio) 9%,var(--input))",border:"1px solid color-mix(in srgb,var(--cal-cardio) 38%,var(--line))"}}>
+          <div style={{display:"flex",alignItems:"center",gap:7,flexWrap:"wrap"}}>
+            <span style={{fontSize:10,fontWeight:900,color:"var(--cal-cardio)",letterSpacing:'.06em',textTransform:'uppercase'}}>{workoutPlan.catchUp.priority?"Catch-up priority":"Missed volume"}</span>
+            <span style={{fontSize:10,color:T.sub}}>from {naturalList(workoutPlan.catchUp.sourceMuscles)} · {fmtDate(workoutPlan.catchUp.date)}</span>
+          </div>
+          <div style={{fontSize:13,color:T.ink,fontWeight:800,lineHeight:1.4,marginTop:4}}>{naturalList(workoutPlan.catchUp.muscles)} still needs a meaningful dose</div>
+          <div style={{fontSize:10.5,color:T.sub,lineHeight:1.45,marginTop:3}}>{workoutPlan.catchUp.muscles.map(m=>`${m}: about ${workoutPlan.catchUp.suggested[m]} sets`).join(" · ")}. {workoutPlan.catchUp.priority?"Do it first if recovered, then continue today's plan.":"Add it if recovered, or carry it into the next compatible workout."}</div>
+        </div>}
         {split === "custom" && cycle.length > 0 && !editing && (
           <div style={{display:"flex", alignItems:"center", gap:8, marginTop:11, paddingTop:10, borderTop:`1px solid ${T.line}`, flexWrap:"wrap"}}>
             {canUndoRestart

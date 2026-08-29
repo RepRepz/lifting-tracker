@@ -1,7 +1,7 @@
 /* Offline support: network-first for same-origin files, falling back to
    the last cached copy when there's no signal. Supabase API calls are
    never intercepted. */
-const CACHE = "the-lab-v174";
+const CACHE = "the-lab-v175";
 const NETWORK_TIMEOUT_MS = 8000;
 
 async function fetchWithTimeout(request) {
