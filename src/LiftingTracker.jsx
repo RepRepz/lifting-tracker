@@ -139,6 +139,51 @@ const entryPrimaryMuscles = (entry, exMap) => entry?.muscleOnly && MUSCLES.inclu
 const entryLabel = (entry) => entry?.muscleOnly ? `${entry.muscle} (quick workout)` : (entry?.exercise || "Workout");
 const MUSCLE_COLORS = ["#009E04","#3D7FD9","#C08A1E","#9C4DE0","#D94F00","#17ABA0","#A83277"];
 
+/* Broad groups keep the app easy to scan; these conservative name-based tags provide
+   useful detail underneath them without pretending custom exercises are more specific
+   than their saved metadata. Unknown movements simply stay "General". */
+const muscleSubgroupsOf = (ex, muscle) => {
+  const n=(ex?.name||"").toLowerCase();
+  if (!n) return ["General"];
+  if (muscle==="Legs") {
+    if (/adduct|inner thigh/.test(n)) return ["Adductors"];
+    if (/abduct|outer thigh/.test(n)) return ["Abductors / glute med"];
+    if (/calf|calves/.test(n)) return ["Calves"];
+    if (/leg curl|hamstring|nordic|romanian|stiff.?leg|good morning/.test(n)) return ["Hamstrings"];
+    if (/hip thrust|glute|kickback/.test(n)) return ["Glutes"];
+    if (/leg extension|sissy|front squat/.test(n)) return ["Quads"];
+    if (/squat|leg press|lunge|split squat|step.?up/.test(n)) return ["Quads", "Glutes"];
+  }
+  if (muscle==="Shoulders") {
+    if (/rear|reverse fly|reverse pec|face pull/.test(n)) return ["Rear delts"];
+    if (/lateral|side raise|upright row/.test(n)) return ["Side delts"];
+    if (/press|front raise/.test(n)) return ["Front delts"];
+  }
+  if (muscle==="Back") {
+    if (/pulldown|pull.?up|chin.?up|pullover|straight.?arm/.test(n)) return ["Lats"];
+    if (/deadlift|back extension|hyperextension|good morning/.test(n)) return ["Spinal erectors"];
+    if (/row|face pull|reverse fly|shrug/.test(n)) return ["Upper back"];
+  }
+  if (muscle==="Chest") {
+    if (/incline|low to high/.test(n)) return ["Upper chest"];
+    if (/decline|high to low|dip/.test(n)) return ["Lower chest"];
+    return ["Mid / overall chest"];
+  }
+  if (muscle==="Triceps") {
+    if (/overhead/.test(n)) return ["Long head"];
+    return ["Overall triceps"];
+  }
+  if (muscle==="Biceps") {
+    if (/hammer|cross.?body|reverse curl/.test(n)) return ["Brachialis / brachioradialis"];
+    return ["Overall biceps"];
+  }
+  if (muscle==="Abs") {
+    if (/side|oblique|wood|rotation|pallof/.test(n)) return ["Obliques / core"];
+    return ["Abs"];
+  }
+  return ["General"];
+};
+
 /* Curated, exact exercise illustrations. These stay outside saved user data, so the
    feature is easy to remove/replace without a migration. wger's exercise media is
    licensed per image; attribution is shown in ExerciseVisualModal. We intentionally
@@ -200,7 +245,9 @@ function useExerciseVisual(exercise) {
   if (exercise?.visualPath) return privateUrl ? { src:privateUrl, largeSrc:privateUrl, custom:true, kind:exercise.visualKind || "image" } : null;
   return builtIn;
 }
-const EFFORTS = ["Warm-up","Could've done more","Right amount","To failure"];
+/* Keep effort intentionally simple. Older saved labels remain supported by the coach,
+   but new sets use three plain-language choices tied to approximate reps in reserve. */
+const EFFORTS = ["Warm-up","Easy · 4+ left","Productive · 1–3 left","Failure · 0 left"];
 const MET = { Light: 4, Moderate: 6, Vigorous: 9, "Max Effort": 12 };
 const INTENSITY_FEEL = {
   Light: "Easy pace, could hold a full conversation",
@@ -1807,12 +1854,11 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
           )}
         </div>
       )}
-      <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:12}}>
-        <label style={lbl}>Effort / Warm-up
-          <select value={effort} onChange={e=>setEffort(e.target.value)}>
-            <option value="">—</option>{EFFORTS.map(x=><option key={x}>{x}</option>)}
-          </select>
-        </label>
+      <div style={{marginBottom:12}}>
+        <div style={{...lbl,marginBottom:6}}>Effort <span style={{fontWeight:500,color:T.sub}}>(optional)</span></div>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}>
+          {EFFORTS.map(x=>{const on=effort===x;const short=x==="Warm-up"?"Warm-up":x.split(" · ")[0];return <button key={x} type="button" onClick={()=>setEffort(on?"":x)} aria-pressed={on} title={x} style={{flex:"1 1 82px",minHeight:35,padding:"7px 8px",borderRadius:9,background:on?T.mint:T.input,color:on?T.green:T.sub,border:`1px solid ${on?T.green:T.line}`,fontSize:11.5,fontWeight:800,whiteSpace:"nowrap"}}>{on?"✓ ":""}{short}</button>;})}
+        </div>
         <label style={lbl}>Notes<input value={notes} onChange={e=>setNotes(e.target.value)} placeholder="optional" /></label>
       </div>
       <button onClick={addSet} disabled={!exName || !reps || (!isBW && !weight)} className="btn-primary"
@@ -1956,7 +2002,7 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
                   <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:10}}>
                     <label style={lbl}>Effort
                       <select value={edit.effort} onChange={ev=>setEdit(s=>({...s, effort:ev.target.value}))}>
-                        <option value="">—</option>{EFFORTS.map(x=><option key={x}>{x}</option>)}
+                        <option value="">—</option>{[...new Set([edit.effort,...EFFORTS].filter(Boolean))].map(x=><option key={x}>{x}</option>)}
                       </select>
                     </label>
                     <label style={lbl}>Notes<input value={edit.notes} onChange={ev=>setEdit(s=>({...s, notes:ev.target.value}))} /></label>
@@ -2152,6 +2198,9 @@ function TargetBar({ muscle, count, color, goal = 12, max = 20, open, onHover, o
 const fmtSets = (n) => Number.isInteger(n) ? String(n) : n.toFixed(1).replace(/\.0$/, "");
 function TargetBreakdown({ muscle, rows, count, goal, color }) {
   const status = count < goal ? `${fmtSets(goal-count)} under` : count === goal ? "Goal hit" : `${fmtSets(count-goal)} over`;
+  const subgroupTotals={};
+  for(const row of rows) for(const subgroup of (row.subgroups?.length?row.subgroups:["General"])) subgroupTotals[subgroup]=(subgroupTotals[subgroup]||0)+row.total/(row.subgroups?.length||1);
+  const subgroupRows=Object.entries(subgroupTotals).sort((a,b)=>b[1]-a[1]);
   return (
     <div style={{margin:"5px 0 12px", padding:"11px 12px", background:`linear-gradient(145deg, ${T.input}, ${T.card})`, border:`1px solid ${count>=goal?T.green:T.line}`, borderRadius:12, boxShadow:"0 10px 26px rgba(0,0,0,.16)"}}>
       <div style={{display:"flex", alignItems:"center", gap:8, marginBottom:rows.length?9:0}}>
@@ -2159,6 +2208,7 @@ function TargetBreakdown({ muscle, rows, count, goal, color }) {
         <b style={{fontSize:13, color:T.ink}}>{muscle}</b>
         <span style={{marginLeft:"auto", fontSize:12, fontWeight:800, color:count>=goal?T.green:T.ink}}>{fmtSets(count)} / {goal} sets · {status}</span>
       </div>
+      {!!subgroupRows.length&&<div style={{display:"flex",gap:6,flexWrap:"wrap",margin:"-1px 0 8px"}}>{subgroupRows.map(([name,total])=><span key={name} style={{display:"inline-flex",alignItems:"center",gap:5,padding:"4px 8px",borderRadius:99,background:"color-mix(in srgb,var(--accent) 8%,var(--input))",border:`1px solid color-mix(in srgb,var(--accent) 25%,var(--line))`,color:T.sub,fontSize:10,fontWeight:700}}>{name}<b style={{color:T.ink}}>{fmtSets(total)}</b></span>)}</div>}
       {rows.length ? <div style={{display:"flex", flexDirection:"column", gap:0, maxHeight:190, overflowY:"auto"}}>
         {rows.map(row => <div key={`${row.exercise}-${row.credit}`} style={{display:"grid", gridTemplateColumns:"minmax(0,1fr) auto", gap:10, alignItems:"center", padding:"7px 0", borderTop:`1px solid ${T.line}`}}>
           <div style={{minWidth:0}}><div style={{fontSize:12, color:T.ink, fontWeight:700, lineHeight:1.25, overflowWrap:"anywhere"}}>{row.exercise}</div><div style={{fontSize:10, color:T.sub, marginTop:2}}>{row.muscleOnly?"Quick workout · full set credit each":row.credit===0.5?"Secondary muscle · ½ set credit each":"Main muscle · full set credit each"}</div></div>
@@ -3053,7 +3103,7 @@ function Dashboard({ data, exMap, setData, own = true, user, sharedSteps = null,
       for (const [m, credit] of entryMuscleCredits(e, exMap)) {
         if (!(m in grouped)) continue;
         const label = entryLabel(e), key = `${label}|${credit}`;
-        const row = grouped[m][key] || { exercise:label, credit, logged:0, total:0, muscleOnly:!!e.muscleOnly };
+        const row = grouped[m][key] || { exercise:label, credit, logged:0, total:0, muscleOnly:!!e.muscleOnly, subgroups:e.muscleOnly?["Unspecified"]:muscleSubgroupsOf(exMap[e.exercise],m) };
         row.logged += setCountOf(e); row.total += credit*setCountOf(e); grouped[m][key] = row;
       }
     }
@@ -6326,7 +6376,7 @@ const bestEst1RM = (exercise, entries) => {
 
 /* =================== THE LAB COACH (rule-based, no LLM / no API) ===================
    Reads your logged sets and turns them into personalized coaching with plain math:
-   progression nudges, plateau/deload alerts, and push/pull/legs balance. Group weak-
+   progression nudges, plateau alerts, rolling volume, and push/pull/legs balance. Group weak-
    point comparison is loaded separately in CoachCard. 100% local, free, offline. */
 const MUSCLE_GROUP = (m) => {
   const s = (m || "").toLowerCase();
@@ -6337,6 +6387,9 @@ const MUSCLE_GROUP = (m) => {
   return "other";
 };
 const dayGap = (a, b) => Math.round((new Date(a + "T00:00") - new Date(b + "T00:00")) / 86400000);
+const inRollingDays = (date, end=todayStr(), days=7) => date<=end && dayGap(end,date)>=0 && dayGap(end,date)<days;
+const splitSignature = (muscles) => [...new Set((muscles||[]).filter(m=>MUSCLES.includes(m)))].sort().join("+");
+const manualSplitFinished = (data,date,muscles) => data.profile?.coachFinishedWorkouts?.[date]===splitSignature(muscles);
 
 const GNAME = { push: "push (chest/shoulders/triceps)", pull: "pull (back/biceps)", legs: "legs" };
 const GSHORT = { push: "Push", pull: "Pull", legs: "Legs" };
@@ -6441,11 +6494,24 @@ const splitSessionProgress = (data, log, exMap, date, muscles) => {
   // Half of the normal session target is enough to recognize an intentionally short
   // workout, with a modest cap so high-volume plans do not get stuck forever.
   const requiredVolume=Math.max(2,Math.min(planned.length*3,expected*.5));
-  return {credited,total,covered,requiredCoverage,requiredVolume,complete:planned.length>0&&covered>=requiredCoverage&&total>=requiredVolume};
+  const automatic=planned.length>0&&covered>=requiredCoverage&&total>=requiredVolume;
+  const manual=planned.length>0&&manualSplitFinished(data,date,planned);
+  return {credited,total,covered,requiredCoverage,requiredVolume,automatic,manual,complete:automatic||manual};
 };
 const meaningfulDoseFor = (data,m) => {
   const expected=(setTargetsOf(data)[m]||0)/Math.max(1,splitFrequencyOf(data)[m]||1);
   return Math.max(1.5,Math.min(4,expected*.35));
+};
+const subgroupCreditsOn = (log,exMap,date,muscle) => {
+  const totals={};
+  for(const e of (log||[])){
+    if(e.date!==date||e.effort==="Warm-up") continue;
+    const pair=entryMuscleCredits(e,exMap).find(([m])=>m===muscle);
+    if(!pair) continue;
+    const names=e.muscleOnly?["Unspecified"]:muscleSubgroupsOf(exMap[e.exercise],muscle);
+    for(const name of names) totals[name]=(totals[name]||0)+(pair[1]*setCountOf(e))/names.length;
+  }
+  return Object.entries(totals).sort((a,b)=>b[1]-a[1]).map(([name,sets])=>({name,sets:Math.round(sets*10)/10}));
 };
 /* Recency should mean a useful training exposure, not merely the last date a muscle
    appeared anywhere. Small sets remain in weekly volume but do not reset overdue work. */
@@ -6468,9 +6534,9 @@ const meaningfulLastTrained = (data, log, exMap) => {
 /* Find a recent split day somebody started but did not cover. It becomes a compact
    carry-forward item instead of either disappearing or freezing the whole rotation. */
 const splitCatchUp = (data,log,exMap,candidates,today) => {
-  const last=meaningfulLastTrained(data,log,exMap),targets=setTargetsOf(data),frequency=splitFrequencyOf(data),wk=weekStart(today);
+  const last=meaningfulLastTrained(data,log,exMap),targets=setTargetsOf(data),frequency=splitFrequencyOf(data);
   const weekly=Object.fromEntries(MUSCLES.map(m=>[m,0]));
-  for(const e of (log||[])) if(e.effort!=="Warm-up"&&weekStart(e.date)===wk) for(const [m,credit] of entryMuscleCredits(e,exMap)) if(MUSCLES.includes(m)) weekly[m]+=credit*setCountOf(e);
+  for(const e of (log||[])) if(e.effort!=="Warm-up"&&inRollingDays(e.date,today)) for(const [m,credit] of entryMuscleCredits(e,exMap)) if(MUSCLES.includes(m)) weekly[m]+=credit*setCountOf(e);
   const dates=[...new Set((log||[]).filter(e=>e.date<today&&dayGap(today,e.date)<=14&&e.effort!=="Warm-up").map(e=>e.date))].sort().reverse();
   for(const date of dates){
     const groups=groupsLoggedOn(log,exMap,date);
@@ -6513,6 +6579,21 @@ function customCyclePosition(data, log, exMap) {
   const len = cycle.length;
   const restartAt = Number(data.profile?.cycleRestartAt) || 0;
   const eligibleLog = restartAt ? (log || []).filter(e => Number(e?.id) > restartAt) : (log || []);
+  // An out-of-order workout is allowed to become today's actual workout, but it must
+  // not move the scheduled rotation past a day that was never completed.
+  const pending=data.profile?.coachPendingSplit;
+  if(pending?.since){
+    const pendingIdx=cycle.findIndex(d=>!d.rest&&(d.id===pending.id||splitSignature(d.muscles)===pending.signature));
+    if(pendingIdx>=0){
+      const pendingDay=cycle[pendingIdx];
+      const completedDate=[...new Set(eligibleLog.filter(e=>e.date>=pending.since).map(e=>e.date))].sort().find(date=>splitSessionProgress(data,eligibleLog,exMap,date,pendingDay.muscles).complete);
+      if(!completedDate) return {cycle,idx:pendingIdx,pending:true};
+      let idx=(pendingIdx+1)%len;
+      let elapsed=Math.max(1,dayGap(today,completedDate));
+      while(cycle[idx].rest&&elapsed>1){idx=(idx+1)%len;elapsed--;}
+      return {cycle,idx,pendingResolved:true};
+    }
+  }
   // 1) log-driven anchor: match your latest logged session to the best-fitting training day
   const dates = [...new Set(eligibleLog.map(e => e.date))].sort().reverse();
   let lastDate=null, bestIdx=-1;
@@ -6553,7 +6634,11 @@ const naturalList = (items) => {
   return `${a.slice(0,-1).join(", ")}, and ${a[a.length-1]}`;
 };
 const coachMuscleList = (muscles) => naturalList((muscles || []).map(m=>m.toLowerCase()));
-const effortAllowsLoad = (effort) => effort === "Could've done more" || effort === "Right amount";
+const effortKind = (effort) => effort==="Warm-up"?"warmup"
+  : (effort==="Failure · 0 left"||effort==="To failure")?"failure"
+  : (effort==="Productive · 1–3 left"||effort==="Right amount")?"productive"
+  : (effort==="Easy · 4+ left"||effort==="Could've done more")?"easy":"unknown";
+const effortAllowsLoad = (effort) => ["easy","productive"].includes(effortKind(effort));
 const DEFAULT_COACH_PREFS = { focusStyle:"overdue", staleDays:4, progression:true, volume:true, balance:true };
 const coachPrefsOf = (data) => ({ ...DEFAULT_COACH_PREFS, ...(data.profile?.coachPrefs || {}) });
 
@@ -6561,7 +6646,7 @@ const coachPrefsOf = (data) => ({ ...DEFAULT_COACH_PREFS, ...(data.profile?.coac
    overdue work, weekly gaps, today's credited sets, and the selected goal mode. */
 function todayWorkoutPlan(data, exMap) {
   const log=Array.isArray(data.log)?data.log:[];
-  const today=gymDayStr(), wk=weekStart(today), split=data.profile?.split||"";
+  const today=gymDayStr(), split=data.profile?.split||"";
   const prefs=coachPrefsOf(data), targets=setTargetsOf(data), frequency=splitFrequencyOf(data);
   const weekly=Object.fromEntries(MUSCLES.map(m=>[m,0]));
   const todayDone=Object.fromEntries(MUSCLES.map(m=>[m,0]));
@@ -6571,7 +6656,7 @@ function todayWorkoutPlan(data, exMap) {
     for (const [m,credit] of entryMuscleCredits(e,exMap)) {
       if (!MUSCLES.includes(m)) continue;
       const amount=credit*setCountOf(e);
-      if (weekStart(e.date)===wk) weekly[m]+=amount;
+      if (inRollingDays(e.date,today)) weekly[m]+=amount;
       if (e.date===today) todayDone[m]+=amount;
     }
   }
@@ -6590,9 +6675,29 @@ function todayWorkoutPlan(data, exMap) {
   else if(split==="bro") candidates=MUSCLES.filter(m=>m!=="Abs").map(m=>({id:m,muscles:[m]}));
   else candidates=MUSCLES.map(m=>({id:m,muscles:[m]}));
   candidates=candidates.map(c=>({...c,muscles:[...new Set(c.muscles)].filter(m=>MUSCLES.includes(m))})).filter(c=>c.muscles.length);
-  const catchUp=splitCatchUp(data,log,exMap,candidates,today);
+  let catchUp=splitCatchUp(data,log,exMap,candidates,today);
   const gapFor=m=>lastByMuscle[m]?dayGap(today,lastByMuscle[m]):30;
   const overdueScore=c=>c.muscles.reduce((sum,m)=>sum+gapFor(m),0)/c.muscles.length;
+  // Work out what was scheduled without letting today's out-of-order sets influence it.
+  const beforeToday=log.filter(e=>e.date<today);
+  const lastBefore=meaningfulLastTrained(data,beforeToday,exMap);
+  const beforeGap=m=>lastBefore[m]?dayGap(today,lastBefore[m]):30;
+  const beforeWeekly=Object.fromEntries(MUSCLES.map(m=>[m,0]));
+  for(const e of beforeToday) if(e.effort!=="Warm-up"&&inRollingDays(e.date,today)) for(const [m,credit] of entryMuscleCredits(e,exMap)) if(MUSCLES.includes(m)) beforeWeekly[m]+=credit*setCountOf(e);
+  let scheduled=null;
+  if(split==="custom"){
+    const pos=customCyclePosition(data,beforeToday,exMap);
+    const queued=pos.idx>=0?pos.cycle[pos.idx]:null;
+    if(queued&&!queued.rest) scheduled=candidates.find(c=>c.id===queued.id)||candidates.find(c=>splitSignature(c.muscles)===splitSignature(queued.muscles))||null;
+  } else if(prefs.focusStyle==="volume") {
+    scheduled=candidates.map(c=>({...c,score:c.muscles.reduce((sum,m)=>sum+Math.max(0,targets[m]-beforeWeekly[m]),0)})).sort((a,b)=>b.score-a.score)[0]||null;
+  } else {
+    scheduled=candidates.slice().sort((a,b)=>{
+      const bs=b.muscles.reduce((s,m)=>s+beforeGap(m),0)/b.muscles.length;
+      const as=a.muscles.reduce((s,m)=>s+beforeGap(m),0)/a.muscles.length;
+      return bs-as;
+    })[0]||null;
+  }
   const todayGroups=groupsLoggedOn(log,exMap,today);
   const todayEntries=log.filter(e=>e.date===today&&e.effort!=="Warm-up").slice().sort((a,b)=>(Number(a.id)||0)-(Number(b.id)||0));
   const firstGroups=new Set(todayEntries.length?entryPrimaryMuscles(todayEntries[0],exMap):[]);
@@ -6607,7 +6712,7 @@ function todayWorkoutPlan(data, exMap) {
     const firstMatch=c.muscles.some(m=>firstGroups.has(m))?1:0;
     return coverage*.6+specificity*.2+firstMatch*.2;
   };
-  let chosen=null, reason="";
+  let chosen=null, reason="", actualProgress=null;
   // Once the log clearly matches a split day, make the visible session follow what
   // the person is actually doing; missed-work coaching is still evaluated separately.
   if(todayGroups.size){
@@ -6621,6 +6726,7 @@ function todayWorkoutPlan(data, exMap) {
     const progress=started?splitSessionProgress(data,log,exMap,today,started.muscles):null;
     if(started&&matchScore(started)>=.5&&progress?.total>0){
       chosen=started;
+      actualProgress=progress;
       reason=progress.complete?"Tracking the split day your logged volume matches.":"Tracking the workout you started. These sets count now, but the day will not advance until its volume and coverage are meaningful.";
     }
   }
@@ -6630,7 +6736,7 @@ function todayWorkoutPlan(data, exMap) {
     if(queued?.rest) return {muscles:[],rows:[],reason:"😴 Rest day in your custom split. Recovery is the plan today.",complete:true,rest:true,catchUp};
     if(queued&&!queued.rest){
       const match=queued.muscles.filter(m=>todayGroups.has(m)).length/Math.max(1,queued.muscles.length);
-      if(match<.5) chosen=candidates.find(c=>c.id===queued.id)||null;
+      if(match<.5) chosen=scheduled||candidates.find(c=>c.id===queued.id)||null;
       if(chosen){
         const partial=[...new Set(log.filter(e=>e.date<today&&dayGap(today,e.date)<=7).map(e=>e.date))].sort().reverse().map(date=>({date,...splitSessionProgress(data,log,exMap,date,queued.muscles)})).find(x=>x.total>0&&!x.complete);
         const gap=Math.round(queued.muscles.reduce((sum,m)=>sum+gapFor(m),0)/Math.max(1,queued.muscles.length));
@@ -6641,21 +6747,34 @@ function todayWorkoutPlan(data, exMap) {
   }
   if(!chosen&&prefs.focusStyle==="volume"){
     chosen=candidates.map(c=>({...c,score:c.muscles.reduce((sum,m)=>sum+Math.max(0,targets[m]-weekly[m]),0)})).sort((a,b)=>b.score-a.score)[0]||null;
-    if(chosen) reason="These muscles have your largest remaining weekly set gap.";
+    if(chosen) reason="These muscles have your largest remaining rolling 7-day set gap.";
   }
   if(!chosen){
-    chosen=candidates.slice().sort((a,b)=>overdueScore(b)-overdueScore(a))[0]||null;
+    chosen=scheduled||candidates.slice().sort((a,b)=>overdueScore(b)-overdueScore(a))[0]||null;
     if(chosen){
       const gap=Math.round(overdueScore(chosen));
       reason=gap>=prefs.staleDays?"This workout is the most overdue — about "+gap+" day"+(gap===1?"":"s")+" since training.":"Best next fit for your "+splitLabelOf(data)+".";
     }
   }
-  const rows=(chosen?.muscles||[]).map(m=>({muscle:m,done:Math.round(todayDone[m]*10)/10,goal:goalFor(m),weekly:Math.round(weekly[m]*10)/10,weeklyGoal:targets[m]})).filter(r=>r.goal>0||r.done>0);
+  const diverged=!!(todayGroups.size&&scheduled&&chosen&&splitSignature(scheduled.muscles)!==splitSignature(chosen.muscles));
+  if(diverged){
+    const missing=scheduled.muscles.filter(m=>(todayDone[m]||0)<meaningfulDoseFor(data,m)&&(weekly[m]||0)<(targets[m]||0));
+    if(missing.length){
+      const suggested=Object.fromEntries(missing.map(m=>{
+        const recentGap=Math.max(0,(targets[m]||0)-(weekly[m]||0));
+        const normalDose=(targets[m]||0)/Math.max(1,frequency[m]||1);
+        return [m,Math.round(Math.min(10,recentGap,normalDose)*2)/2];
+      }));
+      catchUp={key:`scheduled:${today}:${splitSignature(missing)}`,date:today,muscles:missing,sourceMuscles:scheduled.muscles,priority:false,suggested,
+        weekly:Object.fromEntries(missing.map(m=>[m,Math.round((weekly[m]||0)*10)/10])),targets:Object.fromEntries(missing.map(m=>[m,targets[m]||0])),scheduled:true};
+    }
+  }
+  const rows=(chosen?.muscles||[]).map(m=>({muscle:m,done:Math.round(todayDone[m]*10)/10,goal:goalFor(m),weekly:Math.round(weekly[m]*10)/10,weeklyGoal:targets[m],subgroups:subgroupCreditsOn(log,exMap,today,m)})).filter(r=>r.goal>0||r.done>0);
   const catchUpMuscles=(catchUp?.muscles||[]).filter(m=>!chosen?.muscles?.includes(m));
   const carriedCatchUp=catchUp&&catchUpMuscles.length?{...catchUp,muscles:catchUpMuscles}:null;
   const complete=rows.length>0&&rows.every(r=>r.goal===0||r.done>=r.goal);
-  if(!rows.length&&chosen) return {muscles:chosen.muscles,rows:[],reason:"Your weekly targets for this workout are already covered.",complete:true,catchUp:carriedCatchUp};
-  return {muscles:chosen?.muscles||[],rows,reason:complete?"Today's recommended targets are complete.":reason,complete,catchUp:carriedCatchUp};
+  if(!rows.length&&chosen) return {muscles:chosen.muscles,scheduledMuscles:scheduled?.muscles||[],rows:[],reason:"Your rolling 7-day targets for this workout are already covered.",complete:true,catchUp:carriedCatchUp,diverged,progress:actualProgress};
+  return {muscles:chosen?.muscles||[],scheduledMuscles:scheduled?.muscles||[],rows,reason:complete?"Today's recommended targets are complete.":reason,complete,catchUp:carriedCatchUp,diverged,progress:actualProgress};
 }
 
 function coachTips(data, exMap, units) {
@@ -6693,7 +6812,7 @@ function coachTips(data, exMap, units) {
     if (recentTops.some((t,i)=>t.weight!==t0.weight || t.reps < (i===0?upper:priorFloor))) continue;
     const nextRepText = goalMode === "strength" && isMainLift ? "3–5 reps" : isMainLift ? "6–8 clean reps" : "8–10 clean reps";
     progressions.push({ ex, cur:t0.weight, curReps:t0.reps, repsList:recentTops.map(t=>t.reps), next:t0.weight+inc, nextRepText,
-      canAdd:effortAllowsLoad(t0.effort), failed:t0.effort==="To failure", sessions:confirmationSessions });
+      canAdd:effortAllowsLoad(t0.effort), failed:effortKind(t0.effort)==="failure", sessions:confirmationSessions });
   }
   // (progressions are pushed later, once we know which muscles today's plan targets)
 
@@ -6731,7 +6850,7 @@ function coachTips(data, exMap, units) {
     }
     if (coachPrefs.focusStyle === "volume") {
       const targetsNow=setTargetsOf(data), got={};
-      for (const e of log) if(e.effort!=="Warm-up"&&weekStart(e.date)===wk) for(const [m,c] of entryMuscleCredits(e,exMap)) got[m]=(got[m]||0)+c*setCountOf(e);
+      for (const e of log) if(e.effort!=="Warm-up"&&inRollingDays(e.date,today)) for(const [m,c] of entryMuscleCredits(e,exMap)) got[m]=(got[m]||0)+c*setCountOf(e);
       chosen=candidates.map(c=>({...c,score:c.muscles.reduce((s,m)=>s+Math.max(0,(targetsNow[m]||0)-(got[m]||0)),0)})).sort((a,b)=>b.score-a.score)[0]||null;
     }
     if (!chosen) chosen=candidates.slice().sort((a,b)=>rank(b)-rank(a))[0];
@@ -6741,7 +6860,7 @@ function coachTips(data, exMap, units) {
     const gap=Math.round(rank(chosen));
     const label=coachMuscleList(chosen.muscles);
     if (coachPrefs.focusStyle === "volume") {
-      pushTrain(`focus-volume-${wk}-${chosen.id}`, `${label[0].toUpperCase()+label.slice(1)} currently has your largest weekly set gap.`);
+      pushTrain(`focus-volume-${today}-${chosen.id}`, `${label[0].toUpperCase()+label.slice(1)} currently has your largest rolling 7-day set gap.`);
     } else if (gap >= coachPrefs.staleDays) {
       const timing=gap>=30&&chosen.muscles.some(m=>!lastByMuscle[m])?"has no recent logged session":`hasn't been trained in about ${gap} day${gap===1?"":"s"}`;
       pushTrain(`focus-overdue-${chosen.id}-${today}`, `${label[0].toUpperCase()+label.slice(1)} ${timing}.${trainedToday?` You logged ${todayList} today, but this work is still overdue.`:" Prioritize it when you train."}`);
@@ -6808,12 +6927,12 @@ function coachTips(data, exMap, units) {
         basis: "Four weekly estimated-1RM bests · high-rep sets excluded" });
   }
 
-  // ---- WEEKLY VOLUME: exact fractional math, goal-aware wording, no end-week cramming ----
+  // ---- ROLLING VOLUME: exact fractional math without an artificial Monday reset ----
   const targets = setTargetsOf(data);
   const wsets = {};
   const creditedToday = new Set();
   for (const e of log) {
-    if (e.effort === "Warm-up" || weekStart(e.date) !== wk) continue;
+    if (e.effort === "Warm-up" || !inRollingDays(e.date,today)) continue;
     for (const [m, c] of entryMuscleCredits(e, exMap)) {
       wsets[m] = (wsets[m] || 0) + c*setCountOf(e);
       if (e.date === today) creditedToday.add(m);
@@ -6826,14 +6945,9 @@ function coachTips(data, exMap, units) {
     const worst = (focusMuscles && focusMuscles.length && pickWorst(focusMuscles)) || pickWorst(MUSCLES);
     if (worst) {
       const usesCustomGoal = customSetTargetsOf(data)[worst.m] != null;
-      const mondayIndex = (new Date(today + "T12:00:00").getDay() + 6) % 7;
-      const daysLeft = 6 - mondayIndex;
       const remaining = fmtSets(worst.deficit);
-      const timing = daysLeft <= 1 && worst.deficit > 4
-        ? `Don't cram ${remaining} sets in now—plan them across next week.`
-        : `${remaining} left this week. Spread them across normal sessions.`;
-      tips.push({ key: `vol-${worst.m}-${wk}`, icon: "📊", cat: "Volume",
-        text: `${worst.m}: ${fmtSets(worst.got)} / ${worst.tgt} sets. ${timing}`,
+      tips.push({ key: `vol-${worst.m}-${today}`, icon: "📊", cat: "Volume",
+        text: `${worst.m}: ${fmtSets(worst.got)} / ${worst.tgt} sets over 7 days. ${remaining} remaining—spread it across normal sessions.`,
         basis: `${usesCustomGoal?"Saved custom target":"Research starting target"} · main muscle = 1 · secondary muscle = ½ · warm-ups excluded` });
     }
   }
@@ -6856,27 +6970,10 @@ function coachTips(data, exMap, units) {
   if (customPlansLegs && recentTrainingDates.size >= 5 && tot >= 20 && vol.legs <= tot * 0.15)
     tips.push({ key: `bal-legs-${wk}`, icon: "🦵", cat: "Balance", text: `4 weeks: ${vol.legs} leg vs ${vol.push + vol.pull} upper-body sets. Leg training is overdue for better balance.`, basis:"Four-week primary-muscle comparison · neutral planning flag" });
 
-  // ---- RECOVERY: only flag a lower-fatigue week when schedule + effort support it ----
-  const daysByWeek = {};
-  for (const e of log) {
-    if (e.effort === "Warm-up") continue;
-    const w = weekStart(e.date); (daysByWeek[w] ||= new Set()).add(e.date);
-  }
-  let streakWeeks = 0;
-  for (let i = 0; i < 12; i++) { const w = dAdd(wk, -7 * i); const days = daysByWeek[w]; if (days && days.size >= 3) streakWeeks++; else break; }
-  const fatigueWindow = dAdd(today, -13);
-  const effortSets = log.filter(e=>e.date>=fatigueWindow && e.effort && e.effort!=="Warm-up" && !e.quick);
-  const failureRate = effortSets.length ? effortSets.filter(e=>e.effort==="To failure").length / effortSets.length : 0;
-  const hasPlateau = tips.some(t=>t.cat==="Plateau");
-  if (streakWeeks >= 5 && effortSets.length >= 6 && failureRate >= 0.35 && hasPlateau)
-    tips.push({ key: `deload-${wk}`, icon: "🛌", cat: "Recovery",
-      text: `Fatigue flag: ${streakWeeks} busy weeks + a plateau + ${Math.round(failureRate*100)}% failure sets. Consider a lighter week.`,
-      basis:"Schedule + logged effort + performance trend; only appears when all three agree" });
-
   return tips.filter(t => {
     if (["Progression","Projection","Plateau"].includes(t.cat)) return coachPrefs.progression;
     if (t.cat === "Volume") return coachPrefs.volume;
-    if (["Balance","Recovery"].includes(t.cat)) return coachPrefs.balance;
+    if (t.cat === "Balance") return coachPrefs.balance;
     return true;
   });
 }
@@ -6978,9 +7075,36 @@ function CoachCard({ data, exMap, user, setData, onOpenLog }) {
   const otherTips = all.filter(t => t.cat !== "Training focus");
   const workoutPlan = useMemo(()=>todayWorkoutPlan(data,exMap),[data,exMap]);
   const workoutStartedToday = useMemo(()=>groupsLoggedOn(data.log||[],exMap,gymDayStr()).size>0,[data.log,exMap]);
+  const manualFinished=manualSplitFinished(data,gymDayStr(),workoutPlan.muscles);
+  const finishWorkout=()=>setData(d=>({...d,profile:{...(d.profile||{}),coachFinishedWorkouts:{...(d.profile?.coachFinishedWorkouts||{}),[gymDayStr()]:splitSignature(workoutPlan.muscles)}}}));
+  const undoFinishWorkout=()=>setData(d=>{const finished={...(d.profile?.coachFinishedWorkouts||{})};delete finished[gymDayStr()];return {...d,profile:{...(d.profile||{}),coachFinishedWorkouts:finished}};});
+  // Persist the scheduled day only when today's real workout differs. This prevents an
+  // out-of-order custom workout from silently advancing past unfinished work tomorrow.
+  useEffect(()=>{
+    if(split!=="custom") return;
+    const pending=data.profile?.coachPendingSplit;
+    if(pending&&!(data.profile?.customSplit||[]).some(d=>!d.rest&&(d.id===pending.id||splitSignature(d.muscles)===pending.signature))){
+      setData(d=>{const profile={...(d.profile||{})};delete profile.coachPendingSplit;return {...d,profile};});
+      return;
+    }
+    const pos=customCyclePosition(data,data.log||[],exMap);
+    if(pos.pendingResolved&&pending){
+      setData(d=>{const profile={...(d.profile||{})};delete profile.coachPendingSplit;return {...d,profile};});
+      return;
+    }
+    if(!workoutPlan.diverged||!workoutPlan.scheduledMuscles?.length||pending) return;
+    const signature=splitSignature(workoutPlan.scheduledMuscles);
+    const day=(data.profile?.customSplit||[]).find(d=>!d.rest&&splitSignature(d.muscles)===signature);
+    setData(d=>({...d,profile:{...(d.profile||{}),coachPendingSplit:{id:day?.id||null,signature,since:gymDayStr()}}}));
+  },[split,workoutPlan.diverged,splitSignature(workoutPlan.scheduledMuscles),data.profile?.coachPendingSplit?.signature,data.log,exMap,setData]);
   const CAT_COLOR = { Progression:"var(--cal-lift)", "Training focus":"var(--cal-lift)", Projection:"var(--cal-combo)", Plateau:"#E9C46A", Volume:STEP_BLUE, Balance:STEP_BLUE, Recovery:STEP_BLUE, "Weak point":"#FF7A45" };
   const hiddenCatchUps=data.profile?.coachCatchupDismissed||[];
-  const visibleCatchUp=workoutPlan.catchUp&&!hiddenCatchUps.includes(workoutPlan.catchUp.key)?workoutPlan.catchUp:null;
+  const delayedCatchUp=data.profile?.coachCatchupLater;
+  const catchUpDelayed=workoutPlan.catchUp&&delayedCatchUp?.key===workoutPlan.catchUp.key&&delayedCatchUp?.until===gymDayStr();
+  const visibleCatchUp=workoutPlan.catchUp&&!hiddenCatchUps.includes(workoutPlan.catchUp.key)&&!catchUpDelayed?workoutPlan.catchUp:null;
+  const catchUpAdded=!!(visibleCatchUp&&data.profile?.coachCatchupAdded?.[gymDayStr()]===visibleCatchUp.key);
+  const addCatchUpToday=()=>visibleCatchUp&&setData(d=>({...d,profile:{...(d.profile||{}),coachCatchupAdded:{...(d.profile?.coachCatchupAdded||{}),[gymDayStr()]:visibleCatchUp.key}}}));
+  const saveCatchUpForLater=()=>visibleCatchUp&&setData(d=>({...d,profile:{...(d.profile||{}),coachCatchupLater:{key:visibleCatchUp.key,until:gymDayStr()}}}));
   const hideCatchUp=()=>visibleCatchUp&&setData(d=>({...d,profile:{...(d.profile||{}),coachCatchupDismissed:[...new Set([...(d.profile?.coachCatchupDismissed||[]),visibleCatchUp.key])]}}));
   const restoreCatchUps=()=>setData(d=>({...d,profile:{...(d.profile||{}),coachCatchupDismissed:[]}}));
 
@@ -7035,6 +7159,7 @@ function CoachCard({ data, exMap, user, setData, onOpenLog }) {
               <div style={{minWidth:0,flex:1}}>
                 <div style={{fontSize:17,color:workoutPlan.complete?T.green:T.ink,fontWeight:850,lineHeight:1.3}}>{workoutPlan.complete?"✅ Workout target reached":naturalList(workoutPlan.muscles)}</div>
                 <div style={{fontSize:11.5,color:T.sub,lineHeight:1.45,marginTop:3}}>{workoutPlan.reason}</div>
+                {workoutPlan.diverged&&<div style={{fontSize:10.5,color:T.sub,lineHeight:1.4,marginTop:4}}>Scheduled: <b style={{color:T.ink}}>{naturalList(workoutPlan.scheduledMuscles)}</b> · kept separate below.</div>}
               </div>
               <span style={{flexShrink:0,background:T.mint,color:T.green,border:"1px solid "+T.green,borderRadius:99,padding:"4px 8px",fontSize:9.5,fontWeight:850}}>{goalModeInfo.label}</span>
             </div>
@@ -7049,24 +7174,32 @@ function CoachCard({ data, exMap, user, setData, onOpenLog }) {
                     <span style={{fontSize:12,color:T.sub,fontVariantNumeric:"tabular-nums"}}><b style={{fontSize:14,color:hit?T.green:T.ink}}>{fmtSets(row.done)}</b> / {fmtSets(row.goal)} sets</span>
                   </div>
                   <div style={{height:7,background:T.input,border:"1px solid "+T.line,borderRadius:99,overflow:"hidden"}}><div style={{height:"100%",width:pct+"%",background:hit?T.green:MUSCLE_COLORS[MUSCLES.indexOf(row.muscle)],borderRadius:99,transition:"width .25s ease"}} /></div>
-                  <div style={{fontSize:10.5,color:hit?T.green:T.sub,fontWeight:hit?750:500,marginTop:4}}>{hit?"Target reached — more is optional":<>{fmtSets(left)} left today · {fmtSets(row.weekly)} / {fmtSets(row.weeklyGoal)} this week</>}</div>
+                  <div style={{fontSize:10.5,color:hit?T.green:T.sub,fontWeight:hit?750:500,marginTop:4}}>{hit?"Target reached — more is optional":<>{fmtSets(left)} left today · {fmtSets(row.weekly)} / {fmtSets(row.weeklyGoal)} last 7 days</>}</div>
+                  {!!row.subgroups?.length&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginTop:6}}>{row.subgroups.map(s=><span key={s.name} style={{padding:"3px 7px",borderRadius:99,background:T.input,border:`1px solid ${T.line}`,color:T.sub,fontSize:9.5,fontWeight:700}}>{s.name} <b style={{color:T.ink}}>{fmtSets(s.sets)}</b></span>)}</div>}
                 </div>;
               })}
             </div>
             {!workoutPlan.complete&&<button type="button" onClick={onOpenLog} className="btn-primary" style={{width:"100%",padding:"10px 13px",fontSize:13.5,marginTop:6}}>Open Log</button>}
-            <div style={{fontSize:9.8,color:T.sub,lineHeight:1.45,marginTop:8}}>Targets adapt to your split frequency and sets already credited this week. Secondary muscles count as ½.</div>
+            {workoutStartedToday&&workoutPlan.muscles.length>0&&<div style={{display:"flex",alignItems:"center",gap:7,marginTop:8,flexWrap:"wrap"}}>{manualFinished
+              ? <><button type="button" onClick={undoFinishWorkout} style={{padding:"6px 10px",borderRadius:9,background:T.mint,border:`1px solid ${T.green}`,color:T.green,fontSize:10.5,fontWeight:850}}>↶ Undo finish</button><span style={{fontSize:10,color:T.sub}}>You manually finished this split day.</span></>
+              : !workoutPlan.progress?.automatic&&<><button type="button" onClick={finishWorkout} style={{padding:"6px 10px",borderRadius:9,background:T.input,border:`1px solid ${T.line}`,color:T.ink,fontSize:10.5,fontWeight:850}}>✓ Finish workout</button><span style={{fontSize:10,color:T.sub}}>Use if your planned workout was intentionally shorter.</span></>}</div>}
+            <div style={{fontSize:9.8,color:T.sub,lineHeight:1.45,marginTop:8}}>Coach totals use your rolling last 7 days. Secondary muscles count as ½.</div>
           </>
         ) : (
           <div style={{ fontSize: 14, color: workoutPlan.complete?T.green:T.ink, fontWeight: 600, lineHeight: 1.5 }}>{workoutPlan.reason||"No workout target is available yet. Add a training day to your split."}</div>
         )}
-        {visibleCatchUp && <div style={{position:"relative",marginTop:11,padding:"10px 34px 10px 11px",borderRadius:11,background:"color-mix(in srgb,var(--cal-cardio) 9%,var(--input))",border:"1px solid color-mix(in srgb,var(--cal-cardio) 38%,var(--line))"}}>
-          <button type="button" onClick={hideCatchUp} title="Hide this catch-up" aria-label="Hide this catch-up" style={{position:"absolute",right:7,top:7,width:24,height:24,padding:0,border:0,background:"transparent",color:T.sub,fontSize:16,lineHeight:1}}>×</button>
+        {visibleCatchUp && <div style={{position:"relative",marginTop:11,padding:"10px 11px",borderRadius:11,background:"color-mix(in srgb,var(--cal-cardio) 9%,var(--input))",border:"1px solid color-mix(in srgb,var(--cal-cardio) 38%,var(--line))"}}>
           <div style={{display:"flex",alignItems:"center",gap:7,flexWrap:"wrap"}}>
-            <span style={{fontSize:10,fontWeight:900,color:"var(--cal-cardio)",letterSpacing:'.06em',textTransform:'uppercase'}}>{visibleCatchUp.priority?"Catch-up priority":"Missed volume"}</span>
+            <span style={{fontSize:10,fontWeight:900,color:"var(--cal-cardio)",letterSpacing:'.06em',textTransform:'uppercase'}}>{visibleCatchUp.scheduled?"Scheduled workout":visibleCatchUp.priority?"Catch-up priority":"Missed volume"}</span>
             <span style={{fontSize:10,color:T.sub}}>from {naturalList(visibleCatchUp.sourceMuscles)} · {fmtDate(visibleCatchUp.date)}</span>
           </div>
           <div style={{fontSize:13,color:T.ink,fontWeight:800,lineHeight:1.4,marginTop:4}}>{naturalList(visibleCatchUp.muscles)} still needs a meaningful dose</div>
-          <div style={{fontSize:10.5,color:T.sub,lineHeight:1.45,marginTop:3}}>{visibleCatchUp.muscles.map(m=>`${m}: ${fmtSets(visibleCatchUp.weekly[m])}/${fmtSets(visibleCatchUp.targets[m])} this week · up to ${fmtSets(visibleCatchUp.suggested[m])} sets next`).join(" · ")}. {visibleCatchUp.priority?"Prioritize it when recovered; you can combine it with today's plan.":"Train it when recovered, or carry it into the next compatible workout."}</div>
+          <div style={{fontSize:10.5,color:T.sub,lineHeight:1.45,marginTop:3}}>{visibleCatchUp.muscles.map(m=>`${m}: ${fmtSets(visibleCatchUp.weekly[m])}/${fmtSets(visibleCatchUp.targets[m])} last 7 days · up to ${fmtSets(visibleCatchUp.suggested[m])} sets`).join(" · ")}.</div>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:8}}>
+            <button type="button" onClick={addCatchUpToday} disabled={catchUpAdded} style={{padding:"6px 9px",borderRadius:8,background:catchUpAdded?T.mint:"color-mix(in srgb,var(--cal-cardio) 12%,var(--input))",border:`1px solid ${catchUpAdded?T.green:"color-mix(in srgb,var(--cal-cardio) 45%,var(--line))"}`,color:catchUpAdded?T.green:T.ink,fontSize:10.5,fontWeight:850}}>{catchUpAdded?"✓ Added today":"+ Add today"}</button>
+            <button type="button" onClick={saveCatchUpForLater} style={{padding:"6px 9px",borderRadius:8,background:T.input,border:`1px solid ${T.line}`,color:T.sub,fontSize:10.5,fontWeight:800}}>Later</button>
+            <button type="button" onClick={hideCatchUp} style={{padding:"6px 9px",borderRadius:8,background:"transparent",border:`1px solid ${T.line}`,color:T.sub,fontSize:10.5,fontWeight:800}}>Hide</button>
+          </div>
         </div>}
         {split === "custom" && cycle.length > 0 && !editing && (
           <div style={{display:"flex", alignItems:"center", gap:8, marginTop:11, paddingTop:10, borderTop:`1px solid ${T.line}`, flexWrap:"wrap"}}>
@@ -7091,9 +7224,9 @@ function CoachCard({ data, exMap, user, setData, onOpenLog }) {
           <div style={{background:T.input,border:`1px solid ${T.line}`,borderRadius:13,padding:"11px 12px",marginBottom:12}}>
             <div className="eyebrow" style={{fontSize:9.5,color:T.sub,marginBottom:7}}>Build your coach</div>
             <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6}}>
-              {[["overdue","Overdue first"],["split","My split first"],["volume","Weekly goals"]].map(([value,label])=>{const on=coachPrefs.focusStyle===value;return <button key={value} type="button" onClick={()=>setCoachPref("focusStyle",value)} style={{padding:"8px 5px",borderRadius:9,background:on?T.mint:T.card,color:on?T.green:T.sub,border:`1px solid ${on?T.green:T.line}`,fontSize:10.5,fontWeight:800}}>{label}</button>;})}
+              {[["overdue","Overdue first"],["split","My split first"],["volume","7-day goals"]].map(([value,label])=>{const on=coachPrefs.focusStyle===value;return <button key={value} type="button" onClick={()=>setCoachPref("focusStyle",value)} style={{padding:"8px 5px",borderRadius:9,background:on?T.mint:T.card,color:on?T.green:T.sub,border:`1px solid ${on?T.green:T.line}`,fontSize:10.5,fontWeight:800}}>{label}</button>;})}
             </div>
-            <div style={{fontSize:10.5,color:T.sub,lineHeight:1.45,marginTop:7}}>{coachPrefs.focusStyle==="volume" ? "Weekly goals recommends the muscle furthest below its set target this week." : coachPrefs.focusStyle==="split" ? "My split first keeps the next unfinished workout in your rotation." : "Overdue first prioritizes the muscle groups you have gone longest without training."}</div>
+            <div style={{fontSize:10.5,color:T.sub,lineHeight:1.45,marginTop:7}}>{coachPrefs.focusStyle==="volume" ? "7-day goals recommends the muscle furthest below its target across the rolling last 7 days." : coachPrefs.focusStyle==="split" ? "My split first keeps the next unfinished workout in your rotation." : "Overdue first prioritizes the muscle groups you have gone longest without training."}</div>
             <div style={{display:"flex",alignItems:"center",gap:6,marginTop:10,flexWrap:"wrap"}}><span style={{fontSize:10.5,color:T.sub,marginRight:2}}>Remind me after</span>{[3,4,5,7].map(days=><button key={days} type="button" onClick={()=>setCoachPref("staleDays",days)} style={{padding:"5px 9px",background:coachPrefs.staleDays===days?T.mint:T.card,color:coachPrefs.staleDays===days?T.green:T.sub,border:`1px solid ${coachPrefs.staleDays===days?T.green:T.line}`,fontSize:10.5,fontWeight:800}}>{days}d</button>)}</div>
             <div style={{display:"flex",alignItems:"center",gap:6,marginTop:9,flexWrap:"wrap"}}><span style={{fontSize:10.5,color:T.sub,marginRight:2}}>Advice cards</span>{[["progression","Progress"],["volume","Volume"],["balance","Balance"]].map(([key,label])=><button key={key} type="button" onClick={()=>setCoachPref(key,!coachPrefs[key])} style={{padding:"5px 9px",background:coachPrefs[key]?T.mint:T.card,color:coachPrefs[key]?T.green:T.sub,border:`1px solid ${coachPrefs[key]?T.green:T.line}`,fontSize:10.5,fontWeight:800}}>{coachPrefs[key]?"✓ ":""}{label}</button>)}</div>
           </div>
@@ -7226,11 +7359,12 @@ function CoachCard({ data, exMap, user, setData, onOpenLog }) {
         <summary style={{cursor:"pointer", color:T.sub, fontSize:10.5, fontWeight:800, listStyle:"none"}}>How coaching works <span style={{fontSize:8}}>▾</span></summary>
         <div style={{marginTop:8, padding:"9px 11px", background:T.input, border:`1px solid ${T.line}`, borderRadius:11, fontSize:10.5, color:T.sub, lineHeight:1.65}}>
           <div>✓ Uses your {goalModeInfo.label.toLowerCase()} goals{customTargetCount ? `, including ${customTargetCount} custom` : ""}.</div>
-          <div>✓ Uses your coach style, split, recent sets, reps, and effort.</div>
+          <div>✓ Uses your coach style, split, rolling 7-day volume, reps, and optional effort.</div>
           <div>✓ The first working set immediately identifies today's actual split day; completion is judged separately.</div>
           <div>✓ Small sessions add volume without resetting an overdue muscle or completing a whole split day.</div>
-          <div>✓ A split day advances after meaningful target-based volume and coverage; doing another workout still tracks that workout while keeping missed work due.</div>
-          <div>✓ Catch-up amounts use your remaining weekly goal and normal split dose, count secondary work as ½, and never recommend cramming more than 10 sets for one muscle into a session.</div>
+          <div>✓ Your actual workout and scheduled workout stay separate. Training something else updates today's card without erasing the queued day.</div>
+          <div>✓ A split day advances after meaningful target-based volume and coverage, or when you explicitly finish it. Manual finishes can be undone.</div>
+          <div>✓ Catch-up amounts use your remaining rolling goal and normal split dose, count secondary work as ½, and never suggest cramming more than 10 sets for one muscle.</div>
           {!!hiddenCatchUps.length&&<button type="button" onClick={restoreCatchUps} style={{marginTop:7,padding:"5px 9px",borderRadius:8,background:T.input,border:`1px solid ${T.line}`,color:T.green,fontSize:10.5,fontWeight:800}}>Show hidden catch-ups</button>}
           {split === "custom" && <div>✓ An out-of-order workout does not erase older missed muscle groups.</div>}
           <div>✓ Main muscle = 1 set · secondary = ½ · warm-ups ignored.</div>
