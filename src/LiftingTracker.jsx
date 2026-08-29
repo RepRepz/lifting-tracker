@@ -6422,6 +6422,27 @@ const groupsLoggedOn = (log, exMap, date) => {
   for (const e of log) if (e.date === date && e.effort !== "Warm-up") for (const m of entryPrimaryMuscles(e, exMap)) s.add(m);
   return s;
 };
+/* A matching exercise is not automatically a completed workout. The rotation advances
+   only after the day's credited volume is substantial enough and covers the planned
+   muscle groups. This keeps a token set (for example, ten push-ups) in the volume math
+   without letting it skip an entire Chest & Back day. */
+const splitSessionProgress = (data, log, exMap, date, muscles) => {
+  const planned=[...new Set((muscles||[]).filter(m=>MUSCLES.includes(m)))];
+  const credited=Object.fromEntries(planned.map(m=>[m,0]));
+  for(const e of (log||[])){
+    if(e.date!==date||e.effort==="Warm-up") continue;
+    for(const [m,credit] of entryMuscleCredits(e,exMap)) if(Object.prototype.hasOwnProperty.call(credited,m)) credited[m]+=credit*setCountOf(e);
+  }
+  const total=Object.values(credited).reduce((sum,n)=>sum+n,0);
+  const covered=Object.values(credited).filter(n=>n>=.5).length;
+  const requiredCoverage=Math.max(1,Math.ceil(planned.length*.6));
+  const targets=setTargetsOf(data),frequency=splitFrequencyOf(data);
+  const expected=planned.reduce((sum,m)=>sum+(targets[m]||0)/Math.max(1,frequency[m]||1),0);
+  // Half of the normal session target is enough to recognize an intentionally short
+  // workout, with a modest cap so high-volume plans do not get stuck forever.
+  const requiredVolume=Math.max(2,Math.min(planned.length*3,expected*.5));
+  return {credited,total,covered,requiredCoverage,requiredVolume,complete:planned.length>0&&covered>=requiredCoverage&&total>=requiredVolume};
+};
 /* Where you are in a custom rotation TODAY. Training days are sticky: a missed workout
    stays next until a matching session is logged. Explicit rest days still pass with the
    calendar. A manual restart ignores older logs and puts Day 1 back at the front. */
@@ -6434,20 +6455,22 @@ function customCyclePosition(data, log, exMap) {
   const eligibleLog = restartAt ? (log || []).filter(e => Number(e?.id) > restartAt) : (log || []);
   // 1) log-driven anchor: match your latest logged session to the best-fitting training day
   const dates = [...new Set(eligibleLog.map(e => e.date))].sort().reverse();
-  const lastDate = dates.find(date => groupsLoggedOn(eligibleLog, exMap, date).size > 0);
-  if (lastDate) {
-    const g = groupsLoggedOn(eligibleLog, exMap, lastDate);
-    if (g.size) {
-      let bestIdx = -1, best = 0;
-      cycle.forEach((d, i) => {
-        if (d.rest || !d.muscles?.length) return;
-        const set = new Set(d.muscles);
-        let inter = 0; g.forEach(m => { if (set.has(m)) inter++; });
-        const uni = new Set([...d.muscles, ...g]).size;
-        const jac = uni ? inter / uni : 0;               // Jaccard overlap — how well the day matches
-        if (jac > best) { best = jac; bestIdx = i; }
-      });
-      if (bestIdx >= 0) {
+  let lastDate=null, bestIdx=-1;
+  for(const date of dates){
+    const g=groupsLoggedOn(eligibleLog,exMap,date);
+    let dateBestIdx=-1,dateBest=0;
+    cycle.forEach((d,i)=>{
+      if(d.rest||!d.muscles?.length) return;
+      const set=new Set(d.muscles);
+      let inter=0; g.forEach(m=>{if(set.has(m)) inter++;});
+      const uni=new Set([...d.muscles,...g]).size;
+      const jac=uni?inter/uni:0;
+      const progress=splitSessionProgress(data,eligibleLog,exMap,date,d.muscles);
+      if(progress.complete&&jac>dateBest){dateBest=jac;dateBestIdx=i;}
+    });
+    if(dateBestIdx>=0){lastDate=date;bestIdx=dateBestIdx;break;}
+  }
+  if (lastDate && bestIdx >= 0) {
         if (lastDate === today) return { cycle, idx: bestIdx };
         // The matched workout is complete. Move once, then consume only explicit rest
         // days with elapsed time. Stop on the next training day no matter how old the log is.
@@ -6455,8 +6478,6 @@ function customCyclePosition(data, log, exMap) {
         let elapsed = Math.max(1, dayGap(today, lastDate));
         while (cycle[idx].rest && elapsed > 1) { idx = (idx + 1) % len; elapsed--; }
         return { cycle, idx };
-      }
-    }
   }
   // 2) Before a matching workout exists, Day 1 stays queued. If Day 1 is an explicit
   // rest day, calendar time can consume rest entries until the first training day.
@@ -6524,9 +6545,10 @@ function todayWorkoutPlan(data, exMap) {
   // the person is actually doing; missed-work coaching is still evaluated separately.
   if(todayGroups.size){
     const started=candidates.slice().sort((a,b)=>matchScore(b)-matchScore(a))[0];
-    if(started&&matchScore(started)>=.65){
+    const progress=started?splitSessionProgress(data,log,exMap,today,started.muscles):null;
+    if(started&&matchScore(started)>=.65&&progress?.total>=2){
       chosen=started;
-      reason="Tracking the split day your logged sets match.";
+      reason=progress.complete?"Tracking the split day your logged volume matches.":"Your sets match this day so far; keep logging to complete it.";
     }
   }
   if(!chosen&&split==="custom"&&prefs.focusStyle!=="volume"){
@@ -6909,9 +6931,9 @@ function CoachCard({ data, exMap, user, setData, onOpenLog }) {
         </div>
       </div>
 
-      {/* Wait for the first real set: targets should guide an active session, not
-          greet somebody with unfinished work before they have even started. */}
-      {workoutStartedToday && <div style={{ borderRadius: 15, padding: "14px 15px", marginBottom: 13,
+      {/* Always name the recommended day. Detailed targets stay tucked away until the
+          first real set so the coach guides without presenting unfinished work early. */}
+      <div style={{ borderRadius: 15, padding: workoutStartedToday ? "14px 15px" : "12px 14px", marginBottom: 13,
         background: workoutPlan.complete ? "linear-gradient(135deg, rgba(var(--accent-rgb),.22), rgba(var(--accent-rgb),.06))" : "rgba(255,255,255,.03)",
         border: "1px solid " + (workoutPlan.rows.length ? "rgba(var(--accent-rgb),.4)" : T.line) }}>
         <div className="eyebrow" style={{ fontSize: 9.5, color: workoutPlan.rows.length ? T.green : T.sub, marginBottom: 7, display: "flex", alignItems: "center", gap: 6 }}>
@@ -6919,6 +6941,14 @@ function CoachCard({ data, exMap, user, setData, onOpenLog }) {
         </div>
         {!split ? (
           <div style={{ fontSize: 14, color: T.ink, fontWeight: 600, lineHeight: 1.5 }}>Pick your training split below so reminders match how you actually lift.</div>
+        ) : !workoutStartedToday && workoutPlan.muscles.length ? (
+          <div style={{display:"flex",alignItems:"center",gap:10,minWidth:0}}>
+            <div style={{minWidth:0,flex:1}}>
+              <div style={{fontSize:16,color:T.ink,fontWeight:850,lineHeight:1.3}}>{naturalList(workoutPlan.muscles)}</div>
+              <div style={{fontSize:11.5,color:T.sub,lineHeight:1.4,marginTop:3}}>{workoutPlan.reason} Your targets appear after your first working set.</div>
+            </div>
+            <span style={{flexShrink:0,background:T.mint,color:T.green,border:"1px solid "+T.green,borderRadius:99,padding:"4px 8px",fontSize:9.5,fontWeight:850}}>{goalModeInfo.label}</span>
+          </div>
         ) : workoutPlan.rows.length ? (
           <>
             <div style={{display:"flex",alignItems:"flex-start",gap:9,marginBottom:4}}>
@@ -6957,7 +6987,7 @@ function CoachCard({ data, exMap, user, setData, onOpenLog }) {
             <span style={{fontSize:10.5, color:T.sub}}>{canUndoRestart ? "Restores your exact previous split position." : "Use only when you want to begin the rotation again."}</span>
           </div>
         )}
-      </div>}
+      </div>
 
       {/* SPLIT SETUP — collapsible; clickable options, no typing */}
       {editing && (

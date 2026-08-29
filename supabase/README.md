@@ -1,5 +1,8 @@
 # Backend security and recovery setup
 
+Current provider connections and permissions are documented in
+[INTEGRATIONS.md](../INTEGRATIONS.md), including Codex versus Claude Cloudflare access.
+
 ## Encrypted off-site backups
 
 See [backup setup and recovery runbook](../scripts/backup/README.md). The pipeline is

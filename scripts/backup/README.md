@@ -2,6 +2,10 @@
 
 ## Status and scope
 
+For current assistant connection permissions and rollout blockers, read
+[integration access and backup handoff](../../INTEGRATIONS.md). A connected Codex
+plugin does not automatically give Claude or GitHub Actions the same access.
+
 The workflow is **not active** until the private destination and secrets are configured,
 a first production backup verifies, and `BACKUPS_ENABLED=true` is set. A green synthetic
 test is NOT evidence that production data is backed up. No live restore has been tested
