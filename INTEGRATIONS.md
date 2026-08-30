@@ -22,27 +22,36 @@ Last checked: 2026-08-29. These are setup notes, not credentials or a guarantee 
   reconnect with read-only access for monitoring. The unattended backup must use its
   own bucket-scoped S3 credential, not this interactive OAuth grant.
 
-## Off-site backups are NOT active
+## Off-site backups are configured and manually verified; scheduling is not active
 
 See [the backup setup and recovery runbook](scripts/backup/README.md).
 
 - R2 enrollment and the private `the-lab-backups` bucket are complete. A bucket-scoped
   S3 credential is stored in the GitHub `backups` environment and passed a live
   write/head/delete probe on 2026-08-29 (Actions run `33272395115`). No billing alert
-  or production backup has been created yet.
+  is configured yet.
 - The GitHub `backups` environment now exists and its deployment branch policy permits
-  only `main`. `RESTIC_REPOSITORY`, `BACKUP_S3_ACCESS_KEY_ID`, and
-  `BACKUP_S3_SECRET_ACCESS_KEY` are configured; the remaining required secrets are not.
-  The repository variable `BACKUPS_ENABLED` remains absent so scheduled backups cannot
-  run prematurely.
-- The prepared workflow runs once daily only after explicit activation. It still
-  needs the production database connection, bucket-scoped S3 credentials, independent
-  restic encryption password with an owner-held recovery copy, and a server-only
-  Storage key when media is present. The Cloudflare plugin grant is not a substitute
+  only `main`. All seven workflow secrets are configured: the database URL, database
+  CA certificate, bucket-scoped R2 key pair, restic repository, restic password, and
+  server-only Supabase Storage key. The Cloudflare plugin grant is not a substitute
   for these unattended GitHub Actions credentials.
-- First complete an encrypted production backup, download verification, a second
-  backup, and an isolated compatible Supabase restore test. Synthetic CI tests alone
-  do not prove real user data is recoverable.
+- Two production snapshots completed on 2026-08-29. Run `33274406635` exported the
+  database and media, encrypted and uploaded them, downloaded them again, and passed
+  a full restic repository check with data reads. Run `33274467489` repeated the normal
+  export/upload/download/integrity-verification path successfully.
+- Synthetic recovery run `33274567765` also created two encrypted test snapshots and
+  restored one into an isolated PostgreSQL database, validating row counts, RLS, a
+  policy, a trigger, a grant, and sequence state without using production data.
+- The repository variable `BACKUPS_ENABLED` remains absent, so the prepared daily
+  schedule cannot run prematurely. Before enabling it, complete an isolated restore
+  into a compatible disposable Supabase project. The successful repository checks
+  prove the encrypted snapshots can be read, but do not replace an application-level
+  restore drill.
+- The owner has recovery copies of `RESTIC_PASSWORD` and `BACKUP_DATABASE_URL` in
+  Bitwarden. Recovery copies of the dedicated Supabase Storage secret and R2 key pair
+  still need to be created by rotating those credentials, saving the newly shown
+  values in Bitwarden, updating the GitHub secrets, retesting, and revoking the old
+  credentials. GitHub cannot reveal existing secret values.
 - Usage monitoring and an independent stale-backup alert are not configured. A
   Cloudflare budget notification is not a spending cap. Do not promise zero charges
   or continuous monitoring just because an assistant is connected.
