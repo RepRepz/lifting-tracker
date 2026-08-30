@@ -59,6 +59,35 @@ jobs:
           if [ "$INITIALIZE" = 'true' ]; then args+=(--init); fi
           if [ "$FULL_CHECK" = 'true' ] || [ "$(date -u +%u)" = '7' ]; then args+=(--full-check); fi
           node scripts/backup/run.mjs "${args[@]}"
+      - name: Record encrypted repository footprint
+        if: success()
+        env:
+          RESTIC_REPOSITORY: ${{ secrets.RESTIC_REPOSITORY }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.BACKUP_S3_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_S3_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +x
+          endpoint="${RESTIC_REPOSITORY#s3:}"
+          endpoint="${endpoint%/the-lab-backups}"
+          read -r object_count total_bytes < <(
+            aws s3api list-objects-v2 \
+              --endpoint-url "$endpoint" \
+              --bucket the-lab-backups \
+              --query '[length(Contents), sum(Contents[].Size)]' \
+              --output text
+          )
+          object_count="${object_count:-0}"
+          total_bytes="${total_bytes:-0}"
+          if [ "$total_bytes" = 'None' ]; then total_bytes=0; fi
+          mib=$(awk -v bytes="$total_bytes" 'BEGIN { printf "%.2f", bytes / 1048576 }')
+          printf 'Encrypted R2 repository: %s objects, %s bytes (%s MiB).\n' \
+            "$object_count" "$total_bytes" "$mib" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$total_bytes" -ge 8000000000 ]; then
+            echo '::warning::Encrypted R2 repository is at or above the 8 GB review threshold.'
+          fi
       - name: Status
         if: always()
         env:
