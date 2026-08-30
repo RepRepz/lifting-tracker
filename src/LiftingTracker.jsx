@@ -7038,6 +7038,21 @@ function todayWorkoutPlan(data, exMap, nowMs=Date.now()) {
       return bs-as;
     })[0]||null;
   }
+  /* A preset split can skip today's recommendation without pretending it was trained.
+     The override lasts for this gym day only; custom rotations use their persistent,
+     reversible cursor override above. */
+  const savedDaySkip=data.profile?.coachDaySkip;
+  let daySkipApplied=false,daySkipStale=false;
+  if(split!=="custom"&&savedDaySkip){
+    if(savedDaySkip.date!==today) daySkipStale=true;
+    else {
+      const fromMatches=scheduled&&splitSignature(scheduled.muscles)===savedDaySkip.fromSignature;
+      const target=candidates.find(c=>splitSignature(c.muscles)===savedDaySkip.toSignature);
+      if(fromMatches&&target){scheduled=target;daySkipApplied=true;} else daySkipStale=true;
+    }
+  }
+  const scheduledIndex=scheduled?candidates.findIndex(c=>c.id===scheduled.id&&splitSignature(c.muscles)===splitSignature(scheduled.muscles)):-1;
+  const nextCandidate=scheduledIndex>=0&&candidates.length>1?candidates[(scheduledIndex+1)%candidates.length]:null;
   const todayGroups=groupsLoggedOn(log,exMap,today);
   const todayEntries=log.filter(e=>e.date===today&&e.effort!=="Warm-up").slice().sort((a,b)=>(Number(a.id)||0)-(Number(b.id)||0));
   const firstGroups=new Set(todayEntries.length?entryPrimaryMuscles(todayEntries[0],exMap):[]);
@@ -7116,7 +7131,7 @@ function todayWorkoutPlan(data, exMap, nowMs=Date.now()) {
     }
   }
   if(!chosen&&prefs.focusStyle==="volume"){
-    chosen=candidates.map(c=>({...c,score:c.muscles.reduce((sum,m)=>sum+Math.max(0,targets[m]-weekly[m]),0)})).sort((a,b)=>b.score-a.score)[0]||null;
+    chosen=daySkipApplied?scheduled:candidates.map(c=>({...c,score:c.muscles.reduce((sum,m)=>sum+Math.max(0,targets[m]-weekly[m]),0)})).sort((a,b)=>b.score-a.score)[0]||null;
     if(chosen) reason="These muscles have your largest remaining rolling 7-day set gap.";
   }
   if(!chosen){
@@ -7146,8 +7161,9 @@ function todayWorkoutPlan(data, exMap, nowMs=Date.now()) {
   const catchUpMuscles=(catchUp?.muscles||[]).filter(m=>!chosen?.muscles?.includes(m));
   const carriedCatchUp=catchUp&&catchUpMuscles.length?{...catchUp,muscles:catchUpMuscles}:null;
   const complete=rows.length>0&&rows.every(r=>r.goal===0||r.done>=r.goal);
-  if(!rows.length&&chosen) return {muscles:chosen.muscles,scheduledMuscles:scheduled?.muscles||[],rows:[],addedRows,reason:"Your rolling 7-day targets for this workout are already covered.",complete:true,catchUp:carriedCatchUp,diverged,progress:actualProgress,clarification,staleChoice,provisional:provisional&&!tokenExpired};
-  return {muscles:chosen?.muscles||[],scheduledMuscles:scheduled?.muscles||[],rows,addedRows,reason:complete?"Today's recommended targets are complete.":reason,complete,catchUp:carriedCatchUp,diverged,progress:actualProgress,clarification,staleChoice,provisional:provisional&&!tokenExpired};
+  const skipMeta={nextMuscles:nextCandidate?.muscles||[],daySkipApplied,daySkipStale};
+  if(!rows.length&&chosen) return {muscles:chosen.muscles,scheduledMuscles:scheduled?.muscles||[],rows:[],addedRows,reason:"Your rolling 7-day targets for this workout are already covered.",complete:true,catchUp:carriedCatchUp,diverged,progress:actualProgress,clarification,staleChoice,provisional:provisional&&!tokenExpired,...skipMeta};
+  return {muscles:chosen?.muscles||[],scheduledMuscles:scheduled?.muscles||[],rows,addedRows,reason:complete?"Today's recommended targets are complete.":reason,complete,catchUp:carriedCatchUp,diverged,progress:actualProgress,clarification,staleChoice,provisional:provisional&&!tokenExpired,...skipMeta};
 }
 
 function coachTips(data, exMap, units) {
@@ -7487,8 +7503,23 @@ function CoachCard({ data, exMap, user, setData, onOpenLog }) {
   const otherTips = all.filter(t => t.cat !== "Training focus");
   const workoutPlan = useMemo(()=>todayWorkoutPlan(data,exMap,coachClock),[data,exMap,coachClock]);
   const workoutStartedToday = useMemo(()=>groupsLoggedOn(data.log||[],exMap,gymDayStr()).size>0,[data.log,exMap]);
-  const canSkipCustomDay = split==="custom" && !editing && !workoutStartedToday && !activeSplitSkip && cyPos>=0 && !cycle[cyPos]?.rest && nextTrainingIndex(cyPos)>=0;
-  const canUndoCustomDaySkip = split==="custom" && !editing && !!activeSplitSkip;
+  const activePresetSkip = workoutPlan.daySkipApplied ? data.profile?.coachDaySkip : null;
+  const activeCoachSkip = activeSplitSkip || activePresetSkip;
+  const presetSkipFrom = workoutPlan.scheduledMuscles?.length ? workoutPlan.scheduledMuscles : workoutPlan.muscles;
+  const canSkipCoachDay = !editing && !activeCoachSkip && (split==="custom"
+    ? cyPos>=0 && !cycle[cyPos]?.rest && nextTrainingIndex(cyPos)>=0
+    : !!workoutPlan.nextMuscles?.length);
+  const canUndoCoachDaySkip = !editing && !!activeCoachSkip;
+  const skipCoachDay = () => {
+    if(split==="custom") return skipCustomDay();
+    if(!presetSkipFrom?.length||!workoutPlan.nextMuscles?.length) return;
+    setData(d=>({...d,profile:{...(d.profile||{}),coachDaySkip:{date:gymDayStr(),fromSignature:splitSignature(presetSkipFrom),toSignature:splitSignature(workoutPlan.nextMuscles),fromMuscles:presetSkipFrom,toMuscles:workoutPlan.nextMuscles,createdAt:Date.now()}}}));
+  };
+  const undoCoachDaySkip = () => split==="custom" ? undoCustomDaySkip() : setData(d=>{const profile={...(d.profile||{})};delete profile.coachDaySkip;return {...d,profile};});
+  useEffect(()=>{
+    if(!data.profile?.coachDaySkip||!workoutPlan.daySkipStale) return;
+    setData(d=>{const profile={...(d.profile||{})};delete profile.coachDaySkip;return {...d,profile};});
+  },[data.profile?.coachDaySkip,workoutPlan.daySkipStale,setData]);
   const manualFinished=manualSplitFinished(data,gymDayStr(),workoutPlan.muscles);
   const finishWorkout=()=>setData(d=>({...d,profile:{...(d.profile||{}),coachFinishedWorkouts:{...(d.profile?.coachFinishedWorkouts||{}),[gymDayStr()]:splitSignature(workoutPlan.muscles)}}}));
   const undoFinishWorkout=()=>setData(d=>{const finished={...(d.profile?.coachFinishedWorkouts||{})};delete finished[gymDayStr()];return {...d,profile:{...(d.profile||{}),coachFinishedWorkouts:finished}};});
@@ -7562,17 +7593,17 @@ function CoachCard({ data, exMap, user, setData, onOpenLog }) {
 
       {/* Always name the recommended day. Detailed targets stay tucked away until the
           first real set so the coach guides without presenting unfinished work early. */}
-      <div key={`coach-plan-${splitSignature(workoutPlan.muscles)}-${activeSplitSkip?.createdAt||0}`} className="coach-plan-swap" style={{ borderRadius: 15, padding: workoutStartedToday ? "14px 15px" : "12px 14px", marginBottom: 13,
+      <div key={`coach-plan-${splitSignature(workoutPlan.muscles)}-${activeCoachSkip?.createdAt||0}`} className="coach-plan-swap" style={{ borderRadius: 15, padding: workoutStartedToday ? "14px 15px" : "12px 14px", marginBottom: 13,
         background: workoutPlan.complete ? "linear-gradient(135deg, rgba(var(--accent-rgb),.22), rgba(var(--accent-rgb),.06))" : "rgba(255,255,255,.03)",
         border: "1px solid " + (workoutPlan.rows.length ? "rgba(var(--accent-rgb),.4)" : T.line) }}>
         <div className="eyebrow" style={{ fontSize: 9.5, color: workoutPlan.rows.length ? T.green : T.sub, marginBottom: 7, display: "flex", alignItems: "center", gap: 6 }}>
           <span className="status-dot" style={{ width: 5, height: 5, background:workoutPlan.provisional?"#E9C46A":undefined }} />
           <span style={{flex:1,minWidth:0}}>{workoutPlan.provisional?"Possible workout":"Today's workout"}</span>
-          {(canSkipCustomDay||canUndoCustomDaySkip)&&<button type="button" onClick={canUndoCustomDaySkip?undoCustomDaySkip:skipCustomDay} className={`coach-skip-btn${canUndoCustomDaySkip?" undo":""}`} title={canUndoCustomDaySkip?"Go back to the day you skipped":"Move to the next training day"} aria-label={canUndoCustomDaySkip?"Undo skipped custom split day":"Skip this custom split day"}>
-            {canUndoCustomDaySkip?"↶ Undo skip":"Skip this day →"}
+          {(canSkipCoachDay||canUndoCoachDaySkip)&&<button type="button" onClick={canUndoCoachDaySkip?undoCoachDaySkip:skipCoachDay} className={`coach-skip-btn${canUndoCoachDaySkip?" undo":""}`} title={canUndoCoachDaySkip?"Go back to the day you skipped":"Move to the next training day"} aria-label={canUndoCoachDaySkip?"Undo skipped workout day":"Skip this workout day"}>
+            {canUndoCoachDaySkip?"↶ Undo skip":"Skip this day →"}
           </button>}
         </div>
-        {activeSplitSkip&&<div className="coach-skip-note" aria-live="polite">Skipped {naturalList(cyclePosition.skippedFrom?.muscles)} · now showing {naturalList(workoutPlan.muscles)}</div>}
+        {activeCoachSkip&&<div className="coach-skip-note" aria-live="polite">Skipped {naturalList(cyclePosition.skippedFrom?.muscles||activePresetSkip?.fromMuscles)} · now showing {naturalList(workoutPlan.muscles)}</div>}
         {!split ? (
           <div style={{ fontSize: 14, color: T.ink, fontWeight: 600, lineHeight: 1.5 }}>Pick your training split below so reminders match how you actually lift.</div>
         ) : !workoutStartedToday && workoutPlan.muscles.length ? (
@@ -7807,7 +7838,7 @@ function CoachCard({ data, exMap, user, setData, onOpenLog }) {
             : <button type="button" onClick={finishWorkout} style={{padding:"5px 8px",borderRadius:8,background:T.input,border:`1px solid ${T.line}`,color:T.ink,fontSize:10,fontWeight:850}}>Mark shorter workout finished</button>}<span style={{fontSize:9.5,color:T.sub}}>Optional override: advances a deliberately short split day without adding fake sets.</span></div>}
           {!!hiddenCatchUps.length&&<button type="button" onClick={restoreCatchUps} style={{marginTop:7,padding:"5px 9px",borderRadius:8,background:T.input,border:`1px solid ${T.line}`,color:T.green,fontSize:10.5,fontWeight:800}}>Show hidden catch-ups</button>}
           {split === "custom" && <div>✓ An out-of-order workout does not erase older missed muscle groups.</div>}
-          {split === "custom" && <div>✓ Skip this day moves to the next workout without logging fake sets. Undo stays available until the rotation naturally advances.</div>}
+          {split && <div>✓ Skip this day moves to the next workout without logging fake sets. Undo stays available; preset skips reset tomorrow.</div>}
           <div>✓ Main muscle = 1 set · secondary = ½ · warm-ups ignored.</div>
         </div>
       </details>
