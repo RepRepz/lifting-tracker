@@ -6,10 +6,11 @@ For current assistant connection permissions and rollout blockers, read
 [integration access and backup handoff](../../INTEGRATIONS.md). A connected Codex
 plugin does not automatically give Claude or GitHub Actions the same access.
 
-The workflow is **not active** until the private destination and secrets are configured,
-a first production backup verifies, and `BACKUPS_ENABLED=true` is set. A green synthetic
-test is NOT evidence that production data is backed up. No live restore has been tested
-until a production archive has been restored into a disposable compatible Supabase stack.
+The workflow became active on 2026-08-30 after two production backups verified and the
+latest real encrypted archive was restored into an isolated Supabase PostgreSQL 17
+container. `BACKUPS_ENABLED=true` gates scheduled execution. A green synthetic test alone
+is NOT evidence that production data is backed up; keep the production restore drill and
+periodic hosted Supabase application drills healthy.
 
 This uses PostgreSQL's consistent snapshot export and `pg_dump`, then restic encryption,
 compression and deduplication. Restic encrypts content and filenames before upload. It
@@ -62,9 +63,11 @@ extending and testing recovery coverage.
    to workflow/scripts: code on main with these secrets could read production data.
 6. Run **Encrypted off-site backup** manually with `initialize=true` once. A normal run
    NEVER initializes a missing repository: a deleted/mistyped repository fails loudly.
-7. Run it a second time normally, then restore a production archive into an isolated,
-   compatible Supabase test instance. Verify logs, auth, RLS, steps and media before
-   declaring the deployment fully recovery-tested.
+7. Run it a second time normally, then run **Production backup restore drill**. It restores
+   the latest verified real archive into an isolated Supabase PostgreSQL container and
+   checks all manifest table counts, RLS and media integrity without publishing artifacts.
+   Periodically also restore into a disposable hosted Supabase project to verify Auth login,
+   Storage API behavior and representative app screens end to end.
 8. Only then set repository variable `BACKUPS_ENABLED=true`. The schedule is once daily
    at 09:23 UTC (05:23 in New York during daylight saving, 04:23 in winter). One run covers
    the entire project, not one run per user. A total source loss can lose changes made

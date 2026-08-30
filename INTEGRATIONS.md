@@ -22,7 +22,7 @@ Last checked: 2026-08-29. These are setup notes, not credentials or a guarantee 
   reconnect with read-only access for monitoring. The unattended backup must use its
   own bucket-scoped S3 credential, not this interactive OAuth grant.
 
-## Off-site backups are configured and manually verified; scheduling is not active
+## Off-site backups are active and recovery-tested
 
 See [the backup setup and recovery runbook](scripts/backup/README.md).
 
@@ -42,11 +42,15 @@ See [the backup setup and recovery runbook](scripts/backup/README.md).
 - Synthetic recovery run `33274567765` also created two encrypted test snapshots and
   restored one into an isolated PostgreSQL database, validating row counts, RLS, a
   policy, a trigger, a grant, and sequence state without using production data.
-- The repository variable `BACKUPS_ENABLED` remains absent, so the prepared daily
-  schedule cannot run prematurely. Before enabling it, complete an isolated restore
-  into a compatible disposable Supabase project. The successful repository checks
-  prove the encrypted snapshots can be read, but do not replace an application-level
-  restore drill.
+- Production recovery run `33291575809` restored the latest real encrypted snapshot
+  into an isolated Supabase PostgreSQL 17 container, verified every manifest table
+  count and RLS, rechecked the archive/media hashes, and published no private artifact.
+  The earlier run `33291537676` failed safely during local container initialization
+  before accessing a snapshot; the workflow was corrected and pinned.
+- `BACKUPS_ENABLED=true` was set on 2026-08-30. The project-wide workflow is scheduled
+  once daily at 09:23 UTC and still downloads/verifies every newly uploaded snapshot.
+  A future full hosted Supabase application drill should additionally test Auth login
+  and Storage API behavior; the database/media archive itself is recovery-tested.
 - The owner has recovery copies of `RESTIC_PASSWORD` and `BACKUP_DATABASE_URL` in
   Bitwarden. Recovery copies of the dedicated Supabase Storage secret and R2 key pair
   still need to be created by rotating those credentials, saving the newly shown
