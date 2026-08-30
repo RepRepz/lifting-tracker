@@ -160,6 +160,7 @@ const REGION_PROFILES = {
   triOverhead:[["Long head",.55],["Lateral head",.25],["Medial head",.20]],
   triPushdown:[["Long head",.30],["Lateral head",.40],["Medial head",.30]],
   shoulderPress:[["Front delts",.65],["Side delts",.30],["Rear delts",.05]],
+  shoulderFront:[["Front delts",.85],["Side delts",.10],["Rear delts",.05]],
   shoulderChestPress:[["Front delts",.75],["Side delts",.20],["Rear delts",.05]],
   shoulderLateral:[["Side delts",.80],["Front delts",.10],["Rear delts",.10]],
   shoulderRear:[["Rear delts",.75],["Side delts",.20],["Front delts",.05]],
@@ -167,6 +168,9 @@ const REGION_PROFILES = {
   backVertical:[["Lats",.65],["Mid/lower traps & rhomboids",.20],["Upper traps",.05],["Spinal erectors",.10]],
   backRow:[["Lats",.40],["Mid/lower traps & rhomboids",.45],["Upper traps",.10],["Spinal erectors",.05]],
   backLatRow:[["Lats",.55],["Mid/lower traps & rhomboids",.35],["Upper traps",.05],["Spinal erectors",.05]],
+  backSupportedRow:[["Lats",.45],["Mid/lower traps & rhomboids",.50],["Upper traps",.05]],
+  backWideRow:[["Lats",.30],["Mid/lower traps & rhomboids",.55],["Upper traps",.10],["Spinal erectors",.05]],
+  backStraightArm:[["Lats",.80],["Mid/lower traps & rhomboids",.15],["Spinal erectors",.05]],
   backDeadlift:[["Spinal erectors",.70],["Lats",.10],["Mid/lower traps & rhomboids",.10],["Upper traps",.10]],
   backShrug:[["Upper traps",.85],["Mid/lower traps & rhomboids",.15]],
   backFace:[["Mid/lower traps & rhomboids",.65],["Upper traps",.20],["Lats",.10],["Spinal erectors",.05]],
@@ -174,6 +178,7 @@ const REGION_PROFILES = {
   backCarry:[["Upper traps",.55],["Spinal erectors",.35],["Lats",.05],["Mid/lower traps & rhomboids",.05]],
   bicepsCurl:[["Long head",.40],["Short head",.40],["Brachialis",.15],["Brachioradialis",.05]],
   bicepsHammer:[["Long head",.20],["Short head",.20],["Brachialis",.35],["Brachioradialis",.25]],
+  bicepsReverse:[["Long head",.15],["Short head",.15],["Brachialis",.35],["Brachioradialis",.35]],
   bicepsChin:[["Long head",.35],["Short head",.35],["Brachialis",.20],["Brachioradialis",.10]],
   bicepsPull:[["Long head",.30],["Short head",.30],["Brachialis",.25],["Brachioradialis",.15]],
   quadsCompound:[["Vastus lateralis",.20],["Vastus medialis",.20],["Vastus intermedius",.15],["Rectus femoris",.10],["Glute max",.25],["Adductors",.10]],
@@ -195,6 +200,7 @@ const REGION_PROFILES = {
   gluteBridge:[["Glute max",.70],["Glute med/min",.12],["Hamstrings",.18]],
   adduction:[["Adductors",.90],["Glute max",.10]],
   abduction:[["Glute med/min",.90],["Glute max",.10]],
+  lateralBandWalk:[["Glute med/min",.75],["Glute max",.25]],
   swingLegs:[["Glute max",.40],["Biceps femoris long head",.18],["Semitendinosus",.17],["Semimembranosus",.15],["Vastus group",.10]],
   calfStanding:[["Medial gastrocnemius",.35],["Lateral gastrocnemius",.35],["Soleus",.30]],
   calfSeated:[["Soleus",.70],["Medial gastrocnemius",.15],["Lateral gastrocnemius",.15]],
@@ -372,7 +378,7 @@ const rebalanceRegion = (parts, index, pct) => {
 };
 function ExerciseRegionDetails({exercise}) {
   const groups=[...musclesOf(exercise),...secondariesOf(exercise)];
-  const source=exercise.regionSource?.type==="research-copy"?`Based on ${exercise.regionSource.reference}`:exercise.regionSource?.type==="user-set"?`Custom profile based on ${exercise.regionSource.reference}`:exercise.regionSource?.type==="unspecified"?"Broad muscle only":SEED_REGION_PROFILES[exercise.name]?"Curated research estimate":"Legacy estimate";
+  const source=exercise.regionSource?.type==="research-copy"?`Based on ${exercise.regionSource.reference}`:exercise.regionSource?.type==="research-audit"?`Evidence-reviewed custom profile${exercise.regionSource.confidence?` · ${exercise.regionSource.confidence} confidence`:""}`:exercise.regionSource?.type==="user-set"?`Custom profile based on ${exercise.regionSource.reference}`:exercise.regionSource?.type==="unspecified"?"Broad muscle only":SEED_REGION_PROFILES[exercise.name]?"Curated research estimate":"Legacy estimate";
   return <details style={{marginTop:4,maxWidth:290}}><summary style={{fontSize:10,color:T.green,fontWeight:750,cursor:"pointer",listStyle:"none"}}>Regional focus ▾</summary><div style={{fontSize:9.5,color:T.sub,lineHeight:1.5,marginTop:4}}><div style={{marginBottom:2,fontStyle:"italic"}}>{source}</div>{groups.map(m=><div key={m}><b style={{color:T.ink}}>{m}:</b> {regionalCreditsOf(exercise,m).map(p=>`${p.name} ${Math.round(p.weight*100)}%`).join(" · ")}</div>)}</div></details>;
 }
 
@@ -643,7 +649,7 @@ const defaultData = {
   journal: {}, // { "YYYY-MM-DD": { mood, sleep, text } } — daily notes
   profile: {}, // heightIn (inches) lives here once set
   pins: [],    // pinned dashboard charts (exercise names)
-  libraryV: 17, // v17 explicitly audits regional muscle credit for all 104 seed exercises
+  libraryV: 18, // v18 adds evidence-reviewed profiles for production's legacy custom exercises
 };
 
 /* One-time upgrade of previously saved data: pull in newly added seed exercises and
@@ -1131,6 +1137,7 @@ export default function LiftingTracker({ user }) {
     <UnitCtx.Provider value={units}>
     <div style={{ fontFamily:"var(--appfont)", background:"radial-gradient(135% 72% at 50% -6%, rgba(var(--accent-rgb),.10), transparent 52%), var(--bg)", backgroundAttachment:"fixed", minHeight:"100dvh", color:T.ink, position:"relative", isolation:"isolate" }} className="app-root">
       <style>{`
+        :root { --motion-fast:140ms; --motion-base:220ms; --motion-slow:360ms; --ease-out:cubic-bezier(.22,1,.36,1); --ease-soft:cubic-bezier(.2,.7,.2,1); }
         html { color-scheme:dark; scroll-behavior:smooth; }
         * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
         /* 16px minimum: anything smaller makes iOS Safari zoom in when a field is tapped */
@@ -1144,9 +1151,10 @@ export default function LiftingTracker({ user }) {
         input::placeholder,textarea::placeholder { color:${T.sub}; opacity:.75; }
         /* soft green focus glow instead of a hard outline jump */
         input:focus,select:focus,textarea:focus { outline:none; border-color:${T.green}; box-shadow:0 0 0 3px rgba(var(--accent-rgb),.18); }
-        button { cursor:pointer; border:none; border-radius:24px; font-weight:600; transition:transform .14s cubic-bezier(.34,1.56,.64,1), background-color .18s ease, color .18s ease, border-color .18s ease, opacity .18s ease, box-shadow .18s ease, filter .18s ease; }
-        button:active { transform:scale(.95); }
-        @media(hover:hover){ button:hover:not(:disabled){ filter:brightness(1.08); } }
+        button { cursor:pointer; border:none; border-radius:24px; font-weight:600; transition:transform var(--motion-fast) var(--ease-soft), background-color var(--motion-base) var(--ease-soft), color var(--motion-base) var(--ease-soft), border-color var(--motion-base) var(--ease-soft), opacity var(--motion-base) var(--ease-soft), box-shadow var(--motion-base) var(--ease-soft), filter var(--motion-base) var(--ease-soft); }
+        button:active:not(:disabled) { transform:scale(.98); }
+        button:focus-visible,summary:focus-visible,[role="button"]:focus-visible { outline:2px solid color-mix(in srgb,var(--accent) 82%,white); outline-offset:3px; }
+        @media(hover:hover){ button:hover:not(:disabled){ filter:brightness(1.06); } }
         table { border-collapse:collapse; width:100%; } td,th { padding:9px 10px; text-align:left; font-size:13.5px; } td { font-variant-numeric:tabular-nums; }
         th { background:none; color:${T.sub}; font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.8px; white-space:nowrap; border-bottom:1px solid ${T.line}; }
         td { border-bottom:1px solid color-mix(in srgb, var(--line) 65%, transparent); }
@@ -1171,7 +1179,7 @@ export default function LiftingTracker({ user }) {
         *::-webkit-scrollbar-thumb { background:color-mix(in srgb, var(--line) 70%, transparent); border-radius:99px; border:2px solid transparent; background-clip:content-box; }
         *::-webkit-scrollbar-thumb:hover { background:color-mix(in srgb, var(--accent) 45%, var(--line)); background-clip:content-box; }
         *::-webkit-scrollbar-track { background:transparent; }
-        .card { position:relative; background:linear-gradient(180deg, color-mix(in srgb, var(--card) 90%, #fff 10%), var(--card) 58%); border:1px solid color-mix(in srgb, var(--line) 90%, transparent); border-radius:18px; padding:17px; margin-bottom:14px; box-shadow:0 1px 0 rgba(255,255,255,.05) inset, 0 12px 30px -18px rgba(0,0,0,.85); animation:rise .34s cubic-bezier(.22,1,.36,1) both; }
+        .card { position:relative; background:linear-gradient(180deg, color-mix(in srgb, var(--card) 90%, #fff 10%), var(--card) 58%); border:1px solid color-mix(in srgb, var(--line) 90%, transparent); border-radius:18px; padding:17px; margin-bottom:14px; box-shadow:0 1px 0 rgba(255,255,255,.05) inset, 0 12px 30px -18px rgba(0,0,0,.85); animation:surfaceIn var(--motion-slow) var(--ease-out) both; }
         .card.compact-card { padding:8px 11px; margin-bottom:9px; min-height:48px; border-radius:14px; }
         /* bright hairline along the very top edge of every panel — subtle cockpit sheen */
         .card::before { content:""; position:absolute; top:0; left:14px; right:14px; height:1px; background:linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 30%, rgba(255,255,255,.5)), transparent); opacity:.4; pointer-events:none; }
@@ -1185,7 +1193,8 @@ export default function LiftingTracker({ user }) {
         /* pill for the settings/profile chip */
         .profile-chip { display:flex; align-items:center; gap:7px; flex-shrink:0; background:color-mix(in srgb, var(--card) 90%, #fff 4%); border:1px solid color-mix(in srgb, var(--line) 90%, transparent); color:var(--ink); border-radius:99px; box-shadow:0 4px 14px -8px rgba(0,0,0,.6); transition:border-color .18s ease, background .18s ease; }
         @media(hover:hover){ .profile-chip:hover { border-color:color-mix(in srgb, var(--accent) 30%, var(--line)); } }
-        @keyframes rise { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:none; } }
+        @keyframes surfaceIn { from { opacity:0; filter:brightness(.92) saturate(.84); } to { opacity:1; filter:none; } }
+        @keyframes rise { from { opacity:0; } to { opacity:1; } }
         @keyframes pop { 0% { transform:scale(.6); opacity:0; } 70% { transform:scale(1.06); opacity:1; } 100% { transform:scale(1); opacity:1; } }
         @keyframes effortGlow { 0%{box-shadow:0 0 0 0 rgba(var(--accent-rgb),.42),0 0 0 rgba(var(--accent-rgb),0);filter:brightness(.96)} 55%{box-shadow:0 0 0 4px rgba(var(--accent-rgb),0),0 0 18px rgba(var(--accent-rgb),.28);filter:brightness(1.08)} 100%{box-shadow:0 0 0 1px rgba(var(--accent-rgb),.14) inset,0 0 10px rgba(var(--accent-rgb),.10);filter:none} }
         @keyframes effortSheen { from{transform:translateX(-145%)} to{transform:translateX(145%)} }
@@ -1217,7 +1226,7 @@ export default function LiftingTracker({ user }) {
           -webkit-mask-image:radial-gradient(125% 62% at 50% -4%, #000 0%, transparent 60%); mask-image:radial-gradient(125% 62% at 50% -4%, #000 0%, transparent 60%); }
         @keyframes fadeSwap { from { opacity:0; transform:translateY(8px) scale(.994); } to { opacity:1; transform:none; } }
         @keyframes sheetUp { from { transform:translateY(100%); } to { transform:none; } }
-        .tabview { animation:fadeSwap .28s cubic-bezier(.22,1,.36,1) both; }
+        .tabview { animation:surfaceIn var(--motion-base) var(--ease-out) both; }
         /* staggered card entrance — transform/opacity only, one-shot, GPU-cheap */
         .tabview > .card:nth-child(2) { animation-delay:.05s; }
         .tabview > .card:nth-child(3) { animation-delay:.10s; }
@@ -1229,8 +1238,17 @@ export default function LiftingTracker({ user }) {
         .exercise-visual-dialog { width:min(680px, 100%); max-height:calc(100dvh - 28px); overflow:auto; background:linear-gradient(165deg, color-mix(in srgb, var(--card) 92%, var(--accent) 8%), var(--card) 48%); border:1px solid color-mix(in srgb, var(--accent) 45%, var(--line)); border-radius:19px; box-shadow:0 28px 80px rgba(0,0,0,.72), 0 0 0 1px rgba(var(--accent-rgb),.08) inset; animation:calPop .22s cubic-bezier(.22,1,.36,1) both; }
         .exercise-visual-body { display:grid; grid-template-columns:minmax(220px, 270px) 1fr; gap:20px; padding:17px; }
         @media(max-width:580px){ .exercise-visual-dialog { border-radius:17px; } .exercise-visual-body { grid-template-columns:1fr; gap:15px; } .exercise-visual-body > div:first-child { max-width:280px; width:100%; margin:0 auto; } }
-        .navicon { transition:transform .2s cubic-bezier(.34,1.56,.64,1); font-size:19px; }
-        .navicon.on { transform:translateY(-1px) scale(1.16); }
+        .navicon { transition:transform var(--motion-base) var(--ease-out),filter var(--motion-base) ease; font-size:19px; transform-origin:center; }
+        .navicon.on { transform:scale(1.12); filter:drop-shadow(0 0 7px rgba(var(--accent-rgb),.35)); }
+        details > summary { border-radius:8px; transition:color var(--motion-base) ease,background var(--motion-base) ease; }
+        details[open] > summary { color:var(--accent)!important; }
+        details[open] > :not(summary) { animation:surfaceIn var(--motion-base) var(--ease-out) both; }
+        .coach-plan-swap { animation:coachPlanSwap var(--motion-base) var(--ease-out) both; }
+        @keyframes coachPlanSwap { from { opacity:.32; filter:blur(2px) saturate(.75); } to { opacity:1; filter:none; } }
+        .coach-skip-btn { flex-shrink:0; min-height:0; padding:5px 8px; border-radius:99px; background:color-mix(in srgb,var(--accent) 8%,var(--input)); border:1px solid color-mix(in srgb,var(--accent) 34%,var(--line)); color:var(--accent); font-size:9px; font-weight:900; letter-spacing:.025em; text-transform:none; box-shadow:0 1px 0 rgba(255,255,255,.05) inset; white-space:nowrap; }
+        .coach-skip-btn.undo { background:color-mix(in srgb,var(--accent) 15%,var(--input)); border-color:color-mix(in srgb,var(--accent) 55%,var(--line)); }
+        .coach-skip-note { margin:-1px 0 8px; padding:5px 8px; border-radius:8px; background:color-mix(in srgb,var(--accent) 7%,transparent); border-left:2px solid color-mix(in srgb,var(--accent) 60%,var(--line)); color:var(--sub); font-size:10px; line-height:1.35; animation:surfaceIn var(--motion-base) var(--ease-out) both; }
+        @media(max-width:420px){ .coach-skip-btn { padding:5px 7px; font-size:8.5px; } }
         @media(prefers-reduced-motion:reduce){ *{transition:none!important;animation:none!important} }
 
         /* settings sheet: a bottom sheet on phones, a centered dialog on desktop */
@@ -6879,6 +6897,26 @@ function customCyclePosition(data, log, exMap) {
   if (!cycle.length) return { cycle, idx: -1 };
   const today = todayStr();
   const len = cycle.length;
+  /* A manual skip advances one training day without inventing a completed workout.
+     It remains reversible until later training naturally moves the rotation forward.
+     Rest entries are bypassed here because Skip means "show my next workout", not
+     "replace today's recommendation with a rest card". */
+  const withManualSkip = (position) => {
+    const saved = data.profile?.coachSplitSkip;
+    if (!saved || position.idx < 0) return position;
+    const current = cycle[position.idx];
+    const fromMatches = current && (saved.fromId ? current.id === saved.fromId : splitSignature(current.muscles) === saved.fromSignature);
+    if (!fromMatches) return { ...position, skipStale: true };
+    let nextIdx = saved.toId
+      ? cycle.findIndex(d => !d.rest && d.id === saved.toId)
+      : cycle.findIndex(d => !d.rest && splitSignature(d.muscles) === saved.toSignature);
+    if (nextIdx < 0) {
+      nextIdx = (position.idx + 1) % len;
+      while (nextIdx !== position.idx && cycle[nextIdx].rest) nextIdx = (nextIdx + 1) % len;
+    }
+    if (nextIdx === position.idx || cycle[nextIdx]?.rest) return { ...position, skipStale: true };
+    return { ...position, idx: nextIdx, skipped: true, skippedFrom: current, skip: saved };
+  };
   const restartAt = Number(data.profile?.cycleRestartAt) || 0;
   const eligibleLog = restartAt ? (log || []).filter(e => Number(e?.id) > restartAt) : (log || []);
   // An out-of-order workout is allowed to become today's actual workout, but it must
@@ -6889,11 +6927,11 @@ function customCyclePosition(data, log, exMap) {
     if(pendingIdx>=0){
       const pendingDay=cycle[pendingIdx];
       const completedDate=[...new Set(eligibleLog.filter(e=>e.date>=pending.since).map(e=>e.date))].sort().find(date=>splitSessionProgress(data,eligibleLog,exMap,date,pendingDay.muscles).complete);
-      if(!completedDate) return {cycle,idx:pendingIdx,pending:true};
+      if(!completedDate) return withManualSkip({cycle,idx:pendingIdx,pending:true});
       let idx=(pendingIdx+1)%len;
       let elapsed=Math.max(1,dayGap(today,completedDate));
       while(cycle[idx].rest&&elapsed>1){idx=(idx+1)%len;elapsed--;}
-      return {cycle,idx,pendingResolved:true};
+      return withManualSkip({cycle,idx,pendingResolved:true});
     }
   }
   // 1) log-driven anchor: match your latest logged session to the best-fitting training day
@@ -6914,20 +6952,20 @@ function customCyclePosition(data, log, exMap) {
     if(dateBestIdx>=0){lastDate=date;bestIdx=dateBestIdx;break;}
   }
   if (lastDate && bestIdx >= 0) {
-        if (lastDate === today) return { cycle, idx: bestIdx };
+        if (lastDate === today) return withManualSkip({ cycle, idx: bestIdx });
         // The matched workout is complete. Move once, then consume only explicit rest
         // days with elapsed time. Stop on the next training day no matter how old the log is.
         let idx = (bestIdx + 1) % len;
         let elapsed = Math.max(1, dayGap(today, lastDate));
         while (cycle[idx].rest && elapsed > 1) { idx = (idx + 1) % len; elapsed--; }
-        return { cycle, idx };
+        return withManualSkip({ cycle, idx });
   }
   // 2) Before a matching workout exists, Day 1 stays queued. If Day 1 is an explicit
   // rest day, calendar time can consume rest entries until the first training day.
   const start = data.profile?.cycleStart || today;
   let idx = 0, elapsed = Math.max(0, dayGap(today, start));
   while (cycle[idx].rest && elapsed > 0) { idx = (idx + 1) % len; elapsed--; }
-  return { cycle, idx };
+  return withManualSkip({ cycle, idx });
 }
 const naturalList = (items) => {
   const a = [...new Set((items || []).filter(Boolean))];
@@ -7356,8 +7394,40 @@ function CoachCard({ data, exMap, user, setData, onOpenLog }) {
   });
   const canUndoRestart = !!data.profile?.cycleRestartUndo;
   // position is read from your logs (same logic the coach uses), so the builder agrees with the tips
-  const { cycle, idx: cyPos } = customCyclePosition(data, data.log || [], exMap);
+  const cyclePosition = customCyclePosition(data, data.log || [], exMap);
+  const { cycle, idx: cyPos } = cyclePosition;
   const todayDayId = cyPos >= 0 ? cycle[cyPos].id : null;
+  const activeSplitSkip = cyclePosition.skipped ? data.profile?.coachSplitSkip : null;
+  const nextTrainingIndex = (fromIdx) => {
+    if (fromIdx < 0 || cycle.length < 2) return -1;
+    let idx = (fromIdx + 1) % cycle.length;
+    while (idx !== fromIdx && cycle[idx].rest) idx = (idx + 1) % cycle.length;
+    return idx !== fromIdx && !cycle[idx]?.rest ? idx : -1;
+  };
+  const skipCustomDay = () => {
+    const from = cycle[cyPos], toIdx = nextTrainingIndex(cyPos), to = cycle[toIdx];
+    if (!from || from.rest || !to) return;
+    setData(d => {
+      const profile = { ...(d.profile || {}) };
+      const choices = { ...(profile.coachWorkoutChoices || {}) };
+      delete choices[gymDayStr()];
+      profile.coachWorkoutChoices = choices;
+      profile.coachSplitSkip = {
+        fromId: from.id, fromSignature: splitSignature(from.muscles),
+        toId: to.id, toSignature: splitSignature(to.muscles),
+        createdAt: Date.now(), pendingBefore: profile.coachPendingSplit || null,
+      };
+      delete profile.coachPendingSplit;
+      return { ...d, profile };
+    });
+  };
+  const undoCustomDaySkip = () => setData(d => {
+    const profile = { ...(d.profile || {}) }, saved = profile.coachSplitSkip;
+    if (!saved) return d;
+    if (saved.pendingBefore) profile.coachPendingSplit = saved.pendingBefore;
+    delete profile.coachSplitSkip;
+    return { ...d, profile };
+  });
   // editable weekly set targets per muscle; mirrors the Dashboard's selected goal type
   const goalMode = goalModeOf(data);
   const goalModeInfo = GOAL_MODES[goalMode];
@@ -7371,6 +7441,11 @@ function CoachCard({ data, exMap, user, setData, onOpenLog }) {
   const [showTargets, setShowTargets] = useState(false);
   // the split setup collapses once you've chosen one; expands again via the ✎ chip
   const [editing, setEditing] = useState(!split);
+
+  useEffect(() => {
+    if (!data.profile?.coachSplitSkip || !cyclePosition.skipStale) return;
+    setData(d => { const profile = { ...(d.profile || {}) }; delete profile.coachSplitSkip; return { ...d, profile }; });
+  }, [cyclePosition.skipStale, data.profile?.coachSplitSkip, setData]);
 
   useEffect(() => {
     let alive = true;
@@ -7412,6 +7487,8 @@ function CoachCard({ data, exMap, user, setData, onOpenLog }) {
   const otherTips = all.filter(t => t.cat !== "Training focus");
   const workoutPlan = useMemo(()=>todayWorkoutPlan(data,exMap,coachClock),[data,exMap,coachClock]);
   const workoutStartedToday = useMemo(()=>groupsLoggedOn(data.log||[],exMap,gymDayStr()).size>0,[data.log,exMap]);
+  const canSkipCustomDay = split==="custom" && !editing && !workoutStartedToday && !activeSplitSkip && cyPos>=0 && !cycle[cyPos]?.rest && nextTrainingIndex(cyPos)>=0;
+  const canUndoCustomDaySkip = split==="custom" && !editing && !!activeSplitSkip;
   const manualFinished=manualSplitFinished(data,gymDayStr(),workoutPlan.muscles);
   const finishWorkout=()=>setData(d=>({...d,profile:{...(d.profile||{}),coachFinishedWorkouts:{...(d.profile?.coachFinishedWorkouts||{}),[gymDayStr()]:splitSignature(workoutPlan.muscles)}}}));
   const undoFinishWorkout=()=>setData(d=>{const finished={...(d.profile?.coachFinishedWorkouts||{})};delete finished[gymDayStr()];return {...d,profile:{...(d.profile||{}),coachFinishedWorkouts:finished}};});
@@ -7485,12 +7562,17 @@ function CoachCard({ data, exMap, user, setData, onOpenLog }) {
 
       {/* Always name the recommended day. Detailed targets stay tucked away until the
           first real set so the coach guides without presenting unfinished work early. */}
-      <div style={{ borderRadius: 15, padding: workoutStartedToday ? "14px 15px" : "12px 14px", marginBottom: 13,
+      <div key={`coach-plan-${splitSignature(workoutPlan.muscles)}-${activeSplitSkip?.createdAt||0}`} className="coach-plan-swap" style={{ borderRadius: 15, padding: workoutStartedToday ? "14px 15px" : "12px 14px", marginBottom: 13,
         background: workoutPlan.complete ? "linear-gradient(135deg, rgba(var(--accent-rgb),.22), rgba(var(--accent-rgb),.06))" : "rgba(255,255,255,.03)",
         border: "1px solid " + (workoutPlan.rows.length ? "rgba(var(--accent-rgb),.4)" : T.line) }}>
         <div className="eyebrow" style={{ fontSize: 9.5, color: workoutPlan.rows.length ? T.green : T.sub, marginBottom: 7, display: "flex", alignItems: "center", gap: 6 }}>
-          <span className="status-dot" style={{ width: 5, height: 5, background:workoutPlan.provisional?"#E9C46A":undefined }} />{workoutPlan.provisional?"Possible workout":"Today's workout"}
+          <span className="status-dot" style={{ width: 5, height: 5, background:workoutPlan.provisional?"#E9C46A":undefined }} />
+          <span style={{flex:1,minWidth:0}}>{workoutPlan.provisional?"Possible workout":"Today's workout"}</span>
+          {(canSkipCustomDay||canUndoCustomDaySkip)&&<button type="button" onClick={canUndoCustomDaySkip?undoCustomDaySkip:skipCustomDay} className={`coach-skip-btn${canUndoCustomDaySkip?" undo":""}`} title={canUndoCustomDaySkip?"Go back to the day you skipped":"Move to the next training day"} aria-label={canUndoCustomDaySkip?"Undo skipped custom split day":"Skip this custom split day"}>
+            {canUndoCustomDaySkip?"↶ Undo skip":"Skip this day →"}
+          </button>}
         </div>
+        {activeSplitSkip&&<div className="coach-skip-note" aria-live="polite">Skipped {naturalList(cyclePosition.skippedFrom?.muscles)} · now showing {naturalList(workoutPlan.muscles)}</div>}
         {!split ? (
           <div style={{ fontSize: 14, color: T.ink, fontWeight: 600, lineHeight: 1.5 }}>Pick your training split below so reminders match how you actually lift.</div>
         ) : !workoutStartedToday && workoutPlan.muscles.length ? (
@@ -7725,6 +7807,7 @@ function CoachCard({ data, exMap, user, setData, onOpenLog }) {
             : <button type="button" onClick={finishWorkout} style={{padding:"5px 8px",borderRadius:8,background:T.input,border:`1px solid ${T.line}`,color:T.ink,fontSize:10,fontWeight:850}}>Mark shorter workout finished</button>}<span style={{fontSize:9.5,color:T.sub}}>Optional override: advances a deliberately short split day without adding fake sets.</span></div>}
           {!!hiddenCatchUps.length&&<button type="button" onClick={restoreCatchUps} style={{marginTop:7,padding:"5px 9px",borderRadius:8,background:T.input,border:`1px solid ${T.line}`,color:T.green,fontSize:10.5,fontWeight:800}}>Show hidden catch-ups</button>}
           {split === "custom" && <div>✓ An out-of-order workout does not erase older missed muscle groups.</div>}
+          {split === "custom" && <div>✓ Skip this day moves to the next workout without logging fake sets. Undo stays available until the rotation naturally advances.</div>}
           <div>✓ Main muscle = 1 set · secondary = ½ · warm-ups ignored.</div>
         </div>
       </details>
