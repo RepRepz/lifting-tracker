@@ -139,50 +139,273 @@ const entryPrimaryMuscles = (entry, exMap) => entry?.muscleOnly && MUSCLES.inclu
 const entryLabel = (entry) => entry?.muscleOnly ? `${entry.muscle} (quick workout)` : (entry?.exercise || "Workout");
 const MUSCLE_COLORS = ["#009E04","#3D7FD9","#C08A1E","#9C4DE0","#D94F00","#17ABA0","#A83277"];
 
-/* Broad groups keep the app easy to scan; these conservative name-based tags provide
-   useful detail underneath them without pretending custom exercises are more specific
-   than their saved metadata. Unknown movements simply stay "General". */
-const muscleSubgroupsOf = (ex, muscle) => {
+/* Regional set credit is an exercise-selection guide, not a literal measurement of
+   force, EMG, or hypertrophy. Values are deliberately rounded and sum to 100% within
+   the broad muscle's credited set. Longitudinal training evidence gets priority;
+   anatomy/biomechanics and EMG only fill gaps. A saved `regions` override lets future
+   curated additions be explicit without changing this resolver. */
+const regionParts = (pairs) => pairs.map(([name, weight]) => ({ name, weight }));
+const normalizeRegions = (parts) => {
+  const clean=(parts||[]).map(p=>Array.isArray(p)?{name:p[0],weight:Number(p[1])}:p)
+    .filter(p=>p?.name&&Number(p.weight)>0);
+  const total=clean.reduce((s,p)=>s+p.weight,0);
+  return total ? clean.map(p=>({...p,weight:p.weight/total})) : [{name:"General",weight:1}];
+};
+const REGION_PROFILES = {
+  chestFlat:[["Upper chest",.25],["Mid chest",.60],["Lower chest",.15]],
+  chestIncline:[["Upper chest",.50],["Mid chest",.40],["Lower chest",.10]],
+  chestLower:[["Upper chest",.10],["Mid chest",.35],["Lower chest",.55]],
+  chestInclinePushup:[["Upper chest",.20],["Mid chest",.55],["Lower chest",.25]],
+  triPress:[["Long head",.35],["Lateral head",.35],["Medial head",.30]],
+  triOverhead:[["Long head",.55],["Lateral head",.25],["Medial head",.20]],
+  triPushdown:[["Long head",.30],["Lateral head",.40],["Medial head",.30]],
+  shoulderPress:[["Front delts",.65],["Side delts",.30],["Rear delts",.05]],
+  shoulderChestPress:[["Front delts",.75],["Side delts",.20],["Rear delts",.05]],
+  shoulderLateral:[["Side delts",.80],["Front delts",.10],["Rear delts",.10]],
+  shoulderRear:[["Rear delts",.75],["Side delts",.20],["Front delts",.05]],
+  shoulderUpright:[["Side delts",.65],["Front delts",.20],["Rear delts",.15]],
+  backVertical:[["Lats",.65],["Mid/lower traps & rhomboids",.20],["Upper traps",.05],["Spinal erectors",.10]],
+  backRow:[["Lats",.40],["Mid/lower traps & rhomboids",.45],["Upper traps",.10],["Spinal erectors",.05]],
+  backLatRow:[["Lats",.55],["Mid/lower traps & rhomboids",.35],["Upper traps",.05],["Spinal erectors",.05]],
+  backDeadlift:[["Spinal erectors",.70],["Lats",.10],["Mid/lower traps & rhomboids",.10],["Upper traps",.10]],
+  backShrug:[["Upper traps",.85],["Mid/lower traps & rhomboids",.15]],
+  backFace:[["Mid/lower traps & rhomboids",.65],["Upper traps",.20],["Lats",.10],["Spinal erectors",.05]],
+  backUpright:[["Upper traps",.45],["Mid/lower traps & rhomboids",.40],["Lats",.10],["Spinal erectors",.05]],
+  backCarry:[["Upper traps",.55],["Spinal erectors",.35],["Lats",.05],["Mid/lower traps & rhomboids",.05]],
+  bicepsCurl:[["Long head",.40],["Short head",.40],["Brachialis",.15],["Brachioradialis",.05]],
+  bicepsHammer:[["Long head",.20],["Short head",.20],["Brachialis",.35],["Brachioradialis",.25]],
+  bicepsChin:[["Long head",.35],["Short head",.35],["Brachialis",.20],["Brachioradialis",.10]],
+  bicepsPull:[["Long head",.30],["Short head",.30],["Brachialis",.25],["Brachioradialis",.15]],
+  quadsCompound:[["Vastus lateralis",.20],["Vastus medialis",.20],["Vastus intermedius",.15],["Rectus femoris",.10],["Glute max",.25],["Adductors",.10]],
+  quadsFront:[["Vastus lateralis",.20],["Vastus medialis",.22],["Vastus intermedius",.18],["Rectus femoris",.15],["Glute max",.17],["Adductors",.08]],
+  quadsMachine:[["Vastus lateralis",.22],["Vastus medialis",.22],["Vastus intermedius",.18],["Rectus femoris",.08],["Glute max",.20],["Adductors",.10]],
+  quadsExtension:[["Rectus femoris",.30],["Vastus lateralis",.25],["Vastus medialis",.25],["Vastus intermedius",.20]],
+  splitSquat:[["Vastus lateralis",.17],["Vastus medialis",.17],["Vastus intermedius",.12],["Rectus femoris",.09],["Glute max",.28],["Glute med/min",.10],["Adductors",.04],["Hamstrings",.03]],
+  lunge:[["Vastus lateralis",.16],["Vastus medialis",.16],["Vastus intermedius",.12],["Rectus femoris",.08],["Glute max",.27],["Glute med/min",.09],["Adductors",.05],["Hamstrings",.07]],
+  stepUp:[["Vastus lateralis",.15],["Vastus medialis",.15],["Vastus intermedius",.10],["Rectus femoris",.07],["Glute max",.28],["Glute med/min",.15],["Adductors",.04],["Hamstrings",.06]],
+  legPower:[["Vastus lateralis",.14],["Vastus medialis",.14],["Vastus intermedius",.10],["Rectus femoris",.07],["Glute max",.28],["Glute med/min",.07],["Hamstrings",.08],["Calves",.12]],
+  wallSit:[["Vastus lateralis",.27],["Vastus medialis",.27],["Vastus intermedius",.26],["Rectus femoris",.10],["Glute max",.07],["Adductors",.03]],
+  hamCurlLying:[["Biceps femoris long head",.28],["Biceps femoris short head",.24],["Semitendinosus",.26],["Semimembranosus",.22]],
+  hamCurlSeated:[["Biceps femoris long head",.32],["Biceps femoris short head",.15],["Semitendinosus",.29],["Semimembranosus",.24]],
+  hinge:[["Biceps femoris long head",.25],["Semitendinosus",.25],["Semimembranosus",.20],["Glute max",.30]],
+  backExtensionLegs:[["Biceps femoris long head",.20],["Semitendinosus",.20],["Semimembranosus",.15],["Glute max",.45]],
+  deadliftLegs:[["Glute max",.35],["Adductors",.15],["Vastus group",.20],["Biceps femoris long head",.10],["Semitendinosus",.10],["Semimembranosus",.10]],
+  sumoDeadliftLegs:[["Glute max",.30],["Adductors",.25],["Vastus group",.25],["Biceps femoris long head",.07],["Semitendinosus",.07],["Semimembranosus",.06]],
+  hipThrust:[["Glute max",.80],["Glute med/min",.10],["Hamstrings",.10]],
+  gluteBridge:[["Glute max",.70],["Glute med/min",.12],["Hamstrings",.18]],
+  adduction:[["Adductors",.90],["Glute max",.10]],
+  abduction:[["Glute med/min",.90],["Glute max",.10]],
+  swingLegs:[["Glute max",.40],["Biceps femoris long head",.18],["Semitendinosus",.17],["Semimembranosus",.15],["Vastus group",.10]],
+  calfStanding:[["Medial gastrocnemius",.35],["Lateral gastrocnemius",.35],["Soleus",.30]],
+  calfSeated:[["Soleus",.70],["Medial gastrocnemius",.15],["Lateral gastrocnemius",.15]],
+  absCrunch:[["Upper rectus",.40],["Lower rectus",.30],["Obliques",.15],["Deep core",.15]],
+  absLower:[["Lower rectus",.40],["Upper rectus",.25],["Obliques",.15],["Deep core",.20]],
+  absBrace:[["Deep core",.40],["Upper rectus",.25],["Lower rectus",.25],["Obliques",.10]],
+  absOblique:[["Obliques",.55],["Upper rectus",.15],["Lower rectus",.15],["Deep core",.15]],
+};
+const profileAssignments = (names, profiles) => names.map(name=>[name,profiles]);
+const SEED_REGION_PROFILES = Object.fromEntries([
+  ...profileAssignments(["Bench Press","Dumbbell Bench Press","Machine Chest Press","Smith Machine Bench Press"],{Chest:"chestFlat",Triceps:"triPress"}),
+  ...profileAssignments(["Incline Bench Press","Incline Dumbbell Press","Smith Machine Incline Bench Press"],{Chest:"chestIncline",Shoulders:"shoulderChestPress",Triceps:"triPress"}),
+  ...profileAssignments(["Chest Fly","Cable Crossover","Middle Cable Chest Fly"],{Chest:"chestFlat"}),
+  ...profileAssignments(["High To Low Cable Chest Fly"],{Chest:"chestLower"}),
+  ...profileAssignments(["Low To High Cable Chest Fly"],{Chest:"chestIncline"}),
+  ...profileAssignments(["Dips"],{Chest:"chestLower",Triceps:"triPress",Shoulders:"shoulderChestPress"}),
+  ...profileAssignments(["Push-Up","Wide Push-Up","Archer Push-Up","Clap Push-Up"],{Chest:"chestFlat",Triceps:"triPress",Shoulders:"shoulderChestPress"}),
+  ...profileAssignments(["Diamond Push-Up"],{Chest:"chestFlat",Triceps:"triPress"}),
+  ...profileAssignments(["Incline Push-Up"],{Chest:"chestInclinePushup",Triceps:"triPress"}),
+  ...profileAssignments(["Decline Push-Up"],{Chest:"chestIncline",Shoulders:"shoulderChestPress",Triceps:"triPress"}),
+  ...profileAssignments(["Pike Push-Up"],{Shoulders:"shoulderPress",Triceps:"triPress"}),
+  ...profileAssignments(["One-Arm Push-Up"],{Chest:"chestFlat",Triceps:"triPress",Abs:"absBrace"}),
+  ...profileAssignments(["Triceps Pushdown"],{Triceps:"triPushdown"}),
+  ...profileAssignments(["Overhead Triceps Extension","Dumbbell Overhead Triceps Extension","Skullcrusher"],{Triceps:"triOverhead"}),
+  ...profileAssignments(["Close-Grip Bench Press"],{Triceps:"triPress",Chest:"chestFlat"}),
+  ...profileAssignments(["Triceps Dip"],{Triceps:"triPress",Chest:"chestLower"}),
+  ...profileAssignments(["Overhead Press","Dumbbell Shoulder Press","Smith Machine Shoulder Press","Arnold Press"],{Shoulders:"shoulderPress",Triceps:"triPress"}),
+  ...profileAssignments(["Lateral Raise","Single-Arm Cable Side Raise"],{Shoulders:"shoulderLateral"}),
+  ...profileAssignments(["Rear Delt Fly"],{Shoulders:"shoulderRear"}),
+  ...profileAssignments(["Face Pull"],{Shoulders:"shoulderRear",Back:"backFace"}),
+  ...profileAssignments(["Upright Row"],{Shoulders:"shoulderUpright",Back:"backUpright"}),
+  ...profileAssignments(["Deadlift"],{Back:"backDeadlift",Legs:"deadliftLegs"}),
+  ...profileAssignments(["Sumo Deadlift"],{Legs:"sumoDeadliftLegs",Back:"backDeadlift"}),
+  ...profileAssignments(["Barbell Row","Seated Cable Row","Dumbbell Row","T-Bar Row","Inverted Row"],{Back:"backRow",Biceps:"bicepsPull"}),
+  ...profileAssignments(["Seated Single-Arm Cross-Body Cable Row"],{Back:"backLatRow",Biceps:"bicepsPull"}),
+  ...profileAssignments(["Pull-Up","Wide-Grip Pull-Up","Assisted Pull-Up"],{Back:"backVertical",Biceps:"bicepsPull"}),
+  ...profileAssignments(["Neutral-Grip Pull-Up"],{Back:"backVertical",Biceps:"bicepsHammer"}),
+  ...profileAssignments(["Chin-Up"],{Back:"backVertical",Biceps:"bicepsChin"}),
+  ...profileAssignments(["Lat Pulldown"],{Back:"backVertical",Biceps:"bicepsPull"}),
+  ...profileAssignments(["Barbell Shrug","Dumbbell Shrug"],{Back:"backShrug"}),
+  ...profileAssignments(["Back Extension"],{Back:"backDeadlift",Legs:"backExtensionLegs"}),
+  ...profileAssignments(["Superman"],{Back:"backDeadlift"}),
+  ...profileAssignments(["Barbell Curl","Dumbbell Curl","Incline Dumbbell Curl","Preacher Curl","Cable Curl","Concentration Curl","Concentration Curl Machine"],{Biceps:"bicepsCurl"}),
+  ...profileAssignments(["Hammer Curl"],{Biceps:"bicepsHammer"}),
+  ...profileAssignments(["Back Squat","Goblet Squat","Bodyweight Squat"],{Legs:"quadsCompound"}),
+  ...profileAssignments(["Front Squat"],{Legs:"quadsFront"}),
+  ...profileAssignments(["Machine Squat","Hack Squat","Smith Machine Squat","Leg Press"],{Legs:"quadsMachine"}),
+  ...profileAssignments(["Jump Squat","Box Jump"],{Legs:"legPower"}),
+  ...profileAssignments(["Leg Extension"],{Legs:"quadsExtension"}),
+  ...profileAssignments(["Lying Leg Curl"],{Legs:"hamCurlLying"}),
+  ...profileAssignments(["Seated Leg Curl"],{Legs:"hamCurlSeated"}),
+  ...profileAssignments(["Romanian Deadlift","Good Morning"],{Legs:"hinge",Back:"backDeadlift"}),
+  ...profileAssignments(["Bulgarian Split Squat"],{Legs:"splitSquat"}),
+  ...profileAssignments(["Walking Lunge","Bodyweight Lunge"],{Legs:"lunge"}),
+  ...profileAssignments(["Step-Up"],{Legs:"stepUp"}),
+  ...profileAssignments(["Wall Sit"],{Legs:"wallSit"}),
+  ...profileAssignments(["Hip Thrust"],{Legs:"hipThrust"}),
+  ...profileAssignments(["Glute Bridge"],{Legs:"gluteBridge"}),
+  ...profileAssignments(["Hip Adduction Machine (Inner Thigh)"],{Legs:"adduction"}),
+  ...profileAssignments(["Hip Abduction Machine (Outer Thigh)"],{Legs:"abduction"}),
+  ...profileAssignments(["Kettlebell Swing"],{Legs:"swingLegs",Back:"backDeadlift"}),
+  ...profileAssignments(["Standing Calf Raise"],{Legs:"calfStanding"}),
+  ...profileAssignments(["Seated Calf Raise"],{Legs:"calfSeated"}),
+  ...profileAssignments(["Plank","Ab Wheel"],{Abs:"absBrace"}),
+  ...profileAssignments(["Side Plank","Bicycle Crunch","Russian Twist"],{Abs:"absOblique"}),
+  ...profileAssignments(["Hanging Leg Raise","Vertical Knee Raise","Mountain Climber"],{Abs:"absLower"}),
+  ...profileAssignments(["Cable Crunch","Sit-Up","Crunch","Decline Ab Crunch"],{Abs:"absCrunch"}),
+  ...profileAssignments(["Burpee"],{Legs:"legPower",Chest:"chestFlat"}),
+  ...profileAssignments(["Farmer's Carry"],{Back:"backCarry",Abs:"absBrace"}),
+]);
+const SEED_REGION_AUDIT_GAPS=SEED_EXERCISES.flatMap(([name,prim,sec=[]])=>[...prim,...sec]
+  .filter(m=>!REGION_PROFILES[SEED_REGION_PROFILES[name]?.[m]]).map(m=>`${name} → ${m}`));
+if(import.meta.env.DEV&&SEED_REGION_AUDIT_GAPS.length) console.error("Missing seeded regional profiles:",SEED_REGION_AUDIT_GAPS);
+const regionalCreditsOf = (ex, muscle) => {
+  const saved=ex?.regions?.[muscle];
+  if(saved) return normalizeRegions(saved);
+  const exactProfile=SEED_REGION_PROFILES[ex?.name]?.[muscle];
+  if(exactProfile&&REGION_PROFILES[exactProfile]) return normalizeRegions(REGION_PROFILES[exactProfile]);
   const n=(ex?.name||"").toLowerCase();
-  if (!n) return ["General"];
-  if (muscle==="Legs") {
-    if (/adduct|inner thigh/.test(n)) return ["Adductors"];
-    if (/abduct|outer thigh/.test(n)) return ["Abductors / glute med"];
-    if (/calf|calves/.test(n)) return ["Calves"];
-    if (/leg curl|hamstring|nordic|romanian|stiff.?leg|good morning/.test(n)) return ["Hamstrings"];
-    if (/hip thrust|glute|kickback/.test(n)) return ["Glutes"];
-    if (/leg extension|sissy|front squat/.test(n)) return ["Quads"];
-    if (/squat|leg press|lunge|split squat|step.?up/.test(n)) return ["Quads", "Glutes"];
-  }
-  if (muscle==="Shoulders") {
-    if (/rear|reverse fly|reverse pec|face pull/.test(n)) return ["Rear delts"];
-    if (/lateral|side raise|upright row/.test(n)) return ["Side delts"];
-    if (/press|front raise/.test(n)) return ["Front delts"];
-  }
-  if (muscle==="Back") {
-    if (/pulldown|pull.?up|chin.?up|pullover|straight.?arm/.test(n)) return ["Lats"];
-    if (/deadlift|back extension|hyperextension|good morning/.test(n)) return ["Spinal erectors"];
-    if (/row|face pull|reverse fly|shrug/.test(n)) return ["Upper back"];
-  }
+  const knownSeed=SEED_EXERCISES.some(([name])=>name===ex?.name);
+  if (!n) return [{name:"General",weight:1}];
   if (muscle==="Chest") {
-    if (/incline|low to high/.test(n)) return ["Upper chest"];
-    if (/decline|high to low|dip/.test(n)) return ["Lower chest"];
-    return ["Mid / overall chest"];
+    if (/incline|decline push.?up|low to high/.test(n)) return regionParts([["Upper chest",.50],["Mid chest",.40],["Lower chest",.10]]);
+    if (/dip|high to low|decline(?! push)/.test(n)) return regionParts([["Upper chest",.10],["Mid chest",.35],["Lower chest",.55]]);
+    if(knownSeed||/bench|chest|fly|crossover|push.?up/.test(n)) return regionParts([["Upper chest",.25],["Mid chest",.60],["Lower chest",.15]]);
   }
   if (muscle==="Triceps") {
-    if (/overhead/.test(n)) return ["Long head"];
-    return ["Overall triceps"];
+    if (/overhead|skullcrusher/.test(n)) return regionParts([["Long head",.55],["Lateral head",.25],["Medial head",.20]]);
+    if (/pushdown/.test(n)) return regionParts([["Long head",.30],["Lateral head",.40],["Medial head",.30]]);
+    if(knownSeed||/press|dip|push.?up|extension/.test(n)) return regionParts([["Long head",.35],["Lateral head",.35],["Medial head",.30]]);
+  }
+  if (muscle==="Shoulders") {
+    if (/rear|reverse fly|reverse pec|face pull/.test(n)) return regionParts([["Rear delts",.75],["Side delts",.20],["Front delts",.05]]);
+    if (/lateral|side raise/.test(n)) return regionParts([["Side delts",.80],["Front delts",.10],["Rear delts",.10]]);
+    if (/upright row/.test(n)) return regionParts([["Side delts",.65],["Front delts",.20],["Rear delts",.15]]);
+    if(knownSeed||/press|pike|front raise/.test(n)) return regionParts([["Front delts",.65],["Side delts",.30],["Rear delts",.05]]);
+  }
+  if (muscle==="Back") {
+    if (/shrug/.test(n)) return regionParts([["Upper traps",.85],["Mid/lower traps & rhomboids",.15]]);
+    if (/deadlift|back extension|superman|good morning/.test(n)) return regionParts([["Spinal erectors",.70],["Lats",.10],["Mid/lower traps & rhomboids",.10],["Upper traps",.10]]);
+    if (/pulldown|pull.?up|chin.?up/.test(n)) return regionParts([["Lats",.65],["Mid/lower traps & rhomboids",.20],["Upper traps",.05],["Spinal erectors",.10]]);
+    if (/face pull/.test(n)) return regionParts([["Mid/lower traps & rhomboids",.65],["Upper traps",.20],["Lats",.10],["Spinal erectors",.05]]);
+    if (/upright row/.test(n)) return regionParts([["Upper traps",.45],["Mid/lower traps & rhomboids",.40],["Lats",.10],["Spinal erectors",.05]]);
+    if (/farmer.*carry/.test(n)) return regionParts([["Upper traps",.55],["Spinal erectors",.35],["Lats",.05],["Mid/lower traps & rhomboids",.05]]);
+    if(knownSeed||/row|pull|carry/.test(n)) return regionParts([["Lats",.40],["Mid/lower traps & rhomboids",.45],["Upper traps",.10],["Spinal erectors",.05]]);
   }
   if (muscle==="Biceps") {
-    if (/hammer|cross.?body|reverse curl/.test(n)) return ["Brachialis / brachioradialis"];
-    return ["Overall biceps"];
+    /* Curl studies show regional (proximal/distal) differences, but do not validate
+       dependable long-head versus short-head isolation. Keep the two heads balanced. */
+    if (/hammer|neutral|cross.?body/.test(n)) return regionParts([["Long head",.20],["Short head",.20],["Brachialis",.35],["Brachioradialis",.25]]);
+    if (/chin.?up/.test(n)) return regionParts([["Long head",.35],["Short head",.35],["Brachialis",.20],["Brachioradialis",.10]]);
+    if(knownSeed||/curl|chin|pull|row/.test(n)) return regionParts([["Long head",.40],["Short head",.40],["Brachialis",.15],["Brachioradialis",.05]]);
+  }
+  if (muscle==="Legs") {
+    if (/adduct|inner thigh/.test(n)) return regionParts([["Adductors",.90],["Glute max",.10]]);
+    if (/abduct|outer thigh/.test(n)) return regionParts([["Glute med/min",.90],["Glute max",.10]]);
+    if (/standing calf/.test(n)) return regionParts([["Medial gastrocnemius",.35],["Lateral gastrocnemius",.35],["Soleus",.30]]);
+    if (/seated calf/.test(n)) return regionParts([["Soleus",.70],["Medial gastrocnemius",.15],["Lateral gastrocnemius",.15]]);
+    if (/leg curl/.test(n)) return regionParts([["Biceps femoris long head",.30],["Biceps femoris short head",.20],["Semitendinosus",.27],["Semimembranosus",.23]]);
+    if (/romanian|good morning|kettlebell swing|back extension/.test(n)) return regionParts([["Biceps femoris long head",.25],["Semitendinosus",.25],["Semimembranosus",.20],["Glute max",.30]]);
+    if (/leg extension/.test(n)) return regionParts([["Rectus femoris",.30],["Vastus lateralis",.25],["Vastus medialis",.25],["Vastus intermedius",.20]]);
+    if (/hip thrust|glute bridge/.test(n)) return regionParts([["Glute max",.80],["Glute med/min",.10],["Hamstrings",.10]]);
+    if (/wall sit/.test(n)) return regionParts([["Vastus lateralis",.27],["Vastus medialis",.27],["Vastus intermedius",.26],["Rectus femoris",.10],["Glute max",.10]]);
+    if (/deadlift/.test(n)) return regionParts([["Glute max",.35],["Adductors",.15],["Vastus group",.20],["Biceps femoris long head",.10],["Semitendinosus",.10],["Semimembranosus",.10]]);
+    /* Squats, presses, lunges, split squats, step-ups and jumps: vasti and glutes
+       dominate; squat-training studies find much less rectus-femoris/hamstring growth. */
+    if(knownSeed||/squat|press|lunge|split|step|jump|burpee/.test(n)) return regionParts([["Vastus lateralis",.20],["Vastus medialis",.20],["Vastus intermedius",.15],["Rectus femoris",.10],["Glute max",.25],["Adductors",.10]]);
   }
   if (muscle==="Abs") {
-    if (/side|oblique|wood|rotation|pallof/.test(n)) return ["Obliques / core"];
-    return ["Abs"];
+    if (/side|russian|bicycle|rotation|wood|pallof/.test(n)) return regionParts([["Obliques",.55],["Upper rectus",.15],["Lower rectus",.15],["Deep core",.15]]);
+    if (/leg raise|knee raise|mountain climber/.test(n)) return regionParts([["Lower rectus",.40],["Upper rectus",.25],["Obliques",.15],["Deep core",.20]]);
+    if (/plank|ab wheel|carry|one.?arm push.?up/.test(n)) return regionParts([["Deep core",.40],["Upper rectus",.25],["Lower rectus",.25],["Obliques",.10]]);
+    if(knownSeed||/crunch|sit.?up|carry|core|ab/.test(n)) return regionParts([["Upper rectus",.40],["Lower rectus",.30],["Obliques",.15],["Deep core",.15]]);
   }
-  return ["General"];
+  return [{name:"General",weight:1}];
 };
+const regionsForExercise = (name, muscles=[], muscles2=[]) => Object.fromEntries(
+  [...new Set([...(muscles||[]),...(muscles2||[])])].map(m=>[m,regionalCreditsOf({name},m)])
+);
+const CUSTOM_REGION_GENERAL = "__general__";
+const regionMapFromReference = (reference, muscles=[], muscles2=[]) => Object.fromEntries(
+  [...new Set([...(muscles||[]),...(muscles2||[])])].map(m => {
+    if (reference === CUSTOM_REGION_GENERAL) return [m,[{name:"General",weight:1}]];
+    const profile=SEED_REGION_PROFILES[reference]?.[m];
+    return [m,profile&&REGION_PROFILES[profile]?normalizeRegions(REGION_PROFILES[profile]):[{name:"General",weight:1}]];
+  })
+);
+const movementWords = (s="") => s.toLowerCase().replace(/[^a-z0-9 ]/g," ").split(/\s+/)
+  .filter(w=>w&&!new Set(["machine","cable","barbell","dumbbell","smith","weighted","single","arm"]).has(w));
+const suggestRegionReference = (name, muscles=[], muscles2=[]) => {
+  const wanted=new Set([...(muscles||[]),...(muscles2||[])]), words=movementWords(name);
+  if(!words.length||!wanted.size) return "";
+  const aliases=[
+    [/pendulum.*squat/,"Hack Squat"],[/belt.*squat/,"Machine Squat"],[/sissy.*squat/,"Leg Extension"],
+    [/nordic/,"Lying Leg Curl"],[/bayesian.*curl/,"Cable Curl"],[/reverse.*pec|reverse.*fly/,"Rear Delt Fly"],
+    [/pec.*deck/,"Chest Fly"],[/chest.supported.*row/,"T-Bar Row"],[/pullover/,"Lat Pulldown"],
+  ];
+  const alias=aliases.find(([re,ref])=>re.test(name.toLowerCase())&&Object.keys(SEED_REGION_PROFILES[ref]||{}).some(m=>wanted.has(m)));
+  if(alias) return alias[1];
+  let best="", bestScore=0;
+  SEED_EXERCISES.forEach(([seed,prim,sec=[]])=>{
+    const overlap=[...prim,...sec].filter(m=>wanted.has(m)).length;
+    if(!overlap) return;
+    const sw=movementWords(seed), shared=words.filter(w=>sw.includes(w)).length;
+    const score=overlap*2+shared*3+(seed.toLowerCase().includes(name.toLowerCase())||name.toLowerCase().includes(seed.toLowerCase())?4:0);
+    if(score>bestScore){bestScore=score;best=seed;}
+  });
+  return bestScore>=5?best:"";
+};
+const rebalanceRegion = (parts, index, pct) => {
+  const clean=normalizeRegions(parts), next=Math.max(0,Math.min(100,Number(pct)||0))/100;
+  if(clean.length===1) return clean;
+  const otherTotal=clean.reduce((s,p,i)=>s+(i===index?0:p.weight),0);
+  return clean.map((p,i)=>i===index?{...p,weight:next}:{...p,weight:otherTotal? p.weight*(1-next)/otherTotal:(1-next)/(clean.length-1)});
+};
+function ExerciseRegionDetails({exercise}) {
+  const groups=[...musclesOf(exercise),...secondariesOf(exercise)];
+  const source=exercise.regionSource?.type==="research-copy"?`Based on ${exercise.regionSource.reference}`:exercise.regionSource?.type==="user-set"?`Custom profile based on ${exercise.regionSource.reference}`:exercise.regionSource?.type==="unspecified"?"Broad muscle only":SEED_REGION_PROFILES[exercise.name]?"Curated research estimate":"Legacy estimate";
+  return <details style={{marginTop:4,maxWidth:290}}><summary style={{fontSize:10,color:T.green,fontWeight:750,cursor:"pointer",listStyle:"none"}}>Regional focus ▾</summary><div style={{fontSize:9.5,color:T.sub,lineHeight:1.5,marginTop:4}}><div style={{marginBottom:2,fontStyle:"italic"}}>{source}</div>{groups.map(m=><div key={m}><b style={{color:T.ink}}>{m}:</b> {regionalCreditsOf(exercise,m).map(p=>`${p.name} ${Math.round(p.weight*100)}%`).join(" · ")}</div>)}</div></details>;
+}
+
+function CustomRegionAssessment({name, muscles, muscles2, choice, regions, customized, onChange}) {
+  const groups=[...new Set([...(muscles||[]),...(muscles2||[])])];
+  const suggestion=useMemo(()=>suggestRegionReference(name,muscles,muscles2),[name,muscles,muscles2]);
+  const candidates=useMemo(()=>SEED_EXERCISES.map(([n,p,s=[]])=>n)
+    .filter(n=>Object.keys(SEED_REGION_PROFILES[n]||{}).some(m=>groups.includes(m)))
+    .sort((a,b)=>(a===suggestion?-1:b===suggestion?1:a.localeCompare(b))),[groups.join("|"),suggestion]);
+  const applyChoice=(value)=>onChange({choice:value,regions:regionMapFromReference(value,muscles,muscles2),customized:false});
+  if(!groups.length) return null;
+  const shown=regions||regionMapFromReference(choice,muscles,muscles2);
+  return <div style={{marginTop:10,padding:"10px 11px",border:`1px solid ${T.line}`,borderRadius:11,background:T.card}}>
+    <div style={{fontSize:12.5,fontWeight:800,color:T.ink}}>Closest existing movement <span style={{color:T.danger}}>*</span></div>
+    <div style={{fontSize:10.5,color:T.sub,margin:"2px 0 7px"}}>This copies the closest researched regional profile. Confirm it, or choose “Not sure” instead of guessing.</div>
+    <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
+      <select value={choice} onChange={e=>applyChoice(e.target.value)} style={{flex:1,minWidth:210,fontSize:16}}>
+        <option value="">Choose the closest movement…</option>
+        {candidates.map(n=><option key={n} value={n}>{n}{n===suggestion?" — suggested":""}</option>)}
+        <option value={CUSTOM_REGION_GENERAL}>Not sure — broad muscle only</option>
+      </select>
+      {!choice&&suggestion&&<button type="button" onClick={()=>applyChoice(suggestion)} style={{padding:"8px 11px",fontSize:11.5,fontWeight:800,color:T.green,background:T.input,border:`1px solid ${T.line}`}}>Use {suggestion}</button>}
+    </div>
+    {choice&&<>
+      <div style={{marginTop:8,fontSize:10.5,color:T.sub}}>{choice===CUSTOM_REGION_GENERAL?"Saved without unverified sub-muscle percentages.":customized?`Customized from ${choice}.`:`Research profile inherited from ${choice}.`}</div>
+      <div style={{marginTop:5,fontSize:11,color:T.ink,lineHeight:1.55}}>{groups.map(m=><div key={m}><b>{m}:</b> {(shown[m]||[{name:"General",weight:1}]).map(p=>`${p.name} ${Math.round(p.weight*100)}%`).join(" · ")}</div>)}</div>
+      {choice!==CUSTOM_REGION_GENERAL&&<details style={{marginTop:6}}><summary style={{cursor:"pointer",fontSize:11,fontWeight:800,color:T.green}}>Adjust regional focus</summary>
+        <div style={{fontSize:10.5,color:T.sub,margin:"5px 0 7px"}}>Only change this when your setup meaningfully differs. Sliders stay at 100% automatically.</div>
+        {groups.map(m=><div key={m} style={{marginBottom:8}}><div style={{fontSize:11.5,fontWeight:800,color:T.ink,marginBottom:3}}>{m}</div>{(shown[m]||[]).map((p,i)=><label key={p.name} style={{display:"grid",gridTemplateColumns:"minmax(105px,1fr) minmax(90px,1.5fr) 38px",gap:7,alignItems:"center",fontSize:10.5,color:T.sub,margin:"3px 0"}}><span>{p.name}</span><input type="range" min="0" max="100" value={Math.round(p.weight*100)} onChange={e=>onChange({choice,customized:true,regions:{...shown,[m]:rebalanceRegion(shown[m],i,e.target.value)}})} style={{minHeight:22,width:"100%"}}/><b style={{color:T.ink,textAlign:"right"}}>{Math.round(p.weight*100)}%</b></label>)}</div>)}
+      </details>}
+    </>}
+  </div>;
+}
 
 /* Curated, exact exercise illustrations. These stay outside saved user data, so the
    feature is easy to remove/replace without a migration. wger's exercise media is
@@ -287,6 +510,16 @@ const gymDayStr = () => {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 };
 const e1rm = (w, r) => w * (1 + r / 30);
+/* A zero external load is valid for sleds, counterbalanced machines, unloaded bars and
+   bodyweight-style use of a weighted exercise. Epley cannot rank those sets, so a lift
+   with no positive-load history progresses by reps instead of displaying a fake 0-lb 1RM. */
+const tracksProgressByReps = (ex, entries=[]) => {
+  if(ex?.type==="Bodyweight") return true;
+  if(!entries.length) return false;
+  const latest=[...entries].sort((a,b)=>String(a.date||"").localeCompare(String(b.date||""))).at(-1)?.date;
+  const currentSession=entries.filter(e=>e.date===latest);
+  return !currentSession.some(e=>Number(e?.weight)>0);
+};
 const fmtDate = (s) => { const d = new Date(s + "T00:00"); return `${d.getMonth()+1}/${d.getDate()}/${String(d.getFullYear()).slice(2)}`; };
 const monthKey = (s) => s.slice(0, 7);
 const monthLabel = (k) => { const [y,m]=k.split("-"); return new Date(+y, +m-1, 1).toLocaleString("en-US",{month:"short",year:"numeric"}); };
@@ -401,7 +634,7 @@ const stepsMiles = (steps) => steps ? +(steps * 0.75 / 1609.34).toFixed(2) : nul
 
 const defaultData = {
   // `muscle` (primary) is kept alongside `muscles`/`muscles2` so older cached app versions still work
-  exercises: SEED_EXERCISES.map(([name, muscles, muscles2 = []]) => ({ name, muscle: muscles[0], muscles, muscles2, type: BW_SET.has(name) ? "Bodyweight" : "Weighted", barbell: BARBELL_SEED.has(name), machine: MACHINE_SEED.has(name) })),
+  exercises: SEED_EXERCISES.map(([name, muscles, muscles2 = []]) => ({ name, muscle: muscles[0], muscles, muscles2, regions:regionsForExercise(name,muscles,muscles2), type: BW_SET.has(name) ? "Bodyweight" : "Weighted", barbell: BARBELL_SEED.has(name), machine: MACHINE_SEED.has(name) })),
   gyms: [], // [{ id, name }] — only used once multi-gym tracking is turned on in Settings
   log: [], bodyweight: [], cardio: [], cardioActivities: SEED_CARDIO,
   routines: [], // optional workout templates (feature toggled in Settings)
@@ -410,7 +643,7 @@ const defaultData = {
   journal: {}, // { "YYYY-MM-DD": { mood, sleep, text } } — daily notes
   profile: {}, // heightIn (inches) lives here once set
   pins: [],    // pinned dashboard charts (exercise names)
-  libraryV: 15, // bumped when the seed library changes, so existing users get the update once
+  libraryV: 17, // v17 explicitly audits regional muscle credit for all 104 seed exercises
 };
 
 /* One-time upgrade of previously saved data: pull in newly added seed exercises and
@@ -430,7 +663,7 @@ function migrateData(d, uname) {
     // known seeds get the refreshed muscle lists (type/equipment edits are kept); `machine`
     // only fills in the seed default the FIRST time (x.machine is undefined pre-migration) —
     // once set, a manual Library override always wins on later libraryV bumps.
-    ...(d.exercises || []).map(x => seedMap[x.name] ? { ...x, muscle: seedMap[x.name].muscle, muscles: seedMap[x.name].muscles, muscles2: seedMap[x.name].muscles2, machine: x.machine != null ? x.machine : seedMap[x.name].machine } : x),
+    ...(d.exercises || []).map(x => seedMap[x.name] ? { ...x, muscle: seedMap[x.name].muscle, muscles: seedMap[x.name].muscles, muscles2: seedMap[x.name].muscles2, regions:seedMap[x.name].regions, machine: x.machine != null ? x.machine : seedMap[x.name].machine } : x),
     ...defaultData.exercises.filter(s => !have.has(s.name)),
   ];
   const haveAct = new Set((d.cardioActivities || []).map(a => a.name));
@@ -1533,9 +1766,12 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
     if (!exName) return null;
     const prior = sorted.filter(e => e.exercise===exName && e.date < date && !e.quick && sameGym(e));
     if (!prior.length) return { first:true };
-    const lastDate = prior[prior.length-1].date;
-    const sess = prior.filter(e => e.date===lastDate);
-    if (isBW) { const best = Math.max(...sess.map(s=>s.reps)); return { text:`${best} reps`, date:lastDate, bestVal:best }; }
+    const byReps=tracksProgressByReps(exMap[exName],prior);
+    const comparable=byReps?prior:prior.filter(e=>Number(e.weight)>0);
+    if(!comparable.length) return { first:true };
+    const lastDate = comparable[comparable.length-1].date;
+    const sess = comparable.filter(e => e.date===lastDate);
+    if (byReps) { const best = Math.max(...sess.map(s=>s.reps)); return { text:`${best} reps`, date:lastDate, bestVal:best, byReps:true }; }
     const best = sess.reduce((a,b)=> e1rm(b.weight||0,b.reps) > e1rm(a.weight||0,a.reps) ? b : a);
     return { text:`${dispW(best.weight,units)} × ${best.reps}`, date:lastDate, bestVal:e1rm(best.weight||0,best.reps) };
   }, [exName, date, sorted, isBW, units, isMachine, gymId]);
@@ -1543,27 +1779,31 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
   // live "are you beating last time?" from the current inputs
   const beaten = useMemo(() => {
     if (!lastTime || lastTime.first || !reps) return false;
-    if (isBW) return parseInt(reps) > lastTime.bestVal;
+    if (lastTime.byReps) return parseInt(reps) > lastTime.bestVal;
     if (!weight) return false;
     return e1rm(toLb(parseFloat(weight), units), parseInt(reps)) > lastTime.bestVal;
-  }, [lastTime, isBW, weight, reps, units]);
+  }, [lastTime, weight, reps, units]);
 
   /* session-best history for the picked exercise (last 10 sessions before today's date) */
   const sparkPts = useMemo(() => {
     if (!exName) return null;
     const byDate = {};
+    const relevant=sorted.filter(e=>e.exercise===exName&&e.date<date&&e.effort!=="Warm-up"&&!e.quick&&sameGym(e));
+    const byReps=tracksProgressByReps(exMap[exName],relevant);
     for (const e of sorted) {
       if (e.exercise !== exName || e.date >= date || e.effort === "Warm-up" || e.quick || !sameGym(e)) continue;
-      const v = isBW ? e.reps : e1rm(e.weight || 0, e.reps);
+      if(!byReps&&Number(e.weight)<=0) continue;
+      const v = byReps ? e.reps : e1rm(e.weight, e.reps);
       byDate[e.date] = Math.max(byDate[e.date] || 0, v);
     }
     return Object.keys(byDate).sort().map(k => Math.round(byDate[k])).slice(-10);
-  }, [exName, date, sorted, isBW, isMachine, gymId]);
+  }, [exName, date, sorted, exMap, isMachine, gymId]);
 
   const checkPR = (entry) => {
     const prior = data.log.filter(e => e.exercise===entry.exercise && e.date < entry.date && !e.quick && sameGym(e));
     if (!prior.length) return false;
-    if (isBW) return entry.reps > Math.max(...prior.map(p=>p.reps));
+    if (tracksProgressByReps(exMap[entry.exercise],prior)) return Number(entry.weight)>0 ? false : entry.reps > Math.max(...prior.map(p=>p.reps));
+    if(Number(entry.weight)<=0) return false;
     return e1rm(entry.weight, entry.reps) > Math.max(...prior.map(p=>e1rm(p.weight||0,p.reps)));
   };
 
@@ -2217,7 +2457,7 @@ const fmtSets = (n) => Number.isInteger(n) ? String(n) : n.toFixed(1).replace(/\
 function TargetBreakdown({ muscle, rows, count, goal, color }) {
   const status = count < goal ? `${fmtSets(goal-count)} under` : count === goal ? "Goal hit" : `${fmtSets(count-goal)} over`;
   const subgroupTotals={};
-  for(const row of rows) for(const subgroup of (row.subgroups?.length?row.subgroups:["General"])) subgroupTotals[subgroup]=(subgroupTotals[subgroup]||0)+row.total/(row.subgroups?.length||1);
+  for(const row of rows) for(const part of (row.regions?.length?row.regions:[{name:"General",weight:1}])) subgroupTotals[part.name]=(subgroupTotals[part.name]||0)+row.total*part.weight;
   const subgroupRows=Object.entries(subgroupTotals).sort((a,b)=>b[1]-a[1]);
   return (
     <div style={{margin:"5px 0 12px", padding:"11px 12px", background:`linear-gradient(145deg, ${T.input}, ${T.card})`, border:`1px solid ${count>=goal?T.green:T.line}`, borderRadius:12, boxShadow:"0 10px 26px rgba(0,0,0,.16)"}}>
@@ -2226,10 +2466,10 @@ function TargetBreakdown({ muscle, rows, count, goal, color }) {
         <b style={{fontSize:13, color:T.ink}}>{muscle}</b>
         <span style={{marginLeft:"auto", fontSize:12, fontWeight:800, color:count>=goal?T.green:T.ink}}>{fmtSets(count)} / {goal} sets · {status}</span>
       </div>
-      {!!subgroupRows.length&&<div style={{display:"flex",gap:6,flexWrap:"wrap",margin:"-1px 0 8px"}}>{subgroupRows.map(([name,total])=><span key={name} style={{display:"inline-flex",alignItems:"center",gap:5,padding:"4px 8px",borderRadius:99,background:"color-mix(in srgb,var(--accent) 8%,var(--input))",border:`1px solid color-mix(in srgb,var(--accent) 25%,var(--line))`,color:T.sub,fontSize:10,fontWeight:700}}>{name}<b style={{color:T.ink}}>{fmtSets(total)}</b></span>)}</div>}
+      {!!subgroupRows.length&&<><div style={{display:"flex",gap:6,flexWrap:"wrap",margin:"-1px 0 5px"}}>{subgroupRows.map(([name,total])=><span key={name} style={{display:"inline-flex",alignItems:"center",gap:5,padding:"4px 8px",borderRadius:99,background:"color-mix(in srgb,var(--accent) 8%,var(--input))",border:`1px solid color-mix(in srgb,var(--accent) 25%,var(--line))`,color:T.sub,fontSize:10,fontWeight:700}}>{name}<b style={{color:T.ink}}>{fmtSets(total)}</b></span>)}</div><div style={{fontSize:9.5,color:T.sub,marginBottom:7}}>Estimated regional set credit—not measured activation or exact growth.</div></>}
       {rows.length ? <div style={{display:"flex", flexDirection:"column", gap:0, maxHeight:190, overflowY:"auto"}}>
         {rows.map(row => <div key={`${row.exercise}-${row.credit}`} style={{display:"grid", gridTemplateColumns:"minmax(0,1fr) auto", gap:10, alignItems:"center", padding:"7px 0", borderTop:`1px solid ${T.line}`}}>
-          <div style={{minWidth:0}}><div style={{fontSize:12, color:T.ink, fontWeight:700, lineHeight:1.25, overflowWrap:"anywhere"}}>{row.exercise}</div><div style={{fontSize:10, color:T.sub, marginTop:2}}>{row.muscleOnly?"Quick workout · full set credit each":row.credit===0.5?"Secondary muscle · ½ set credit each":"Main muscle · full set credit each"}</div></div>
+          <div style={{minWidth:0}}><div style={{fontSize:12, color:T.ink, fontWeight:700, lineHeight:1.25, overflowWrap:"anywhere"}}>{row.exercise}</div><div style={{fontSize:10, color:T.sub, marginTop:2}}>{row.muscleOnly?"Quick workout · full set credit each":row.credit===0.5?"Secondary muscle · ½ set credit each":"Main muscle · full set credit each"}</div>{!row.muscleOnly&&<details style={{marginTop:3}}><summary style={{fontSize:9.5,color:T.green,cursor:"pointer",listStyle:"none",fontWeight:750}}>Regional estimate ▾</summary><div style={{fontSize:9.5,color:T.sub,lineHeight:1.45,marginTop:3}}>{row.regions.map(p=>`${p.name} ${Math.round(p.weight*100)}%`).join(" · ")}</div></details>}</div>
           <div style={{textAlign:"right", whiteSpace:"nowrap"}}><b style={{fontSize:12.5, color:T.ink}}>{fmtSets(row.total)}</b><div style={{fontSize:9.5, color:T.sub}}>{row.logged} logged × {row.credit===0.5?"½":"1"}</div></div>
         </div>)}
       </div> : <div style={{fontSize:11.5, color:T.sub}}>No working sets for {muscle.toLowerCase()} have been logged this week.</div>}
@@ -3065,20 +3305,20 @@ function Dashboard({ data, exMap, setData, own = true, user, sharedSteps = null,
     let entries = data.log.filter(e => e.exercise===exName && !(e.effort==="Warm-up") && !e.quick);
     if (isMachineEx && effGym && !showingAll) entries = entries.filter(e => e.gym === effGym);
     if (!entries.length) return [];
-    const isBWex = ex.type==="Bodyweight";
-    /* bodyweight lifts: "total" reps per day (volume) or "best" single set (strength/progress) */
-    const best = isBWex && bwMode[exName]==="best";
+    const repTracked = tracksProgressByReps(ex, entries);
+    /* Bodyweight and zero-external-load lifts: total reps per day or best single set. */
+    const best = repTracked && bwMode[exName]==="best";
     const dotColorFor = (gymId) => showingAll ? gymColor(gyms, gymId) : null;
 
     /* 1D: the latest session set-by-set — one dot per set */
     if (range === "1D") {
       const lastDate = entries.reduce((a,b)=>a.date>b.date?a:b).date;
       const day = entries.filter(e=>e.date===lastDate).sort((a,b)=>(a.id||0)-(b.id||0));
-      if (isBWex && best) {
+      if (repTracked && best) {
         let top = 0;
         return day.map((e,i) => (top = Math.max(top, e.reps), { date:lastDate, label:`Set ${e.set ?? i+1}`, value:e.reps, sub:`${e.reps} reps${e.reps>=top?" · best so far":""}`, dotColor:dotColorFor(e.gym) }));
       }
-      if (isBWex) {
+      if (repTracked) {
         let run = 0;
         return day.map((e,i) => (run += e.reps, { date:lastDate, label:`Set ${e.set ?? i+1}`, value:run, sub:`+${e.reps} reps (total ${run})`, dotColor:dotColorFor(e.gym) }));
       }
@@ -3090,7 +3330,7 @@ function Dashboard({ data, exMap, setData, own = true, user, sharedSteps = null,
     for (const e of entries) {
       const b = byDate[e.date] || (byDate[e.date] = { reps:0, sets:0, bestSet:0, best1rm:0, bestWeight:null, bestReps:0, gym:e.gym, bestGym:e.gym });
       b.sets++; b.reps += e.reps; b.bestSet = Math.max(b.bestSet, e.reps); b.gym = e.gym || b.gym; // last entry's gym for the day
-      if (!isBWex) {
+      if (!repTracked && Number(e.weight)>0) {
         const estimate=dispW(e1rm(e.weight||0,e.reps),units);
         if(estimate>b.best1rm){b.best1rm=estimate;b.bestWeight=dispW(e.weight||0,units);b.bestReps=e.reps;b.bestGym=e.gym;}
       }
@@ -3099,15 +3339,16 @@ function Dashboard({ data, exMap, setData, own = true, user, sharedSteps = null,
       .map(([d,b])=>{
         const setTxt = `${b.sets} set${b.sets>1?"s":""}`;
         const gymTag = showingAll && (b.bestGym||b.gym) ? ` · ${gymName(gyms, b.bestGym||b.gym)}` : "";
-        if (isBWex && best) return { date:d, label:fmtDate(d),
+        if (repTracked && best) return { date:d, label:fmtDate(d),
           value: b.bestSet, sub: `${setTxt} · ${b.reps} total reps${gymTag}`, dotColor:dotColorFor(b.gym) };
-        if (isBWex) return { date:d, label:fmtDate(d),
+        if (repTracked) return { date:d, label:fmtDate(d),
           value: b.reps, sub: `${setTxt} · best set ${b.bestSet} reps${gymTag}`, dotColor:dotColorFor(b.gym) };
+        if (!b.bestWeight || !b.bestReps) return null;
         return { date:d, label:fmtDate(d),
           value: Math.round(b.best1rm*10)/10,
           detail: `Best set: ${b.bestWeight} ${uLabel(units)} × ${b.bestReps}`,
           sub: `${b.reps} total reps · ${setTxt}${gymTag}`, dotColor:dotColorFor(b.bestGym||b.gym) };
-      });
+      }).filter(Boolean);
     const days = RANGE_DAYS[range];
     if (days!==Infinity && pts.length) {
       const latest = new Date(pts[pts.length-1].date+"T00:00");
@@ -3135,7 +3376,7 @@ function Dashboard({ data, exMap, setData, own = true, user, sharedSteps = null,
       for (const [m, credit] of entryMuscleCredits(e, exMap)) {
         if (!(m in grouped)) continue;
         const label = entryLabel(e), key = `${label}|${credit}`;
-        const row = grouped[m][key] || { exercise:label, credit, logged:0, total:0, muscleOnly:!!e.muscleOnly, subgroups:e.muscleOnly?["Unspecified"]:muscleSubgroupsOf(exMap[e.exercise],m) };
+        const row = grouped[m][key] || { exercise:label, credit, logged:0, total:0, muscleOnly:!!e.muscleOnly, regions:e.muscleOnly?[{name:"Unspecified",weight:1}]:regionalCreditsOf(exMap[e.exercise],m) };
         row.logged += setCountOf(e); row.total += credit*setCountOf(e); grouped[m][key] = row;
       }
     }
@@ -3189,11 +3430,13 @@ function Dashboard({ data, exMap, setData, own = true, user, sharedSteps = null,
       const pts = seriesFor(p);
       const pinned = isPinned(i);
       const isBW = exMap[p]?.type==="Bodyweight";
+      const metricEntries = data.log.filter(e=>e.exercise===p&&e.effort!=="Warm-up"&&!e.quick);
+      const repTracked = tracksProgressByReps(exMap[p],metricEntries);
       if (minimizedCharts[p]) {
         const latest = pts[pts.length-1];
         return <div className="card compact-card" key={p} style={{display:"flex", alignItems:"center", gap:8}}>
           <span style={{fontSize:17}}>📈</span>
-          <div style={{minWidth:0, flex:1}}><div className="h" style={{fontSize:14, color:T.tealDk, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{p}</div><div style={{fontSize:11, color:T.sub}}>{latest ? `Latest: ${latest.value}${isBW?" reps":` ${uLabel(units)}`}` : "No chart data yet"}</div></div>
+          <div style={{minWidth:0, flex:1}}><div className="h" style={{fontSize:14, color:T.tealDk, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{p}</div><div style={{fontSize:11, color:T.sub}}>{latest ? `Latest: ${latest.value}${repTracked?" reps":` ${uLabel(units)}`}` : "No chart data yet"}</div></div>
           <button onClick={()=>minimizeChart(p,false)} style={showSectionBtn}>Show</button>
         </div>;
       }
@@ -3202,13 +3445,13 @@ function Dashboard({ data, exMap, setData, own = true, user, sharedSteps = null,
       const lastDate = sess.length ? sess.reduce((a,b)=>a.date>b.date?a:b).date : null;
       const daySets = lastDate ? sess.filter(e=>e.date===lastDate) : [];
       const dayReps = daySets.reduce((s,e)=>s+e.reps, 0);
-      const bestMode = isBW && bwMode[p]==="best";
+      const bestMode = repTracked && bwMode[p]==="best";
       const isMachineEx = multiGymOn && machineOf(exMap[p]);
       const exGyms = isMachineEx ? gymsUsedFor(p) : [];
       const effGym = isMachineEx ? (gymFilter[p] ?? mostUsedGym(p)) : "";
       return (
       <div className="card" key={p}>
-        <div style={{display:"flex", gap:8, alignItems:"center", marginBottom: isBW?8:6}}>
+        <div style={{display:"flex", gap:8, alignItems:"center", marginBottom: repTracked?8:6}}>
           <ChartExercisePicker value={p} options={chartOpts} exMap={exMap} onPick={x=>changePick(i, x)} />
           {own && (
           <button onClick={()=>togglePin(i)} title={pinned ? "Unpin — go back to most recent" : "Pin this chart"} style={{
@@ -3245,7 +3488,7 @@ function Dashboard({ data, exMap, setData, own = true, user, sharedSteps = null,
           </div>
         )}
         {/* Total/Best on its own row so it never squeezes the exercise name */}
-        {isBW && (
+        {repTracked && (
           <div className="seg" style={{display:"inline-flex", marginBottom:8}}
             title="Total reps per day, or your best single set">
             {[["total","Total"],["best","Best"]].map(([m,lbl])=>{
@@ -3264,11 +3507,11 @@ function Dashboard({ data, exMap, setData, own = true, user, sharedSteps = null,
         )}
         <div style={{fontSize:11.5, color:T.sub, fontStyle:"italic", marginBottom:4}}>
           {range==="1D" ? "Latest session, set by set — tap a dot for the details"
-            : !isBW ? `Tracked by est. 1RM (${uLabel(units)})`
+            : !repTracked ? `Tracked by est. 1RM (${uLabel(units)})`
             : bestMode ? "Best set — top reps in a single set" : "Volume — total reps per day"}
         </div>
         {pts.length
-          ? <Suspense fallback={<ChartFallback h={210} />}><TrendChart pts={pts} dots={range==="1D"} unit={isBW ? " reps" : " "+uLabel(units)} /></Suspense>
+          ? <Suspense fallback={<ChartFallback h={210} />}><TrendChart pts={pts} dots={range==="1D"} unit={repTracked ? " reps" : " "+uLabel(units)} /></Suspense>
           : <div style={{color:T.sub, fontSize:14, padding:"28px 0", textAlign:"center"}}>No sessions logged for this lift yet.</div>}
       </div>
       );
@@ -4895,6 +5138,7 @@ function ExercisesTab({ data, setData, user }) {
   const [name, setName] = useState(""); const [muscles, setMuscles] = useState([]);
   const [muscles2, setMuscles2] = useState([]); const [equip, setEquip] = useState("Barbell (plates)");
   const [machine, setMachine] = useState(false);
+  const [regionSetup, setRegionSetup] = useState({choice:"",regions:null,customized:false});
   const [visualOpen, setVisualOpen] = useState(null);
   const [newVisual, setNewVisual] = useState(null);
   const [mediaBusy, setMediaBusy] = useState(false);
@@ -4908,15 +5152,20 @@ function ExercisesTab({ data, setData, user }) {
       (libM === "All" || musclesOf(x).includes(libM) || secondariesOf(x).includes(libM)));
   }, [data.exercises, libQ, libM]);
 
-  const [edit, setEdit] = useState(null); // { orig, name, muscles, muscles2, equip, machine }
+  const [edit, setEdit] = useState(null); // includes regional assessment for custom exercises
   const [mergeTo, setMergeTo] = useState(""); // fold this exercise into another one
+  const editIsSeed=!!edit&&!!SEED_REGION_PROFILES[edit.orig];
   const editValid = edit && edit.name.trim() && edit.muscles.length > 0 &&
+    (editIsSeed||!!edit.regionChoice) &&
     !data.exercises.some(x => x.name.toLowerCase() === edit.name.trim().toLowerCase() && x.name !== edit.orig);
   const saveEdit = () => {
     if (!editValid) return;
     const nn = properCase(edit.name);
     setData(d=>({ ...d,
-      exercises: d.exercises.map(x => x.name===edit.orig ? { ...x, name:nn, muscle:edit.muscles[0], muscles:edit.muscles, muscles2:edit.muscles2, machine: edit.equip==="Bodyweight" ? false : edit.machine, ...fromEquip(edit.equip) } : x),
+      exercises: d.exercises.map(x => x.name===edit.orig ? { ...x, name:nn, muscle:edit.muscles[0], muscles:edit.muscles, muscles2:edit.muscles2,
+        regions:editIsSeed?(edit.regions||regionMapFromReference(edit.orig,edit.muscles,edit.muscles2)):(edit.regions||regionMapFromReference(edit.regionChoice,edit.muscles,edit.muscles2)),
+        regionSource:editIsSeed?{type:"curated",reference:edit.orig,version:17}:{type:edit.regionChoice===CUSTOM_REGION_GENERAL?"unspecified":edit.regionCustomized?"user-set":"research-copy",reference:edit.regionChoice===CUSTOM_REGION_GENERAL?null:edit.regionChoice,version:17},
+        machine: edit.equip==="Bodyweight" ? false : edit.machine, ...fromEquip(edit.equip) } : x),
       log: nn !== edit.orig ? d.log.map(e => e.exercise===edit.orig ? { ...e, exercise:nn } : e) : d.log,
       routines: nn !== edit.orig ? (d.routines||[]).map(r => ({ ...r, items:(r.items||[]).map(it => it.exercise===edit.orig ? { ...it, exercise:nn } : it) })) : d.routines,
     }));
@@ -4938,15 +5187,17 @@ function ExercisesTab({ data, setData, user }) {
     setEdit(null); setMergeTo("");
   };
   const addExercise = async () => {
-    if (!name.trim() || !muscles.length || mediaBusy) return;
+    if (!name.trim() || !muscles.length || !regionSetup.choice || mediaBusy) return;
     const nn = properCase(name);
     const dupe = data.exercises.find(x => x.name.toLowerCase() === nn.toLowerCase());
     if (dupe) { setAddMsg(`“${dupe.name}” is already in your library — no duplicate added. (To fold one exercise into another, open it with ✏️ and use Merge.)`); return; }
     setMediaBusy(true); setMediaMsg(null);
     try {
       const visualPath = newVisual ? await uploadExerciseMedia(user.id, newVisual) : null;
-      setData(d=>({...d, exercises:[...d.exercises, {name:nn, muscle:muscles[0], muscles, muscles2, machine:equip==="Bodyweight"?false:machine, ...fromEquip(equip), ...(visualPath?{visualPath,visualKind:newVisual.type==="image/gif"?"gif":"image"}:{})}]}));
-      setName(""); setMuscles([]); setMuscles2([]); setMachine(false); setNewVisual(null); setAddMsg(null);
+      const regions=regionSetup.regions||regionMapFromReference(regionSetup.choice,muscles,muscles2);
+      const regionSource={type:regionSetup.choice===CUSTOM_REGION_GENERAL?"unspecified":regionSetup.customized?"user-set":"research-copy",reference:regionSetup.choice===CUSTOM_REGION_GENERAL?null:regionSetup.choice,version:17};
+      setData(d=>({...d, exercises:[...d.exercises, {name:nn, muscle:muscles[0], muscles, muscles2, regions, regionSource, machine:equip==="Bodyweight"?false:machine, ...fromEquip(equip), ...(visualPath?{visualPath,visualKind:newVisual.type==="image/gif"?"gif":"image"}:{})}]}));
+      setName(""); setMuscles([]); setMuscles2([]); setMachine(false); setNewVisual(null); setAddMsg(null); setRegionSetup({choice:"",regions:null,customized:false});
     } catch (err) { setMediaMsg(err?.message || "Couldn't upload that visual."); }
     finally { setMediaBusy(false); }
   };
@@ -5012,7 +5263,8 @@ function ExercisesTab({ data, setData, user }) {
         </label>
       )}
       <div style={{fontSize:12, color:T.sub, marginBottom:6}}>Muscle groups: tap once = <b style={{color:T.green}}>✓ main</b> (full set credit) · tap again = <b style={{color:AMBER}}>½ secondary</b> (half credit) · third tap clears. First main pick decides where it sorts.</div>
-      <MuscleChips prim={muscles} sec={muscles2} onChange={(p,s)=>{setMuscles(p);setMuscles2(s);}} />
+      <MuscleChips prim={muscles} sec={muscles2} onChange={(p,s)=>{setMuscles(p);setMuscles2(s);setRegionSetup(r=>({...r,regions:r.choice?regionMapFromReference(r.choice,p,s):null,customized:false}));}} />
+      <CustomRegionAssessment name={name} muscles={muscles} muscles2={muscles2} {...regionSetup} onChange={setRegionSetup} />
       <div style={{display:"flex", alignItems:"center", gap:8, marginTop:10, flexWrap:"wrap"}}>
         <label style={{display:"inline-flex", alignItems:"center", gap:7, width:"auto", padding:"8px 13px", borderRadius:10, background:T.input, border:`1px solid ${T.line}`, color:T.ink, fontSize:12.5, fontWeight:750, cursor:mediaBusy?"wait":"pointer", opacity:mediaBusy?.6:1}}>
           🖼️ {newVisual ? "Change visual" : "Optional image or GIF"}
@@ -5022,8 +5274,9 @@ function ExercisesTab({ data, setData, user }) {
         <span style={{fontSize:10.5, color:T.sub}}>JPG, PNG, WebP, or GIF · max 8 MB</span>
       </div>
       {name.trim() && !muscles.length && <div style={{fontSize:12, color:AMBER, marginTop:6}}>Pick at least one main muscle group to add this exercise.</div>}
+      {name.trim() && muscles.length>0 && !regionSetup.choice && <div style={{fontSize:12, color:AMBER, marginTop:6}}>Confirm the closest movement (or choose “Not sure”) before adding it.</div>}
       {addMsg && <div style={{fontSize:12.5, color:AMBER, marginTop:6}}>{addMsg}</div>}
-      <button onClick={addExercise} disabled={!name.trim()||!muscles.length||mediaBusy} className="btn-primary"
+      <button onClick={addExercise} disabled={!name.trim()||!muscles.length||!regionSetup.choice||mediaBusy} className="btn-primary"
         style={{padding:"11px 22px", marginTop:10, marginBottom:14}}>{mediaBusy?"Saving…":"Add exercise"}</button>
       {mediaMsg && <div style={{fontSize:11.5, color:mediaMsg.includes("Couldn't")?T.danger:T.green, margin:"-5px 0 10px"}}>{mediaMsg}</div>}
       <input value={libQ} onChange={e=>setLibQ(e.target.value)} placeholder="🔍 Search your library…"
@@ -5040,9 +5293,9 @@ function ExercisesTab({ data, setData, user }) {
       <div style={{overflowX:"auto"}}>
         <table><thead><tr><th>Exercise</th><th>Muscle</th><th>Equipment</th><th></th></tr></thead>
           <tbody>{shownEx.map(x=>(<Fragment key={x.name}>
-             <tr><td><div style={{display:"flex", alignItems:"center", gap:hasExerciseVisual(x)?10:0, minWidth:175}}>{hasExerciseVisual(x) && <ExerciseThumb exercise={x} size={48} onOpen={()=>setVisualOpen(x)} />}{hasExerciseVisual(x)?<button type="button" onClick={()=>setVisualOpen(x)} style={{padding:0, background:"none", color:T.ink, textAlign:"left", fontSize:13.5, fontWeight:700, overflowWrap:"anywhere"}}>{x.name}</button>:<span style={{fontSize:13.5,fontWeight:700,color:T.ink}}>{x.name}</span>}</div></td><td>{muscleLabel(x)}</td><td>{equipOf(x)}{machineOf(x) && <span title="Compared separately by gym" style={{marginLeft:5}}>🏢</span>}</td>
+             <tr><td><div style={{display:"flex", alignItems:"center", gap:hasExerciseVisual(x)?10:0, minWidth:175}}>{hasExerciseVisual(x) && <ExerciseThumb exercise={x} size={48} onOpen={()=>setVisualOpen(x)} />}{hasExerciseVisual(x)?<button type="button" onClick={()=>setVisualOpen(x)} style={{padding:0, background:"none", color:T.ink, textAlign:"left", fontSize:13.5, fontWeight:700, overflowWrap:"anywhere"}}>{x.name}</button>:<span style={{fontSize:13.5,fontWeight:700,color:T.ink}}>{x.name}</span>}</div></td><td>{muscleLabel(x)}<ExerciseRegionDetails exercise={x}/></td><td>{equipOf(x)}{machineOf(x) && <span title="Compared separately by gym" style={{marginLeft:5}}>🏢</span>}</td>
               <td style={{whiteSpace:"nowrap"}}>
-                <PencilBtn onClick={()=>{ setEdit({ orig:x.name, name:x.name, muscles:musclesOf(x), muscles2:secondariesOf(x), equip:equipOf(x), machine:machineOf(x) }); setMergeTo(""); }} />
+                <PencilBtn onClick={()=>{ const p=musclesOf(x),s=secondariesOf(x),seed=!!SEED_REGION_PROFILES[x.name],savedChoice=x.regionSource?.reference||(x.regionSource?.type==="unspecified"?CUSTOM_REGION_GENERAL:""); setEdit({ orig:x.name, name:x.name, muscles:p, muscles2:s, equip:equipOf(x), machine:machineOf(x), regionChoice:seed?x.name:savedChoice, regions:x.regions||regionMapFromReference(seed?x.name:(savedChoice||CUSTOM_REGION_GENERAL),p,s), regionCustomized:x.regionSource?.type==="user-set" }); setMergeTo(""); }} />
                 <ConfirmX onConfirm={()=>removeExercise(x)} />
               </td></tr>
             {edit?.orig === x.name && (
@@ -5061,8 +5314,11 @@ function ExercisesTab({ data, setData, user }) {
                   )}
                   <div style={{fontSize:12, color:T.sub, marginBottom:6}}>Tap once = ✓ main (full credit) · again = ½ secondary (half credit) · again = off:</div>
                   <div style={{marginBottom:10}}>
-                    <MuscleChips prim={edit.muscles} sec={edit.muscles2} onChange={(p,s2)=>setEdit(s=>({...s, muscles:p, muscles2:s2}))} />
+                    <MuscleChips prim={edit.muscles} sec={edit.muscles2} onChange={(p,s2)=>setEdit(s=>({...s, muscles:p, muscles2:s2, regions:regionMapFromReference(editIsSeed?s.orig:s.regionChoice,p,s2), regionCustomized:false}))} />
                   </div>
+                  {editIsSeed
+                    ? <div style={{fontSize:11,color:T.sub,margin:"-3px 0 10px"}}>Regional focus uses this included exercise’s curated research profile.</div>
+                    : <CustomRegionAssessment name={edit.name} muscles={edit.muscles} muscles2={edit.muscles2} choice={edit.regionChoice} regions={edit.regions} customized={edit.regionCustomized} onChange={r=>setEdit(s=>({...s,regionChoice:r.choice,regions:r.regions,regionCustomized:r.customized}))} />}
                   <div style={{display:"flex", alignItems:"center", gap:9, flexWrap:"wrap", margin:"0 0 11px", padding:"10px 11px", background:T.card, border:`1px solid ${T.line}`, borderRadius:11}}>
                     {hasExerciseVisual(x) && <ExerciseThumb exercise={x} size={46} onOpen={()=>setVisualOpen(x)} />}
                     <div style={{minWidth:130, flex:1}}><div style={{fontSize:12.5,fontWeight:750,color:T.ink}}>{x.visualPath?"Your uploaded visual":exerciseVisualOf(x.name)?"Included visual":"No visual"}</div><div style={{fontSize:10.5,color:T.sub,marginTop:2}}>Use a still image or animated GIF.</div></div>
@@ -5076,7 +5332,9 @@ function ExercisesTab({ data, setData, user }) {
                     <button onClick={saveEdit} disabled={!editValid} style={{...saveSm, opacity:editValid?1:0.45}}>Save changes</button>
                     <button onClick={()=>setEdit(null)} style={cancelSm}>Cancel</button>
                   </div>
-                  {!editValid && edit.name.trim() && <div style={{fontSize:12, color:T.danger, marginTop:6}}>That name is already used by another exercise.</div>}
+                  {edit.name.trim()&&!edit.muscles.length&&<div style={{fontSize:12,color:AMBER,marginTop:6}}>Pick at least one main muscle group.</div>}
+                  {!editIsSeed&&edit.muscles.length>0&&!edit.regionChoice&&<div style={{fontSize:12,color:AMBER,marginTop:6}}>Confirm the closest movement (or choose “Not sure”) before saving.</div>}
+                  {data.exercises.some(z=>z.name.toLowerCase()===edit.name.trim().toLowerCase()&&z.name!==edit.orig)&&<div style={{fontSize:12, color:T.danger, marginTop:6}}>That name is already used by another exercise.</div>}
                   {data.exercises.length > 1 && (
                     <div style={{marginTop:12, paddingTop:12, borderTop:`1px solid ${T.line}`}}>
                       <div style={{fontSize:12.5, color:T.sub, marginBottom:8}}>
@@ -6394,7 +6652,7 @@ const REP_CAP = (exercise) => (BIG_LIFT_SET.has(exercise) ? 12 : 15);
 const bestEst1RM = (exercise, entries) => {
   const cap = REP_CAP(exercise);
   const vals = (entries || [])
-    .filter(e => !e.quick && e.weight != null && (e.reps || 0) >= 1 && (e.reps || 0) <= cap)
+    .filter(e => !e.quick && Number(e.weight) > 0 && (e.reps || 0) >= 1 && (e.reps || 0) <= cap)
     .map(e => e1rm(e.weight, e.reps));
   return vals.length ? Math.max(...vals) : null;
 };
@@ -6552,8 +6810,8 @@ const subgroupCreditsOn = (log,exMap,date,muscle) => {
     if(e.date!==date||e.effort==="Warm-up") continue;
     const pair=entryMuscleCredits(e,exMap).find(([m])=>m===muscle);
     if(!pair) continue;
-    const names=e.muscleOnly?["Unspecified"]:muscleSubgroupsOf(exMap[e.exercise],muscle);
-    for(const name of names) totals[name]=(totals[name]||0)+(pair[1]*setCountOf(e))/names.length;
+    const parts=e.muscleOnly?[{name:"Unspecified",weight:1}]:regionalCreditsOf(exMap[e.exercise],muscle);
+    for(const part of parts) totals[part.name]=(totals[part.name]||0)+(pair[1]*setCountOf(e))*part.weight;
   }
   return Object.entries(totals).sort((a,b)=>b[1]-a[1]).map(([name,sets])=>({name,sets:Math.round(sets*10)/10}));
 };
