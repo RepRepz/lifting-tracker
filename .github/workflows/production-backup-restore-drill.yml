@@ -1,0 +1,75 @@
+name: Production backup restore drill
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: the-lab-production-restore-drill
+  cancel-in-progress: false
+
+jobs:
+  restore:
+    runs-on: ubuntu-24.04
+    environment: backups
+    timeout-minutes: 40
+    services:
+      postgres:
+        # Supabase's PostgreSQL 17 image supplies the managed roles and extensions
+        # that a stock PostgreSQL image does not. Keep this pinned and review it
+        # when the hosted project changes major/image versions.
+        image: supabase/postgres:17.6.1.136
+        env:
+          POSTGRES_PASSWORD: local-restore-drill-only
+          POSTGRES_USER: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+      - run: npm ci --ignore-scripts
+      - run: node --test scripts/backup/core.test.mjs
+      - name: Install database and encryption tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get update -qq
+          sudo apt-get install -y postgresql-client-18 restic
+          echo '/usr/lib/postgresql/18/bin' >> "$GITHUB_PATH"
+      - name: Create empty isolated restore target
+        env:
+          PGPASSWORD: local-restore-drill-only
+        run: |
+          createdb --host 127.0.0.1 --port 5432 --username postgres lab_backup_drill
+      - name: Restore latest verified production snapshot
+        env:
+          RESTIC_REPOSITORY: ${{ secrets.RESTIC_REPOSITORY }}
+          RESTIC_PASSWORD: ${{ secrets.RESTIC_PASSWORD }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.BACKUP_S3_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_S3_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          RESTORE_DRILL_DATABASE_URL: postgresql://postgres:local-restore-drill-only@127.0.0.1:5432/lab_backup_drill
+        run: node scripts/backup/restore-drill.mjs
+      - name: Confirm production data was not published
+        if: always()
+        run: |
+          if find . -maxdepth 3 -type f \( -name '*.dump' -o -name '*.backup' -o -name 'manifest.json' \) -print -quit | grep -q .; then
+            echo '::error::A private restore artifact escaped its temporary directory.'
+            exit 1
+          fi
+          printf 'Restore drill result: %s.\nNo database archive or user data was uploaded as a GitHub artifact.\n' \
+            "${{ job.status }}" >> "$GITHUB_STEP_SUMMARY"
+
