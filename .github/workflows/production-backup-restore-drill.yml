@@ -23,12 +23,11 @@ jobs:
         image: supabase/postgres:17.6.1.136
         env:
           POSTGRES_PASSWORD: local-restore-drill-only
-          POSTGRES_USER: postgres
           POSTGRES_DB: postgres
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-cmd "pg_isready -U supabase_admin -d postgres"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 12
@@ -53,7 +52,7 @@ jobs:
         env:
           PGPASSWORD: local-restore-drill-only
         run: |
-          createdb --host 127.0.0.1 --port 5432 --username postgres lab_backup_drill
+          createdb --host 127.0.0.1 --port 5432 --username supabase_admin lab_backup_drill
       - name: Restore latest verified production snapshot
         env:
           RESTIC_REPOSITORY: ${{ secrets.RESTIC_REPOSITORY }}
@@ -61,7 +60,7 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.BACKUP_S3_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_S3_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
-          RESTORE_DRILL_DATABASE_URL: postgresql://postgres:local-restore-drill-only@127.0.0.1:5432/lab_backup_drill
+          RESTORE_DRILL_DATABASE_URL: postgresql://supabase_admin:local-restore-drill-only@127.0.0.1:5432/lab_backup_drill
         run: node scripts/backup/restore-drill.mjs
       - name: Confirm production data was not published
         if: always()
@@ -72,4 +71,3 @@ jobs:
           fi
           printf 'Restore drill result: %s.\nNo database archive or user data was uploaded as a GitHub artifact.\n' \
             "${{ job.status }}" >> "$GITHUB_STEP_SUMMARY"
-
