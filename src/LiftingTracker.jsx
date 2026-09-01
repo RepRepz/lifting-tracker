@@ -49,7 +49,7 @@ const SEED_EXERCISES = [
   ["Barbell Row",["Back"],["Biceps"]],
   ["Pull-Up",["Back"],["Biceps"]],["Chin-Up",["Back","Biceps"]],["Wide-Grip Pull-Up",["Back"],["Biceps"]],
   ["Neutral-Grip Pull-Up",["Back"],["Biceps"]],["Assisted Pull-Up",["Back"],["Biceps"]],
-  ["Lat Pulldown",["Back"],["Biceps"]],["Seated Cable Row",["Back"],["Biceps"]],["Dumbbell Row",["Back"],["Biceps"]],
+  ["Lat Pulldown",["Back"],["Biceps"]],["Seated Cable Row",["Back"],["Biceps"]],["Machine High Row",["Back"],["Biceps"]],["Dumbbell Row",["Back"],["Biceps"]],
   ["T-Bar Row",["Back"],["Biceps"]],["Inverted Row",["Back"],["Biceps"]],["Seated Single-Arm Cross-Body Cable Row",["Back"],["Biceps"]],
   ["Barbell Shrug",["Back"]],["Dumbbell Shrug",["Back"]],["Back Extension",["Back"],["Legs"]],["Superman",["Back"]],
   // biceps
@@ -82,7 +82,11 @@ const BARBELL_SEED = new Set([
   "Deadlift","Sumo Deadlift","Barbell Row","T-Bar Row","Barbell Curl","Back Squat","Front Squat",
   "Romanian Deadlift","Hip Thrust","Barbell Shrug","Upright Row","Good Morning",
   "Smith Machine Bench Press","Smith Machine Incline Bench Press","Smith Machine Shoulder Press","Smith Machine Squat",
+  "Machine High Row",
 ]);
+/* Plate-loaded machines use the same per-side plate builder as barbells, but start at
+   zero because users log only the plates they add rather than an assumed bar weight. */
+const PLATE_LOADED_MACHINE_SEED = new Set(["Machine High Row"]);
 /* Pin-loaded machines and cable stacks: unlike a barbell (fixed 45lb + known plates) or a
    dumbbell (a standard 5lb-increment number is the same everywhere), the REAL resistance
    behind a machine's printed number varies gym to gym — different pulley ratios, cam
@@ -95,7 +99,7 @@ const MACHINE_SEED = new Set([
   "High To Low Cable Chest Fly", "Low To High Cable Chest Fly", "Middle Cable Chest Fly",
   "Triceps Pushdown", "Overhead Triceps Extension",
   "Single-Arm Cable Side Raise", "Rear Delt Fly", "Face Pull",
-  "Lat Pulldown", "Seated Cable Row", "Seated Single-Arm Cross-Body Cable Row", "Cable Curl", "Concentration Curl Machine",
+  "Lat Pulldown", "Seated Cable Row", "Machine High Row", "Seated Single-Arm Cross-Body Cable Row", "Cable Curl", "Concentration Curl Machine",
   "Machine Squat", "Hack Squat", "Leg Press", "Leg Extension", "Lying Leg Curl", "Seated Leg Curl",
   "Hip Adduction Machine (Inner Thigh)", "Hip Abduction Machine (Outer Thigh)", "Cable Crunch",
 ]);
@@ -120,10 +124,10 @@ const muscleCredits = (ex) => [...musclesOf(ex).map(m => [m, 1]), ...secondaries
 const muscleLabel = (ex) => [...musclesOf(ex), ...secondariesOf(ex).map(m => m + " ½")].join(" · ");
 /* An exercise uses plates if it's flagged barbell (or, for older data with no flag, matches a known barbell move). */
 const usesPlates = (ex) => !!ex && ex.type !== "Bodyweight" && (ex.barbell ?? BARBELL_SEED.has(ex.name));
-const EQUIP_OPTS = ["Barbell (plates)", "Weighted (other)", "Bodyweight"];
-const equipOf = (ex) => ex.type === "Bodyweight" ? "Bodyweight" : (ex.barbell ?? BARBELL_SEED.has(ex.name)) ? "Barbell (plates)" : "Weighted (other)";
+const EQUIP_OPTS = ["Plate-loaded / barbell", "Weighted (other)", "Bodyweight"];
+const equipOf = (ex) => ex.type === "Bodyweight" ? "Bodyweight" : (ex.barbell ?? BARBELL_SEED.has(ex.name)) ? "Plate-loaded / barbell" : "Weighted (other)";
 const fromEquip = (eq) => eq === "Bodyweight" ? { type: "Bodyweight", barbell: false }
-  : eq === "Barbell (plates)" ? { type: "Weighted", barbell: true }
+  : (eq === "Plate-loaded / barbell" || eq === "Barbell (plates)") ? { type: "Weighted", barbell: true }
   : { type: "Weighted", barbell: false };
 const MUSCLES = ["Chest","Triceps","Shoulders","Back","Biceps","Legs","Abs"];
 /* Quick workouts store one compact row per muscle instead of one row per set. These
@@ -235,6 +239,7 @@ const SEED_REGION_PROFILES = Object.fromEntries([
   ...profileAssignments(["Deadlift"],{Back:"backDeadlift",Legs:"deadliftLegs"}),
   ...profileAssignments(["Sumo Deadlift"],{Legs:"sumoDeadliftLegs",Back:"backDeadlift"}),
   ...profileAssignments(["Barbell Row","Seated Cable Row","Dumbbell Row","T-Bar Row","Inverted Row"],{Back:"backRow",Biceps:"bicepsPull"}),
+  ...profileAssignments(["Machine High Row"],{Back:"backSupportedRow",Biceps:"bicepsPull"}),
   ...profileAssignments(["Seated Single-Arm Cross-Body Cable Row"],{Back:"backLatRow",Biceps:"bicepsPull"}),
   ...profileAssignments(["Pull-Up","Wide-Grip Pull-Up","Assisted Pull-Up"],{Back:"backVertical",Biceps:"bicepsPull"}),
   ...profileAssignments(["Neutral-Grip Pull-Up"],{Back:"backVertical",Biceps:"bicepsHammer"}),
@@ -649,7 +654,7 @@ const defaultData = {
   journal: {}, // { "YYYY-MM-DD": { mood, sleep, text } } — daily notes
   profile: {}, // heightIn (inches) lives here once set
   pins: [],    // pinned dashboard charts (exercise names)
-  libraryV: 18, // v18 adds evidence-reviewed profiles for production's legacy custom exercises
+  libraryV: 20, // v20 makes Machine High Row plate-loaded with a no-bar plate builder
 };
 
 /* One-time upgrade of previously saved data: pull in newly added seed exercises and
@@ -669,7 +674,7 @@ function migrateData(d, uname) {
     // known seeds get the refreshed muscle lists (type/equipment edits are kept); `machine`
     // only fills in the seed default the FIRST time (x.machine is undefined pre-migration) —
     // once set, a manual Library override always wins on later libraryV bumps.
-    ...(d.exercises || []).map(x => seedMap[x.name] ? { ...x, muscle: seedMap[x.name].muscle, muscles: seedMap[x.name].muscles, muscles2: seedMap[x.name].muscles2, regions:seedMap[x.name].regions, machine: x.machine != null ? x.machine : seedMap[x.name].machine } : x),
+    ...(d.exercises || []).map(x => seedMap[x.name] ? { ...x, muscle: seedMap[x.name].muscle, muscles: seedMap[x.name].muscles, muscles2: seedMap[x.name].muscles2, regions:seedMap[x.name].regions, machine: x.machine != null ? x.machine : seedMap[x.name].machine, barbell: x.name === "Machine High Row" ? true : (x.barbell != null ? x.barbell : seedMap[x.name].barbell) } : x),
     ...defaultData.exercises.filter(s => !have.has(s.name)),
   ];
   const haveAct = new Set((d.cardioActivities || []).map(a => a.name));
@@ -1695,15 +1700,22 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
   const units = useUnit();
   const plateSet = units === "kg" ? PLATES_KG : PLATES_LB;
   const barOpts = units === "kg" ? BARS_KG : BARS_LB;
-  const [bar, setBar] = useState(units === "kg" ? 20 : 45);
+  const plateMachine = PLATE_LOADED_MACHINE_SEED.has(exName);
+  const defaultBar = plateMachine ? 0 : (units === "kg" ? 20 : 45);
+  const [bar, setBar] = useState(defaultBar);
   const [plateMode, setPlateMode] = useState("weight"); // "weight" = type total | "build" = tap plates
   const [built, setBuilt] = useState([]); // plates on ONE side, in the build tool
   const sumSide = built.reduce((s,p)=>s+p, 0);
   const addPlate = (p) => { const nb=[...built,p].sort((a,b)=>b-a); setBuilt(nb); setWeight(String(bar + 2*nb.reduce((s,x)=>s+x,0))); };
   const undoPlate = () => { const nb=built.slice(0,-1); setBuilt(nb); setWeight(nb.length ? String(bar + 2*nb.reduce((s,x)=>s+x,0)) : ""); };
   const clearPlates = () => { setBuilt([]); setWeight(""); };
-  // switching units resets the bar/plates to that unit's defaults
-  useEffect(() => { setBar(units === "kg" ? 20 : 45); setBuilt([]); }, [units]);
+  // Plate-loaded machines start at zero (only added plates count) and open the quick
+  // tap-to-build view; barbells retain their normal unit-specific starting bar.
+  useEffect(() => {
+    setBar(defaultBar);
+    setBuilt([]);
+    if (plateMachine) setPlateMode("build");
+  }, [units, exName, defaultBar, plateMachine]);
 
   // rest timer — the END TIME lives in localStorage, so the countdown survives
   // switching tabs and even closing the app (0 duration = timer switched off)
