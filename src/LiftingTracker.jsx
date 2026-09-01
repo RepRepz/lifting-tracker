@@ -14,6 +14,7 @@ export { T, tipStyle }; // re-export so older imports keep working
 const TrendChart = lazy(() => import("./charts.jsx").then(m => ({ default: m.TrendChart })));
 const BodyChart = lazy(() => import("./charts.jsx").then(m => ({ default: m.BodyChart })));
 const MusclePie = lazy(() => import("./charts.jsx").then(m => ({ default: m.MusclePie })));
+const MacroTab = lazy(() => import("./Nutrition.jsx").then(m => ({ default: m.MacroTab })));
 const ChartFallback = ({ h }) => <div className="skeleton" style={{ height: h, borderRadius:12 }} />;
 const ACCOUNT_EMAIL_ENABLED = import.meta.env.VITE_ACCOUNT_EMAIL_ENABLED === "true";
 
@@ -887,8 +888,10 @@ export default function LiftingTracker({ user }) {
     return () => { alive = false; window.removeEventListener("online", refreshPro); clearInterval(interval); };
   }, [user.id]);
   const isPro = proStatus === true;
-  // The unreleased nutrition prototype is intentionally not imported or shipped.
-  const nutritionOn = false;
+  // Keep the restored macro diary account-scoped while it is being evaluated.
+  // Unlike a device-only toggle, this follows Dimi on phone and desktop because
+  // the signed-in account identity is the source of truth.
+  const nutritionOn = (user.user_metadata?.username || "").trim().toLowerCase() === "dimi";
   const [streaksOn, setStreaksOn] = useState(() => localStorage.getItem("lt-streaks-on") !== "0"); // default on
   const [waterOn, setWaterOn] = useState(() => localStorage.getItem("lt-water-on") !== "0"); // default on
   // "I train at more than one gym" — off by default. Only matters for exercises flagged
@@ -946,6 +949,9 @@ export default function LiftingTracker({ user }) {
   useEffect(() => {
     if (tab === "steps" && !stepsEnabled) setTab("dash"); // hide the Steps tab when off / not Pro
   }, [stepsEnabled, tab]);
+  useEffect(() => {
+    if (tab === "macros" && !nutritionOn) setTab("dash");
+  }, [nutritionOn, tab]);
   const [loaded, setLoaded] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
   const [syncState, setSyncState] = useState("synced"); // "synced" | "offline"
@@ -1133,6 +1139,7 @@ export default function LiftingTracker({ user }) {
   const tabs = [
     ...(liftingOn ? [["dash","Dash","📊"],["log","Log","📝"],["cardio","Cardio","🏃"]] : []),
     ...(liftingOn && stepsEnabled ? [["steps","Steps","👟"]] : []),
+    ...(nutritionOn ? [["macros","Macros","🥗"]] : []),
     ["friends","Groups","👥"],
     ...(liftingOn ? [["records","Records","🏆"],["ex","Library","📚"],["body","Body","⚖️"]] : []),
     ["journal","Journal","📓"],
@@ -1447,7 +1454,7 @@ export default function LiftingTracker({ user }) {
         </div>
       )}
 
-      <main className="app-main">
+      <main className={"app-main" + (tab === "macros" ? " app-main-wide" : "")}>
         <div className="tabview" key={tab}>
           {tab==="dash" && liftingOn && <Dashboard data={data} exMap={exMap} setData={setData} user={user} isPro={isPro} coachEnabled={coachEnabled} stepsEnabled={stepsEnabled} nutritionOn={nutritionOn} multiGymOn={multiGymOn} openSettings={()=>setShowSettings(true)} setTab={setTab} />}
           {tab==="log" && liftingOn && <LogTab data={data} exMap={exMap} setData={setData} routinesOn={routinesOn} multiGymOn={multiGymOn} />}
@@ -1458,6 +1465,7 @@ export default function LiftingTracker({ user }) {
           {tab==="cardio" && liftingOn && <CardioTab data={data} setData={setData} latestBW={latestBW} user={user} stepsOn={stepsEnabled} />}
           {tab==="steps" && liftingOn && stepsEnabled && <StepsTab user={user} data={data} setData={setData} />}
           {tab==="ex" && liftingOn && <ExercisesTab data={data} setData={setData} user={user} />}
+          {tab==="macros" && nutritionOn && <Suspense fallback={<ChartFallback h={520} />}><MacroTab data={data} setData={setData} streaksOn={streaksOn} waterOn={waterOn} /></Suspense>}
         </div>
       </main>
 
