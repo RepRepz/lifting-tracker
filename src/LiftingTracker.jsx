@@ -8381,18 +8381,19 @@ function FriendsTab({ user, data, setData, exMap = {}, nutritionOn, streaksOn, i
       for (const [date, entries] of Object.entries(byDate)) {
         const quick = entries.filter(e=>e.muscleOnly);
         const detailed = entries.filter(e=>!e.muscleOnly);
-        if (detailed.length) {
-          const names = [...new Set(detailed.map(e=>e.exercise))];
-          evs.push({ key:`${m.user_id}-${date}-lift`, date, user:m.username, uid:m.user_id, kind:"lift",
-            sets: detailed.reduce((sum,e)=>sum+setCountOf(e),0), names: names.slice(0,3), more: Math.max(0, names.length-3),
-            prs: Object.values((prsByDate[date] || []).reduce((acc,p)=>{ acc[p.ex] = { ...p, note: st.prNotes?.[p.ex] || "" }; return acc; }, {})) });
-        }
-        if (quick.length) {
-          const totals = {};
-          for (const e of quick) totals[e.muscle] = (totals[e.muscle]||0)+setCountOf(e);
-          evs.push({ key:`${m.user_id}-${date}-quick-lift`, date, user:m.username, uid:m.user_id, kind:"quick-lift",
-            sets:Object.values(totals).reduce((sum,n)=>sum+n,0), muscles:Object.entries(totals) });
-        }
+        if (!detailed.length && !quick.length) continue;
+        const names = [...new Set(detailed.map(e=>e.exercise))];
+        const quickTotals = {};
+        for (const e of quick) quickTotals[e.muscle] = (quickTotals[e.muscle]||0)+setCountOf(e);
+        const quickMuscles = Object.entries(quickTotals);
+        const detailedSets = detailed.reduce((sum,e)=>sum+setCountOf(e),0);
+        const quickSets = quickMuscles.reduce((sum,[,n])=>sum+n,0);
+        // One lifting activity per person per day. Detailed and muscle-only quick
+        // logging can coexist, but should never look like two separate workouts.
+        evs.push({ key:`${m.user_id}-${date}-lift`, date, user:m.username, uid:m.user_id,
+          kind:detailed.length?"lift":"quick-lift", sets:detailedSets+quickSets,
+          names:names.slice(0,3), more:Math.max(0,names.length-3), muscles:quickMuscles,
+          prs: Object.values((prsByDate[date] || []).reduce((acc,p)=>{ acc[p.ex] = { ...p, note: st.prNotes?.[p.ex] || "" }; return acc; }, {})) });
       }
       for (const c of (st.cardio || [])) {
         const txt = c.steps ? `${c.steps.toLocaleString()} steps — ${c.activity}` : `${c.duration} min ${c.activity}`;
@@ -8746,7 +8747,7 @@ function FriendsTab({ user, data, setData, exMap = {}, nutritionOn, streaksOn, i
                       {ev.kind==="step" ? <>{ev.icon} {ev.text}</>
                         : ev.kind==="cardio" ? <>{ev.icon||"🏃"} {ev.text}</>
                         : ev.kind==="quick-lift" ? <>⚡ logged a quick workout — {ev.muscles.map(([muscle,sets])=>`${muscle} ×${sets}`).join(" · ")}</>
-                        : <>logged {ev.sets} set{ev.sets===1?"":"s"} — {ev.names.join(", ")}{ev.more>0?` +${ev.more} more`:""}</>}
+                        : <>logged {ev.sets} set{ev.sets===1?"":"s"} — {ev.names.join(", ")}{ev.more>0?` +${ev.more} more`:""}{ev.muscles?.length?<> · <span style={{color:T.sub}}>quick: {ev.muscles.map(([muscle,sets])=>`${muscle} ×${sets}`).join(" · ")}</span></>:null}</>}
                     </>}
                 {ev.prs?.map(pr=>(
                   <span key={pr.ex} className="chip" style={{background:T.mint, color:T.green, marginLeft:6}}>🎉 PR: {pr.label}{pr.note ? ` — “${pr.note}”` : ""}</span>
