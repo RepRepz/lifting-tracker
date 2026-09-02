@@ -23,7 +23,22 @@ function NiceTip({ active, payload, label, unit }) {
         {p.value}{unit ? <span style={{ fontSize: 11.5, color: T.sub, fontWeight: 500 }}>{unit}</span> : null}
       </div>
       {p.payload?.detail && <div style={{fontSize:12,color:"#FFF",fontWeight:700,marginTop:4}}>{p.payload.detail}</div>}
-      {p.payload?.sub && <div style={{ fontSize: 11.5, color: T.sub, marginTop: 3 }}>{p.payload.sub}</div>}
+      {(p.payload?.sub || p.payload?.creatine) && (
+        <div style={{ display:"flex", alignItems:"center", flexWrap:"wrap", gap:"4px 8px", marginTop:4 }}>
+          {p.payload?.sub && <span style={{ fontSize:11.5, color:T.sub }}>{p.payload.sub}</span>}
+          {p.payload?.creatine && (
+            <span style={{
+              display:"inline-flex", alignItems:"center", gap:4, padding:"2px 7px", borderRadius:99,
+              background:p.payload.creatine==="Yes"?T.mint:T.input,
+              border:`1px solid ${p.payload.creatine==="Yes"?T.green:T.line}`,
+              color:p.payload.creatine==="Yes"?T.green:T.sub,
+              fontSize:10.5, fontWeight:800, whiteSpace:"nowrap",
+            }}>
+              Creatine: {p.payload.creatine}
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 }

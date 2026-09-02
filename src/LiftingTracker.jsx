@@ -4123,15 +4123,18 @@ function BodyTab({ data, setData, hunit }) {
       const k=`${y}-${String(m).padStart(2,"0")}`;
       const rs=byM[k]||[];
       const avg = rs.length ? Math.round(rs.reduce((s,r)=>s+r.weight,0)/rs.length*10)/10 : null;
-      const cr = !rs.length ? "-" : rs.every(r=>r.creatine==="Yes") ? "Yes" : rs.every(r=>r.creatine==="No") ? "No" : "Mixed";
+      // Monthly status follows the majority of that month's weigh-ins. A tie is
+      // "No" because creatine was not present on more than half of the entries.
+      const yesCount = rs.filter(r=>r.creatine==="Yes").length;
+      const cr = !rs.length ? "-" : yesCount > rs.length - yesCount ? "Yes" : "No";
       out.push({ key:k, label:monthLabel(k), avg, creatine:cr, count:rs.length });
       m++; if (m>12){m=1;y++;}
     }
     return out;
   }, [rows]);
 
-  const monthlyChartData = months.map(m=>({ key:m.key, label:m.label, tipLabel:m.label, value:dispW(m.avg, units), sub:m.avg==null?"No weigh-ins":`${m.count} weigh-in${m.count===1?"":"s"}` }));
-  const weighInChartData = rows.map(r=>{const [,mo,day]=r.date.split("-");return {key:r.date,label:`${+mo}/${+day}`,tipLabel:fmtDate(r.date),value:dispW(r.weight,units),sub:r.note||"Individual weigh-in"};});
+  const monthlyChartData = months.map(m=>({ key:m.key, label:m.label, tipLabel:m.label, value:dispW(m.avg, units), sub:m.avg==null?"No weigh-ins":`${m.count} weigh-in${m.count===1?"":"s"}`, creatine:m.avg==null?null:m.creatine }));
+  const weighInChartData = rows.map(r=>{const [,mo,day]=r.date.split("-");return {key:r.date,label:`${+mo}/${+day}`,tipLabel:fmtDate(r.date),value:dispW(r.weight,units),sub:r.note||"Individual weigh-in",creatine:r.creatine==="Yes"?"Yes":"No"};});
   const bodyChartData = weightChartView==="monthly"?monthlyChartData:weighInChartData;
 
   const add = () => {
