@@ -7,38 +7,36 @@ import { T } from "./theme.js";
 /* Respect the phone's "reduce motion" setting: charts appear instantly there. */
 const ANIM = !(typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
 
-/* ---------- shared tooltip (Highcharts-style floating card) ---------- */
-function NiceTip({ active, payload, label, unit }) {
-  if (!active || !payload?.length || payload[0].value == null || payload[0].payload?._ghost) return null;
-  const p = payload[0];
+/* ---------- fixed point details (Robinhood-style, never covers the graph) ---------- */
+function PointReadout({ point, unit }) {
+  if (!point) return <div aria-hidden="true" style={{minHeight:52}} />;
   return (
     <div style={{
-      background: "rgba(18,19,20,.96)", border: `1px solid ${T.line}`, borderRadius: 10,
-      padding: "8px 12px", boxShadow: "0 6px 18px rgba(0,0,0,.55)", pointerEvents: "none",
-      maxWidth:"min(260px,calc(100vw - 44px))",
+      minHeight:52,display:"flex",alignItems:"center",gap:9,flexWrap:"wrap",padding:"4px 2px 7px",
+      borderBottom:`1px solid ${T.line}`,pointerEvents:"none",
     }}>
-      <div style={{ fontSize: 11, color: T.sub, marginBottom: 2 }}>{p.payload?.tipLabel || label}</div>
-      <div style={{ fontSize: 15, fontWeight: 700, color: "#FFF", display: "flex", alignItems: "center", gap: 6 }}>
-        <span style={{ width: 8, height: 8, borderRadius: 99, background: p.payload?.dotColor || p.stroke || p.color, display: "inline-block" }} />
-        {p.value}{unit ? <span style={{ fontSize: 11.5, color: T.sub, fontWeight: 500 }}>{unit}</span> : null}
+      <div style={{minWidth:72}}>
+        <div style={{fontSize:10.5,color:T.sub,lineHeight:1.2}}>{point.tipLabel||point.label}</div>
+        <div style={{fontSize:17,fontWeight:800,color:T.ink,lineHeight:1.25,display:"flex",alignItems:"center",gap:6}}>
+          <span style={{width:8,height:8,borderRadius:99,background:point.dotColor||T.green,display:"inline-block"}} />
+          {point.value}{unit&&<span style={{fontSize:11,color:T.sub,fontWeight:600}}>{unit}</span>}
+        </div>
       </div>
-      {p.payload?.detail && <div style={{fontSize:12,color:"#FFF",fontWeight:700,marginTop:4}}>{p.payload.detail}</div>}
-      {(p.payload?.sub || p.payload?.creatine) && (
-        <div style={{ display:"flex", alignItems:"center", flexWrap:"wrap", gap:"4px 8px", marginTop:4 }}>
-          {p.payload?.sub && <span style={{ fontSize:11.5, color:T.sub }}>{p.payload.sub}</span>}
-          {p.payload?.creatine && (
+      {(point.detail||point.sub||point.creatine)&&<div style={{flex:1,minWidth:130,fontSize:11.5,lineHeight:1.35}}>
+        {point.detail&&<div style={{color:T.ink,fontWeight:750}}>{point.detail}</div>}
+        <div style={{display:"flex",alignItems:"center",flexWrap:"wrap",gap:"3px 7px",marginTop:point.detail?2:0}}>
+          {point.sub&&<span style={{color:T.sub}}>{point.sub}</span>}
+          {point.creatine&&(
             <span style={{
               display:"inline-flex", alignItems:"center", gap:4, padding:"2px 7px", borderRadius:99,
-              background:p.payload.creatine==="Yes"?T.mint:T.input,
-              border:`1px solid ${p.payload.creatine==="Yes"?T.green:T.line}`,
-              color:p.payload.creatine==="Yes"?T.green:T.sub,
+              background:point.creatine==="Yes"?T.mint:T.input,
+              border:`1px solid ${point.creatine==="Yes"?T.green:T.line}`,
+              color:point.creatine==="Yes"?T.green:T.sub,
               fontSize:10.5, fontWeight:800, whiteSpace:"nowrap",
-            }}>
-              Creatine: {p.payload.creatine}
-            </span>
+            }}>Creatine: {point.creatine}</span>
           )}
         </div>
-      )}
+      </div>}
     </div>
   );
 }
@@ -52,15 +50,20 @@ export function TrendChart({ pts, unit = "", dots = false }) {
   const up = last >= first;
   const stroke = up ? T.green : T.down;
   const gid = up ? "gradUp" : "gradDown";
+  const [selected,setSelected]=useState(null);
+  const [pinned,setPinned]=useState(false);
+  const pointFromEvent=e=>{const p=e?.activePayload?.[0]?.payload;return p&&!p._ghost&&p.value!=null?p:null;};
+  const selectedPoint=p=>selected&&p?.label===selected.label&&p?.value===selected.value;
   // Points can carry their own `dotColor` (e.g. tagged by gym for a machine/cable
   // exercise) — that wins over the overall up/down trend color for that one dot.
   const renderDot = (props) => {
     const { cx, cy, index, payload } = props;
     if (payload?._ghost || cx == null) return <g key={`d${index}`} />;
     const solo = display.length === 1;
-    const r = solo ? 5 : dots ? 4.5 : 3;
+    const active=selectedPoint(payload);
+    const r = active ? 5.5 : solo ? 5 : dots ? 4.5 : 3;
     return <circle key={`d${index}`} cx={cx} cy={cy} r={r} fill={payload?.dotColor || stroke}
-      stroke={dots || solo ? "#000" : "none"} strokeWidth={dots || solo ? 1.5 : 0} />;
+      stroke={active||dots||solo ? "#000" : "none"} strokeWidth={active?2:dots||solo?1.5:0} />;
   };
   const renderActiveDot = (props) => {
     const { cx, cy, index, payload } = props;
@@ -68,8 +71,13 @@ export function TrendChart({ pts, unit = "", dots = false }) {
     return <circle key={`a${index}`} cx={cx} cy={cy} r={5.5} fill={payload?.dotColor || stroke} stroke="#000" strokeWidth={2} />;
   };
   return (
-    <ResponsiveContainer width="100%" height={210}>
-      <AreaChart data={display} margin={{ top: 8, right: 12, bottom: 0, left: -14 }}>
+    <div>
+      <PointReadout point={selected} unit={unit} />
+      <ResponsiveContainer width="100%" height={190}>
+      <AreaChart data={display} margin={{ top: 8, right: 12, bottom: 0, left: -14 }}
+        onMouseMove={e=>{if(!pinned){const p=pointFromEvent(e);if(p)setSelected(p);}}}
+        onMouseLeave={()=>{if(!pinned)setSelected(null);}}
+        onClick={e=>{const p=pointFromEvent(e);if(p){setSelected(p);setPinned(true);}}}>
         <defs>
           <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor={stroke} stopOpacity={0.28} />
@@ -78,13 +86,15 @@ export function TrendChart({ pts, unit = "", dots = false }) {
         </defs>
         <XAxis dataKey="label" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
         <YAxis tick={{ fontSize: 11 }} domain={["auto", "auto"]} axisLine={false} tickLine={false} />
-        <Tooltip content={<NiceTip unit={unit} />} cursor={{ stroke: "#4A4E50", strokeDasharray: "3 3" }} />
+        <Tooltip content={()=>null} cursor={false} />
         <ReferenceLine y={first} stroke="#4A4E50" strokeDasharray="2 6" />
+        {selected&&<ReferenceLine x={selected.label} stroke="#4A4E50" strokeDasharray="3 3" />}
         <Area type="monotone" dataKey="value" stroke={stroke} strokeWidth={2.5} fill={`url(#${gid})`}
           dot={renderDot} activeDot={renderActiveDot}
           isAnimationActive={ANIM} animationDuration={700} animationEasing="ease-out" />
       </AreaChart>
-    </ResponsiveContainer>
+      </ResponsiveContainer>
+    </div>
   );
 }
 
@@ -96,9 +106,18 @@ export function BodyChart({ data, unit = " lb", goalDirection = null }) {
   const towardGoal = goalDirection == null || !movement ? null : goalDirection === 0 ? false : Math.sign(movement) === goalDirection;
   const stroke = towardGoal == null ? T.sub : towardGoal ? T.green : T.down;
   const gid = towardGoal == null ? "gradBWneutral" : towardGoal ? "gradBWgood" : "gradBWaway";
+  const [selected,setSelected]=useState(null);
+  const [pinned,setPinned]=useState(false);
+  const pointFromEvent=e=>{const p=e?.activePayload?.[0]?.payload;return p&&!p._ghost&&p.value!=null?p:null;};
+  const renderDot=({cx,cy,payload,index})=>payload?._ghost||cx==null?<g key={`bw${index}`} />:<circle key={`bw${index}`} cx={cx} cy={cy} r={selected&&payload.label===selected.label&&payload.value===selected.value?5.5:3.5} fill={payload.dotColor||stroke} stroke={selected&&payload.label===selected.label&&payload.value===selected.value?"#080A09":"none"} strokeWidth={2}/>;
   return (
-    <ResponsiveContainer width="100%" height={220}>
-      <AreaChart data={data} margin={{ top: 8, right: 12, bottom: 0, left: -10 }}>
+    <div>
+      <PointReadout point={selected} unit={unit} />
+      <ResponsiveContainer width="100%" height={195}>
+      <AreaChart data={data} margin={{ top: 8, right: 12, bottom: 0, left: -10 }}
+        onMouseMove={e=>{if(!pinned){const p=pointFromEvent(e);if(p)setSelected(p);}}}
+        onMouseLeave={()=>{if(!pinned)setSelected(null);}}
+        onClick={e=>{const p=pointFromEvent(e);if(p){setSelected(p);setPinned(true);}}}>
         <defs>
           <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor={stroke} stopOpacity={0.26} />
@@ -107,13 +126,15 @@ export function BodyChart({ data, unit = " lb", goalDirection = null }) {
         </defs>
         <XAxis dataKey="label" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
         <YAxis tick={{ fontSize: 11 }} domain={["auto", "auto"]} axisLine={false} tickLine={false} />
-        <Tooltip content={<NiceTip unit={unit} />} cursor={{ stroke: "#4A4E50", strokeDasharray: "3 3" }} />
+        <Tooltip content={()=>null} cursor={false} />
         <ReferenceLine y={first} stroke="#4A4E50" strokeDasharray="2 6" />
+        {selected&&<ReferenceLine x={selected.label} stroke="#4A4E50" strokeDasharray="3 3" />}
         <Area type="monotone" dataKey="value" stroke={stroke} strokeWidth={2.5} fill={`url(#${gid})`}
-          dot={{r:3.5,fill:stroke,stroke:"none"}} activeDot={{r:5.5,fill:stroke,stroke:"#080A09",strokeWidth:2}}
+          dot={renderDot} activeDot={renderDot}
           connectNulls isAnimationActive={ANIM} animationDuration={700} animationEasing="ease-out" />
       </AreaChart>
-    </ResponsiveContainer>
+      </ResponsiveContainer>
+    </div>
   );
 }
 
