@@ -7154,6 +7154,38 @@ function todayWorkoutPlan(data, exMap, nowMs=Date.now()) {
         weekly:Object.fromEntries(missing.map(m=>[m,Math.round((weekly[m]||0)*10)/10])),targets:Object.fromEntries(missing.map(m=>[m,targets[m]||0])),scheduled:true};
     }
   }
+  // Catch-up is a separate lane from today's workout. Look across every muscle that
+  // belongs to the selected split, then surface the genuinely under-target muscle(s)
+  // that have gone longest without a meaningful dose. Previously this only searched
+  // recent partially attempted sessions, so a completely skipped day (for example a
+  // Shoulders & Arms day with zero shoulder work) could never become a catch-up.
+  const chosenSet=new Set(chosen?.muscles||[]);
+  const splitMuscles=[...new Set(candidates.flatMap(c=>c.muscles))];
+  const overdueEligible=splitMuscles.filter(m=>
+    !chosenSet.has(m)&&
+    (weekly[m]||0)<(targets[m]||0)&&
+    (todayDone[m]||0)<meaningfulDoseFor(data,m)&&
+    gapFor(m)>=prefs.staleDays
+  ).sort((a,b)=>gapFor(b)-gapFor(a)||((targets[b]||0)-(weekly[b]||0))-((targets[a]||0)-(weekly[a]||0)));
+  if(overdueEligible.length){
+    const anchor=overdueEligible[0],anchorGap=gapFor(anchor);
+    const source=candidates.find(c=>c.muscles.includes(anchor));
+    // Keep the card focused: include only equally stale missing muscles from that same
+    // split day, rather than turning it into another full workout card.
+    const missing=(source?.muscles||[anchor]).filter(m=>overdueEligible.includes(m)&&gapFor(m)>=anchorGap-1);
+    const suggested=Object.fromEntries(missing.map(m=>{
+      const weeklyGap=Math.max(0,(targets[m]||0)-(weekly[m]||0));
+      const normalDose=(targets[m]||0)/Math.max(1,frequency[m]||1);
+      return [m,Math.round(Math.min(10,weeklyGap,normalDose)*2)/2];
+    }));
+    const overdueCatchUp={key:`overdue:${split}:${splitSignature(source?.muscles||missing)}:${splitSignature(missing)}`,
+      date:lastByMuscle[anchor]||null,lastTrained:lastByMuscle[anchor]||null,muscles:missing,
+      sourceMuscles:source?.muscles||missing,priority:true,suggested,
+      weekly:Object.fromEntries(missing.map(m=>[m,Math.round((weekly[m]||0)*10)/10])),
+      targets:Object.fromEntries(missing.map(m=>[m,targets[m]||0]))};
+    const existingGap=catchUp?.muscles?.length?Math.max(...catchUp.muscles.map(gapFor)):-1;
+    if(anchorGap>=existingGap) catchUp=overdueCatchUp;
+  }
   const rowFor=m=>({muscle:m,done:Math.round(todayDone[m]*10)/10,goal:goalFor(m),weekly:Math.round(weekly[m]*10)/10,weeklyGoal:targets[m],subgroups:subgroupCreditsOn(log,exMap,today,m)});
   const rows=(chosen?.muscles||[]).map(rowFor).filter(r=>r.goal>0||r.done>0);
   const addedMuscles=[...new Set(data.profile?.coachAddedMusclesByDate?.[today]||[])].filter(m=>MUSCLES.includes(m)&&!chosen?.muscles?.includes(m));
@@ -7616,7 +7648,7 @@ function CoachCard({ data, exMap, user, setData, onOpenLog }) {
         {visibleCatchUp&&!catchUpAdded && <div style={{position:"relative",marginTop:11,padding:"10px 11px",borderRadius:11,background:"color-mix(in srgb,var(--cal-cardio) 9%,var(--input))",border:"1px solid color-mix(in srgb,var(--cal-cardio) 38%,var(--line))"}}>
           <div style={{display:"flex",alignItems:"center",gap:7,flexWrap:"wrap"}}>
             <span style={{fontSize:10,fontWeight:900,color:"var(--cal-cardio)",letterSpacing:'.06em',textTransform:'uppercase'}}>{visibleCatchUp.scheduled?"Scheduled workout":visibleCatchUp.priority?"Catch-up priority":"Missed volume"}</span>
-            <span style={{fontSize:10,color:T.sub}}>from {naturalList(visibleCatchUp.sourceMuscles)} · {fmtDate(visibleCatchUp.date)}</span>
+            <span style={{fontSize:10,color:T.sub}}>from {naturalList(visibleCatchUp.sourceMuscles)} · {visibleCatchUp.lastTrained?`last trained ${fmtDate(visibleCatchUp.lastTrained)}`:visibleCatchUp.date?fmtDate(visibleCatchUp.date):"no meaningful session yet"}</span>
           </div>
           <div style={{fontSize:13,color:T.ink,fontWeight:800,lineHeight:1.4,marginTop:4}}>{naturalList(visibleCatchUp.muscles)} still needs a meaningful dose</div>
           <div style={{fontSize:10.5,color:T.sub,lineHeight:1.45,marginTop:3}}>{visibleCatchUp.muscles.map(m=>`${m}: ${fmtSets(visibleCatchUp.weekly[m])}/${fmtSets(visibleCatchUp.targets[m])} last 7 days · up to ${fmtSets(visibleCatchUp.suggested[m])} sets`).join(" · ")}.</div>
