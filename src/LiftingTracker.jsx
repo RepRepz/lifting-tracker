@@ -42,7 +42,7 @@ const SEED_EXERCISES = [
   ["Close-Grip Bench Press",["Triceps"],["Chest"]],["Triceps Dip",["Triceps"],["Chest"]],
   // shoulders
   ["Overhead Press",["Shoulders"],["Triceps"]],["Dumbbell Shoulder Press",["Shoulders"],["Triceps"]],
-  ["Smith Machine Shoulder Press",["Shoulders"],["Triceps"]],
+  ["Machine Shoulder Press",["Shoulders"],["Triceps"]],["Smith Machine Shoulder Press",["Shoulders"],["Triceps"]],
   ["Arnold Press",["Shoulders"],["Triceps"]],["Lateral Raise",["Shoulders"]],["Single-Arm Cable Side Raise",["Shoulders"]],["Rear Delt Fly",["Shoulders"]],
   ["Face Pull",["Shoulders"],["Back"]],["Upright Row",["Shoulders"],["Back"]],
   // back
@@ -99,7 +99,7 @@ const MACHINE_SEED = new Set([
   "Machine Chest Press", "Chest Fly", "Cable Crossover",
   "High To Low Cable Chest Fly", "Low To High Cable Chest Fly", "Middle Cable Chest Fly",
   "Triceps Pushdown", "Overhead Triceps Extension",
-  "Single-Arm Cable Side Raise", "Rear Delt Fly", "Face Pull",
+  "Machine Shoulder Press", "Single-Arm Cable Side Raise", "Rear Delt Fly", "Face Pull",
   "Lat Pulldown", "Seated Cable Row", "Machine High Row", "Seated Single-Arm Cross-Body Cable Row", "Cable Curl", "Concentration Curl Machine",
   "Machine Squat", "Hack Squat", "Leg Press", "Leg Extension", "Lying Leg Curl", "Seated Leg Curl",
   "Hip Adduction Machine (Inner Thigh)", "Hip Abduction Machine (Outer Thigh)", "Cable Crunch",
@@ -232,7 +232,7 @@ const SEED_REGION_PROFILES = Object.fromEntries([
   ...profileAssignments(["Overhead Triceps Extension","Dumbbell Overhead Triceps Extension","Skullcrusher"],{Triceps:"triOverhead"}),
   ...profileAssignments(["Close-Grip Bench Press"],{Triceps:"triPress",Chest:"chestFlat"}),
   ...profileAssignments(["Triceps Dip"],{Triceps:"triPress",Chest:"chestLower"}),
-  ...profileAssignments(["Overhead Press","Dumbbell Shoulder Press","Smith Machine Shoulder Press","Arnold Press"],{Shoulders:"shoulderPress",Triceps:"triPress"}),
+  ...profileAssignments(["Overhead Press","Dumbbell Shoulder Press","Machine Shoulder Press","Smith Machine Shoulder Press","Arnold Press"],{Shoulders:"shoulderPress",Triceps:"triPress"}),
   ...profileAssignments(["Lateral Raise","Single-Arm Cable Side Raise"],{Shoulders:"shoulderLateral"}),
   ...profileAssignments(["Rear Delt Fly"],{Shoulders:"shoulderRear"}),
   ...profileAssignments(["Face Pull"],{Shoulders:"shoulderRear",Back:"backFace"}),
@@ -439,6 +439,8 @@ const EXERCISE_VISUALS = {
   "Triceps Dip": ["https://wger.de/media/exercise-images/194/34600351-8b0b-4cb0-8daa-583537be15b0.png.200x200_q85.png", "CC0 1.0", "BFad07"],
   "Triceps Pushdown": ["https://wger.de/media/exercise-images/1185/c5ca283d-8958-4fd8-9d59-a3f52a3ac66b.jpg.200x200_q85.jpg", "CC BY-SA 4.0", "anto.kreegyr"],
   "Overhead Press": ["https://wger.de/media/exercise-images/1893/7dbad19e-0616-41fd-9d7d-3e21649c0eea.png.200x200_q85.png", "CC BY-SA 4.0", "nishant0712"],
+  "Dumbbell Shoulder Press": ["https://wger.de/media/exercise-images/123/dumbbell-shoulder-press-large-1.png.200x200_q85.jpg", "CC BY-SA 3.0", "wger.de"],
+  "Machine Shoulder Press": ["https://wger.de/media/exercise-images/53/Shoulder-press-machine-2.png.200x200_q85.png", "CC BY-SA 3.0", "wger.de"],
   "Single-Arm Cable Side Raise": ["https://wger.de/media/exercise-images/1378/7c1fcf34-fb7e-45e7-a0c1-51f296235315.jpg.200x200_q85.jpg", "CC BY-SA 4.0", "carlos3c"],
   "Pull-Up": ["https://wger.de/media/exercise-images/475/b0554016-16fd-4dbe-be47-a2a17d16ae0e.jpg.200x200_q85.jpg", "CC BY-SA 3.0", "wger.de"],
   "Chin-Up": ["https://wger.de/media/exercise-images/152/6c1a7459-266d-491a-bd50-7cbaea2bc771.png.200x200_q85.png", "CC0 1.0", "Everkinetic"],
@@ -655,7 +657,7 @@ const defaultData = {
   journal: {}, // { "YYYY-MM-DD": { mood, sleep, text } } — daily notes
   profile: {}, // heightIn (inches) lives here once set
   pins: [],    // pinned dashboard charts (exercise names)
-  libraryV: 20, // v20 makes Machine High Row plate-loaded with a no-bar plate builder
+  libraryV: 21, // v21 adds the shared Machine Shoulder Press
 };
 
 /* One-time upgrade of previously saved data: pull in newly added seed exercises and
@@ -813,6 +815,17 @@ export default function LiftingTracker({ user }) {
     return pref === "last" ? (localStorage.getItem("lt-last-tab") || "dash") : pref;
   });
   useEffect(() => { localStorage.setItem("lt-last-tab", tab); }, [tab]);
+  // iOS can send historyUndo/historyRedo into focused web fields after its native
+  // shake/three-finger gesture. Safari owns the confirmation sheet, but the website
+  // can still prevent an accepted gesture from silently changing tracker input.
+  useEffect(() => {
+    const blockNativeHistoryEdit = (event) => {
+      if (event.inputType !== "historyUndo" && event.inputType !== "historyRedo") return;
+      if (event.target?.matches?.("input, textarea, [contenteditable='true']")) event.preventDefault();
+    };
+    document.addEventListener("beforeinput", blockNativeHistoryEdit, true);
+    return () => document.removeEventListener("beforeinput", blockNativeHistoryEdit, true);
+  }, []);
   const [showSettings, setShowSettings] = useState(false);
   const [navHidden, setNavHidden] = useState(false); // bottom bar slides away on scroll-down
   const nudging = useRef(false); // true while the launch viewport-nudge runs (below) — ignore its scrolls
