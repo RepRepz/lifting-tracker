@@ -815,17 +815,6 @@ export default function LiftingTracker({ user }) {
     return pref === "last" ? (localStorage.getItem("lt-last-tab") || "dash") : pref;
   });
   useEffect(() => { localStorage.setItem("lt-last-tab", tab); }, [tab]);
-  // iOS can send historyUndo/historyRedo into focused web fields after its native
-  // shake/three-finger gesture. Safari owns the confirmation sheet, but the website
-  // can still prevent an accepted gesture from silently changing tracker input.
-  useEffect(() => {
-    const blockNativeHistoryEdit = (event) => {
-      if (event.inputType !== "historyUndo" && event.inputType !== "historyRedo") return;
-      if (event.target?.matches?.("input, textarea, [contenteditable='true']")) event.preventDefault();
-    };
-    document.addEventListener("beforeinput", blockNativeHistoryEdit, true);
-    return () => document.removeEventListener("beforeinput", blockNativeHistoryEdit, true);
-  }, []);
   const [showSettings, setShowSettings] = useState(false);
   const [navHidden, setNavHidden] = useState(false); // bottom bar slides away on scroll-down
   const nudging = useRef(false); // true while the launch viewport-nudge runs (below) — ignore its scrolls
