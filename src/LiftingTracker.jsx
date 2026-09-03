@@ -6856,7 +6856,16 @@ const subgroupCreditsOn = (log,exMap,date,muscle) => {
     const parts=e.muscleOnly?[{name:"Unspecified",weight:1}]:regionalCreditsOf(exMap[e.exercise],muscle);
     for(const part of parts) totals[part.name]=(totals[part.name]||0)+(pair[1]*setCountOf(e))*part.weight;
   }
-  return Object.entries(totals).sort((a,b)=>b[1]-a[1]).map(([name,sets])=>({name,sets:Math.round(sets*10)/10}));
+  return Object.entries(totals).sort((a,b)=>b[1]-a[1])
+    .map(([name,sets])=>({name,sets:Math.round(sets*10)/10}))
+    .filter(part=>part.sets>0);
+};
+const subgroupDisplayName = (muscle,name) => {
+  if(muscle!=="Legs") return name;
+  if(/biceps femoris|semitendinosus|semimembranosus|hamstrings/i.test(name)) return `Hamstrings · ${name}`;
+  if(/vastus|rectus femoris|quad/i.test(name)) return `Quads · ${name}`;
+  if(/glute/i.test(name)) return `Glutes · ${name}`;
+  return name;
 };
 /* Recency should mean a useful training exposure, not merely the last date a muscle
    appeared anywhere. Small sets remain in weekly volume but do not reset overdue work. */
@@ -7631,7 +7640,7 @@ function CoachCard({ data, exMap, user, setData, onOpenLog }) {
                   </div>
                   <div style={{height:7,background:T.input,border:"1px solid "+T.line,borderRadius:99,overflow:"hidden"}}><div style={{height:"100%",width:pct+"%",background:hit?T.green:MUSCLE_COLORS[MUSCLES.indexOf(row.muscle)],borderRadius:99,transition:"width .25s ease"}} /></div>
                   <div style={{fontSize:10.5,color:hit?T.green:T.sub,fontWeight:hit?750:500,marginTop:4}}>{hit?"Target reached — more is optional":<>{fmtSets(left)} left today · {fmtSets(row.weekly)} / {fmtSets(row.weeklyGoal)} last 7 days</>}</div>
-                  {!!row.subgroups?.length&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginTop:6}}>{row.subgroups.map(s=><span key={s.name} style={{padding:"3px 7px",borderRadius:99,background:T.input,border:`1px solid ${T.line}`,color:T.sub,fontSize:9.5,fontWeight:700}}>{s.name} <b style={{color:T.ink}}>{fmtSets(s.sets)}</b></span>)}</div>}
+                  {!!row.subgroups?.length&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginTop:6}}>{row.subgroups.map(s=><span key={s.name} style={{padding:"3px 7px",borderRadius:99,background:T.input,border:`1px solid ${T.line}`,color:T.sub,fontSize:9.5,fontWeight:700}}>{subgroupDisplayName(row.muscle,s.name)} <b style={{color:T.ink}}>{fmtSets(s.sets)}</b></span>)}</div>}
                 </div>;
               })}
             </div>
