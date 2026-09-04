@@ -13,14 +13,15 @@ function NiceTip({ active, payload, label, unit }) {
   const p = payload[0];
   return (
     <div style={{
-      background: "linear-gradient(145deg,rgba(14,17,20,.78),rgba(var(--accent-rgb),.20))",
-      border: "1px solid rgba(var(--accent-rgb),.48)", borderRadius: 11,
-      padding: "8px 12px", boxShadow: "0 8px 24px rgba(0,0,0,.42),0 0 18px rgba(var(--accent-rgb),.14)", pointerEvents: "none",
-      backdropFilter:"blur(12px) saturate(135%)",WebkitBackdropFilter:"blur(12px) saturate(135%)",
+      /* True translucent overlay: no backdrop blur, so the graph line and dots remain
+         visible through the panel instead of being smeared into an opaque-looking card. */
+      background: "linear-gradient(145deg,rgba(8,11,14,.42),rgba(var(--accent-rgb),.11))",
+      border: "1px solid rgba(var(--accent-rgb),.62)", borderRadius: 11,
+      padding: "8px 12px", boxShadow: "0 8px 22px rgba(0,0,0,.28),0 0 16px rgba(var(--accent-rgb),.12),inset 0 0 0 1px rgba(255,255,255,.035)", pointerEvents: "none",
       maxWidth:"min(260px,calc(100vw - 44px))",
     }}>
-      <div style={{ fontSize: 11, color: T.sub, marginBottom: 2 }}>{p.payload?.tipLabel || label}</div>
-      <div style={{ fontSize: 15, fontWeight: 700, color: "#FFF", display: "flex", alignItems: "center", gap: 6 }}>
+      <div style={{ fontSize: 11, color: "rgba(255,255,255,.76)", marginBottom: 2, textShadow:"0 1px 3px #000" }}>{p.payload?.tipLabel || label}</div>
+      <div style={{ fontSize: 15, fontWeight: 700, color: "#FFF", display: "flex", alignItems: "center", gap: 6, textShadow:"0 1px 4px #000" }}>
         <span style={{ width: 8, height: 8, borderRadius: 99, background: p.payload?.dotColor || p.stroke || p.color, display: "inline-block" }} />
         {p.value}{unit ? <span style={{ fontSize: 11.5, color: T.sub, fontWeight: 500 }}>{unit}</span> : null}
       </div>
