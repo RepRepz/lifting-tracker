@@ -52,7 +52,7 @@ const SEED_EXERCISES = [
   ["Neutral-Grip Pull-Up",["Back"],["Biceps"]],["Assisted Pull-Up",["Back"],["Biceps"]],
   ["Lat Pulldown",["Back"],["Biceps"]],["Seated Cable Row",["Back"],["Biceps"]],["Machine High Row",["Back"],["Biceps"]],["Dumbbell Row",["Back"],["Biceps"]],
   ["T-Bar Row",["Back"],["Biceps"]],["Inverted Row",["Back"],["Biceps"]],["Seated Single-Arm Cross-Body Cable Row",["Back"],["Biceps"]],
-  ["Barbell Shrug",["Back"]],["Dumbbell Shrug",["Back"]],["Back Extension",["Back"],["Legs"]],["Superman",["Back"]],
+  ["Barbell Shrug",["Back"]],["Dumbbell Shrug",["Back"]],["Back Extension",["Back"],["Legs"]],["Superman",["Back"]],["Dead Hang",["Back"]],
   // biceps
   ["Barbell Curl",["Biceps"]],["Dumbbell Curl",["Biceps"]],["Incline Dumbbell Curl",["Biceps"]],["Hammer Curl",["Biceps"]],
   ["Preacher Curl",["Biceps"]],["Cable Curl",["Biceps"]],["Concentration Curl",["Biceps"]],["Concentration Curl Machine",["Biceps"]],
@@ -72,7 +72,7 @@ const SEED_EXERCISES = [
   ["Farmer's Carry",["Back"],["Abs"]],
 ];
 const BW_SET = new Set([
-  "Pull-Up","Chin-Up","Wide-Grip Pull-Up","Neutral-Grip Pull-Up","Assisted Pull-Up",
+  "Pull-Up","Chin-Up","Wide-Grip Pull-Up","Neutral-Grip Pull-Up","Assisted Pull-Up","Dead Hang",
   "Dips","Triceps Dip","Inverted Row","Back Extension","Superman","Bodyweight Squat","Jump Squat","Bodyweight Lunge","Box Jump","Wall Sit","Glute Bridge",
   "Push-Up","Wide Push-Up","Diamond Push-Up","Incline Push-Up","Decline Push-Up","Pike Push-Up","Archer Push-Up","Clap Push-Up","One-Arm Push-Up",
   "Plank","Side Plank","Hanging Leg Raise","Ab Wheel","Sit-Up","Crunch","Bicycle Crunch","Decline Ab Crunch","Russian Twist","Mountain Climber","Burpee",
@@ -85,6 +85,8 @@ const BARBELL_SEED = new Set([
   "Smith Machine Bench Press","Smith Machine Incline Bench Press","Smith Machine Shoulder Press","Smith Machine Squat",
   "Machine High Row",
 ]);
+/* Isometric holds log seconds instead of fake reps. Added load stays optional. */
+const TIMED_SEED = new Set(["Plank","Side Plank","Wall Sit","Dead Hang"]);
 /* Plate-loaded machines use the same per-side plate builder as barbells, but start at
    zero because users log only the plates they add rather than an assumed bar weight. */
 const PLATE_LOADED_MACHINE_SEED = new Set(["Machine High Row"]);
@@ -142,6 +144,8 @@ const entryPrimaryMuscles = (entry, exMap) => entry?.muscleOnly && MUSCLES.inclu
   ? [entry.muscle]
   : musclesOf(exMap?.[entry?.exercise]);
 const entryLabel = (entry) => entry?.muscleOnly ? `${entry.muscle} (quick workout)` : (entry?.exercise || "Workout");
+const timedOf = (ex) => !!ex?.timed || TIMED_SEED.has(ex?.name);
+const fmtHold = (seconds) => { const n=Math.max(0,Math.round(Number(seconds)||0)); return n>=60?`${Math.floor(n/60)}:${String(n%60).padStart(2,"0")}`:`${n}s`; };
 const MUSCLE_COLORS = ["#009E04","#3D7FD9","#C08A1E","#9C4DE0","#D94F00","#17ABA0","#A83277"];
 
 /* Regional set credit is an exercise-selection guide, not a literal measurement of
@@ -243,6 +247,7 @@ const SEED_REGION_PROFILES = Object.fromEntries([
   ...profileAssignments(["Machine High Row"],{Back:"backSupportedRow",Biceps:"bicepsPull"}),
   ...profileAssignments(["Seated Single-Arm Cross-Body Cable Row"],{Back:"backLatRow",Biceps:"bicepsPull"}),
   ...profileAssignments(["Pull-Up","Wide-Grip Pull-Up","Assisted Pull-Up"],{Back:"backVertical",Biceps:"bicepsPull"}),
+  ...profileAssignments(["Dead Hang"],{Back:"backVertical"}),
   ...profileAssignments(["Neutral-Grip Pull-Up"],{Back:"backVertical",Biceps:"bicepsHammer"}),
   ...profileAssignments(["Chin-Up"],{Back:"backVertical",Biceps:"bicepsChin"}),
   ...profileAssignments(["Lat Pulldown"],{Back:"backVertical",Biceps:"bicepsPull"}),
@@ -648,7 +653,7 @@ const stepsMiles = (steps) => steps ? +(steps * 0.75 / 1609.34).toFixed(2) : nul
 
 const defaultData = {
   // `muscle` (primary) is kept alongside `muscles`/`muscles2` so older cached app versions still work
-  exercises: SEED_EXERCISES.map(([name, muscles, muscles2 = []]) => ({ name, muscle: muscles[0], muscles, muscles2, regions:regionsForExercise(name,muscles,muscles2), type: BW_SET.has(name) ? "Bodyweight" : "Weighted", barbell: BARBELL_SEED.has(name), machine: MACHINE_SEED.has(name) })),
+  exercises: SEED_EXERCISES.map(([name, muscles, muscles2 = []]) => ({ name, muscle: muscles[0], muscles, muscles2, regions:regionsForExercise(name,muscles,muscles2), type: BW_SET.has(name) ? "Bodyweight" : "Weighted", barbell: BARBELL_SEED.has(name), machine: MACHINE_SEED.has(name), timed:TIMED_SEED.has(name) })),
   gyms: [], // [{ id, name }] — only used once multi-gym tracking is turned on in Settings
   log: [], bodyweight: [], cardio: [], cardioActivities: SEED_CARDIO,
   routines: [], // optional workout templates (feature toggled in Settings)
@@ -657,7 +662,7 @@ const defaultData = {
   journal: {}, // { "YYYY-MM-DD": { mood, sleep, text } } — daily notes
   profile: {}, // heightIn (inches) lives here once set
   pins: [],    // pinned dashboard charts (exercise names)
-  libraryV: 21, // v21 adds the shared Machine Shoulder Press
+  libraryV: 22, // v22 adds timed holds and the shared Dead Hang
 };
 
 /* One-time upgrade of previously saved data: pull in newly added seed exercises and
@@ -677,7 +682,7 @@ function migrateData(d, uname) {
     // known seeds get the refreshed muscle lists (type/equipment edits are kept); `machine`
     // only fills in the seed default the FIRST time (x.machine is undefined pre-migration) —
     // once set, a manual Library override always wins on later libraryV bumps.
-    ...(d.exercises || []).map(x => seedMap[x.name] ? { ...x, muscle: seedMap[x.name].muscle, muscles: seedMap[x.name].muscles, muscles2: seedMap[x.name].muscles2, regions:seedMap[x.name].regions, machine: x.machine != null ? x.machine : seedMap[x.name].machine, barbell: x.name === "Machine High Row" ? true : (x.barbell != null ? x.barbell : seedMap[x.name].barbell) } : x),
+    ...(d.exercises || []).map(x => seedMap[x.name] ? { ...x, muscle: seedMap[x.name].muscle, muscles: seedMap[x.name].muscles, muscles2: seedMap[x.name].muscles2, regions:seedMap[x.name].regions, machine: x.machine != null ? x.machine : seedMap[x.name].machine, barbell: x.name === "Machine High Row" ? true : (x.barbell != null ? x.barbell : seedMap[x.name].barbell), timed:seedMap[x.name].timed } : x),
     ...defaultData.exercises.filter(s => !have.has(s.name)),
   ];
   const haveAct = new Set((d.cardioActivities || []).map(a => a.name));
@@ -1693,6 +1698,9 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
   }, [data.log, date, exName]);
   const [weight, setWeight] = useState("");
   const [reps, setReps] = useState("");
+  const [holdSeconds, setHoldSeconds] = useState("");
+  const [holdStartedAt, setHoldStartedAt] = useState(0);
+  const [holdElapsed, setHoldElapsed] = useState(0);
   const [effort, setEffort] = useState("");
   const [effortInfoOpen, setEffortInfoOpen] = useState(false);
   const effortWrapRef = useRef(null);
@@ -1787,6 +1795,16 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
   }, [restDone, showRestOvertime]);
 
   const isBW = exMap[exName]?.type === "Bodyweight";
+  const isTimed = timedOf(exMap[exName]);
+  useEffect(()=>{
+    if(!holdStartedAt) return;
+    const tick=()=>setHoldElapsed(Math.max(0,Math.floor((Date.now()-holdStartedAt)/1000)));
+    tick();const timer=setInterval(tick,250);return()=>clearInterval(timer);
+  },[holdStartedAt]);
+  const toggleHoldTimer=()=>{
+    if(holdStartedAt){const elapsed=Math.max(1,Math.round((Date.now()-holdStartedAt)/1000));setHoldSeconds(String(elapsed));setHoldElapsed(elapsed);setHoldStartedAt(0);}
+    else {setHoldElapsed(0);setHoldStartedAt(Date.now());}
+  };
   const selectedHasVisual = hasExerciseVisual(exMap[exName]);
   // Machine/cable exercises only, and only once multi-gym tracking is on — the load a
   // pin-loaded machine gives at "20kg" isn't standardized like a barbell's, so once tagged,
@@ -1806,6 +1824,7 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
     if (!exName) return null;
     const prior = sorted.filter(e => e.exercise===exName && e.date < date && !e.quick && sameGym(e));
     if (!prior.length) return { first:true };
+    if(isTimed){const best=Math.max(...prior.map(e=>Number(e.seconds)||0));return best?{text:`${fmtHold(best)} hold`,date:prior.filter(e=>(Number(e.seconds)||0)===best).slice(-1)[0].date,bestVal:best,timed:true}:{first:true};}
     const byReps=tracksProgressByReps(exMap[exName],prior);
     const comparable=byReps?prior:prior.filter(e=>Number(e.weight)>0);
     if(!comparable.length) return { first:true };
@@ -1814,34 +1833,37 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
     if (byReps) { const best = Math.max(...sess.map(s=>s.reps)); return { text:`${best} reps`, date:lastDate, bestVal:best, byReps:true }; }
     const best = sess.reduce((a,b)=> e1rm(b.weight||0,b.reps) > e1rm(a.weight||0,a.reps) ? b : a);
     return { text:`${dispW(best.weight,units)} × ${best.reps}`, date:lastDate, bestVal:e1rm(best.weight||0,best.reps) };
-  }, [exName, date, sorted, isBW, units, isMachine, gymId]);
+  }, [exName, date, sorted, isBW, isTimed, units, isMachine, gymId]);
 
   // live "are you beating last time?" from the current inputs
   const beaten = useMemo(() => {
-    if (!lastTime || lastTime.first || !reps) return false;
+    if (!lastTime || lastTime.first) return false;
+    if(lastTime.timed) return Number(holdSeconds)>lastTime.bestVal;
+    if(!reps) return false;
     if (lastTime.byReps) return parseInt(reps) > lastTime.bestVal;
     if (!weight) return false;
     return e1rm(toLb(parseFloat(weight), units), parseInt(reps)) > lastTime.bestVal;
-  }, [lastTime, weight, reps, units]);
+  }, [lastTime, weight, reps, holdSeconds, units]);
 
   /* session-best history for the picked exercise (last 10 sessions before today's date) */
   const sparkPts = useMemo(() => {
     if (!exName) return null;
     const byDate = {};
     const relevant=sorted.filter(e=>e.exercise===exName&&e.date<date&&e.effort!=="Warm-up"&&!e.quick&&sameGym(e));
-    const byReps=tracksProgressByReps(exMap[exName],relevant);
+    const byReps=!isTimed&&tracksProgressByReps(exMap[exName],relevant);
     for (const e of sorted) {
       if (e.exercise !== exName || e.date >= date || e.effort === "Warm-up" || e.quick || !sameGym(e)) continue;
-      if(!byReps&&Number(e.weight)<=0) continue;
-      const v = byReps ? e.reps : e1rm(e.weight, e.reps);
+      if(!isTimed&&!byReps&&Number(e.weight)<=0) continue;
+      const v = isTimed ? Number(e.seconds)||0 : byReps ? e.reps : e1rm(e.weight, e.reps);
       byDate[e.date] = Math.max(byDate[e.date] || 0, v);
     }
     return Object.keys(byDate).sort().map(k => Math.round(byDate[k])).slice(-10);
-  }, [exName, date, sorted, exMap, isMachine, gymId]);
+  }, [exName, date, sorted, exMap, isTimed, isMachine, gymId]);
 
   const checkPR = (entry) => {
     const prior = data.log.filter(e => e.exercise===entry.exercise && e.date < entry.date && !e.quick && sameGym(e));
     if (!prior.length) return false;
+    if(timedOf(exMap[entry.exercise])) return Number(entry.seconds)>Math.max(...prior.map(p=>Number(p.seconds)||0));
     if (tracksProgressByReps(exMap[entry.exercise],prior)) return Number(entry.weight)>0 ? false : entry.reps > Math.max(...prior.map(p=>p.reps));
     if(Number(entry.weight)<=0) return false;
     return e1rm(entry.weight, entry.reps) > Math.max(...prior.map(p=>e1rm(p.weight||0,p.reps)));
@@ -1850,7 +1872,7 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
   // drop sets: same set, weight lowered mid-set and kept going — extra {weight, reps} rows
   const [drops, setDrops] = useState([]);
   const addSet = () => {
-    if (!exName || !reps || (!isBW && !weight)) return;
+    if (!exName || (isTimed?!Number(holdSeconds):!reps) || (!isTimed&&!isBW&&!weight)) return;
     if (date > todayStr()) { setDate(todayStr()); return; } // no logging the future
     const cleanDrops = drops
       .map(dr => ({ weight: toLb(parseFloat(dr.weight), units), reps: parseInt(dr.reps) }))
@@ -1859,12 +1881,13 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
     // feet) — leaving it blank logs a plain bodyweight set. Either way the move still
     // counts by reps everywhere (leaderboards, graphs, PRs), since those all key off type.
     const entry = { id: Date.now(), date, exercise: exName, set: setNum,
-      weight: isBW ? (weight ? toLb(parseFloat(weight), units) : null) : toLb(parseFloat(weight), units), reps: parseInt(reps), effort, notes,
+      weight: (isBW||isTimed) ? (weight ? toLb(parseFloat(weight), units) : null) : toLb(parseFloat(weight), units),
+      reps:isTimed?null:parseInt(reps), ...(isTimed?{seconds:Math.max(1,parseInt(holdSeconds)||1)}:{}), effort, notes,
       ...(cleanDrops.length ? { drops: cleanDrops } : {}), ...(isMachine && gymId ? { gym: gymId } : {}) };
     const pr = checkPR(entry);
     setData(d => ({ ...d, log: [...d.log, entry] }));
     setJustSaved({ ...entry, pr });
-    setSetNum(n => n + 1); setNotes(""); setEffort(""); setDrops([]);
+    setSetNum(n => n + 1); setNotes(""); setEffort(""); setDrops([]);setHoldStartedAt(0);setHoldElapsed(0);
     if (effort !== "Warm-up") startRest(); // auto-start rest between working sets (no-op when Off)
   };
   // A quick tally intentionally creates real log rows, so it appears everywhere normal
@@ -1894,7 +1917,7 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
   };
   const sameAgain = () => {
     if (!justSaved) return;
-    setReps(String(justSaved.reps));
+    if(justSaved.seconds)setHoldSeconds(String(justSaved.seconds));else setReps(String(justSaved.reps));
     if (justSaved.weight != null) setWeight(String(dispW(justSaved.weight, units)));
     if (justSaved.drops?.length) setDrops(justSaved.drops.map(dr => ({ weight: String(dispW(dr.weight, units)), reps: String(dr.reps) })));
     setJustSaved(null);
@@ -1925,7 +1948,7 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
     setExName(name); setSetNum(already + 1);
     setWeight(w != null ? String(dispW(w, units)) : ""); // pre-fill the last weight used for this exercise
     setGymId(lastGymFor(name));
-    setReps(""); setJustSaved(null); setDrops([]); setBuilt([]);
+    setReps(""); setHoldSeconds("");setHoldStartedAt(0);setHoldElapsed(0);setJustSaved(null); setDrops([]); setBuilt([]);
   };
   const pickFromHistory = (entry) => {
     if (entry.muscleOnly || !exMap[entry.exercise]) return;
@@ -1975,10 +1998,11 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
   const [noteOpen, setNoteOpen] = useState(null); // set id whose 📝 note is expanded
   const [edit, setEdit] = useState(null); // copy of the set being edited
   const editIsBW = edit ? exMap[edit.exercise]?.type === "Bodyweight" : false;
+  const editIsTimed = edit ? timedOf(exMap[edit.exercise]) : false;
   const editIsMachine = edit ? (multiGymOn && machineOf(exMap[edit.exercise])) : false;
   const editValid = edit && (edit.muscleOnly
     ? MUSCLES.includes(edit.muscle) && (parseInt(edit.sets) || 0) > 0
-    : edit.reps !== "" && edit.exercise && (editIsBW || edit.weight !== ""));
+    : edit.exercise && (editIsTimed ? Number(edit.seconds)>0 : edit.reps !== "" && (editIsBW || edit.weight !== "")));
   const saveEdit = () => {
     if (!editValid) return;
     setData(d => ({ ...d, log: d.log.map(x => x.id === edit.id ? (edit.muscleOnly ? {
@@ -1986,7 +2010,8 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
       muscle: edit.muscle, sets: Math.max(1, Math.min(50, parseInt(edit.sets) || 1)),
     } : {
       ...x, date: edit.date > todayStr() ? todayStr() : edit.date, exercise: edit.exercise, set: parseInt(edit.set) || 1,
-      weight: editIsBW ? (edit.weight !== "" ? toLb(parseFloat(edit.weight), units) : null) : toLb(parseFloat(edit.weight), units), reps: parseInt(edit.reps),
+      weight: (editIsBW||editIsTimed) ? (edit.weight !== "" ? toLb(parseFloat(edit.weight), units) : null) : toLb(parseFloat(edit.weight), units),
+      reps:editIsTimed?null:parseInt(edit.reps), seconds:editIsTimed?Math.max(1,parseInt(edit.seconds)||1):null,
       effort: edit.effort, notes: edit.notes,
       ...(editIsMachine ? { gym: edit.gym || null } : {}),
     }) : x) }));
@@ -2048,11 +2073,13 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
               ? <b>First time logging this!</b>
               : <>Last time: <b>{lastTime.text}</b> <span style={{color:T.sub}}>({fmtDate(lastTime.date)})</span> — beat it.
                 {beaten && <span className="chip" style={{background:T.mint, color:T.green, marginLeft:8}}>🔥 Beating last time!</span>}</>}
-            {isBW && <div style={{fontSize:12, color:T.sub, marginTop:2}}>Bodyweight move — tracked by reps. Add weight below if you used a belt/vest; it still counts as bodyweight everywhere.</div>}
+            {isTimed
+              ? <div style={{fontSize:12,color:T.sub,marginTop:2}}>Timed hold — tracked by seconds. Added weight is optional and can also be graphed as load × time.</div>
+              : isBW && <div style={{fontSize:12, color:T.sub, marginTop:2}}>Bodyweight move — tracked by reps. Add weight below if you used a belt/vest; it still counts as bodyweight everywhere.</div>}
             {sparkPts && sparkPts.length >= 2 && (
               <div style={{display:"flex", alignItems:"center", gap:10, marginTop:8}}>
                 <Spark pts={sparkPts} w={110} h={28} />
-                <span style={{fontSize:11.5, color:T.sub}}>your last {sparkPts.length} sessions ({isBW ? "best reps" : "best est. 1RM"})</span>
+                <span style={{fontSize:11.5, color:T.sub}}>your last {sparkPts.length} sessions ({isTimed?"best hold":isBW ? "best reps" : "best est. 1RM"})</span>
               </div>
             )}
           </div>
@@ -2072,11 +2099,18 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
         </div>
       )}
       <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:10}}>
-        <label style={lbl}>{isBW ? `+ Added weight (optional, ${uLabel(units)})` : `Weight (${uLabel(units)})`}
+        <label style={lbl}>{(isBW||isTimed) ? `+ Added weight (optional, ${uLabel(units)})` : `Weight (${uLabel(units)})`}
           <input type="number" inputMode="decimal" value={weight} onChange={e=>setWeight(e.target.value)} placeholder={isBW ? "e.g. belt/vest" : ""} /></label>
-        <label style={lbl}>Reps<input type="number" inputMode="numeric" value={reps} onChange={e=>setReps(e.target.value)} /></label>
+        {isTimed
+          ? <label style={lbl}>Hold time (seconds)<input type="number" inputMode="numeric" min="1" value={holdSeconds} onChange={e=>setHoldSeconds(e.target.value.replace(/\D/g,""))} placeholder="e.g. 45" /></label>
+          : <label style={lbl}>Reps<input type="number" inputMode="numeric" value={reps} onChange={e=>setReps(e.target.value)} /></label>}
       </div>
-      {!isBW && exName && (
+      {isTimed&&exName&&<div style={{display:"flex",alignItems:"center",gap:9,margin:"-1px 0 10px",padding:"8px 10px",borderRadius:10,background:"color-mix(in srgb,var(--accent) 7%,var(--input))",border:`1px solid ${holdStartedAt?T.green:T.line}`}}>
+        <span style={{fontSize:18,fontWeight:900,color:holdStartedAt?T.green:T.ink,fontVariantNumeric:"tabular-nums",minWidth:52}}>{fmtHold(holdStartedAt?holdElapsed:Number(holdSeconds)||0)}</span>
+        <span style={{fontSize:10.5,color:T.sub,flex:1}}>{holdStartedAt?"Hold timer running":"Use the timer or type seconds"}</span>
+        <button type="button" onClick={toggleHoldTimer} style={{padding:"7px 12px",borderRadius:9,background:holdStartedAt?T.danger:T.mint,border:`1px solid ${holdStartedAt?T.danger:T.green}`,color:holdStartedAt?"#fff":T.green,fontSize:11.5,fontWeight:850}}>{holdStartedAt?"■ Stop":"▶ Start"}</button>
+      </div>}
+      {!isTimed&&!isBW && exName && (
         <div style={{marginBottom:10}}>
           {drops.map((dr, i) => (
             <div key={i} style={{display:"grid", gridTemplateColumns:"1fr 1fr 44px", gap:10, marginBottom:8, alignItems:"end"}}>
@@ -2159,14 +2193,14 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
         {effortInfoOpen&&effort&&<div role="status" className="member-menu-pop" style={{position:"absolute",zIndex:12,right:0,top:27,width:"min(310px,100%)",padding:"9px 11px",borderRadius:10,background:`linear-gradient(145deg,${T.card},${T.input})`,border:`1px solid ${T.green}`,boxShadow:"0 14px 34px rgba(0,0,0,.45)",color:T.sub,fontSize:10.5,lineHeight:1.45}}>{effortKind(effort)==="warmup"?"Warm-up sets are saved in your log, but do not count toward set targets or AI Coach volume.":effortKind(effort)==="easy"?"About 4+ reps left. It counts as a working set, but records that the effort was intentionally lighter.":effortKind(effort)==="productive"?"About 1–3 reps left. It counts normally and marks the set as close to failure without reaching it.":"No clean reps left. It counts normally, but failure does not earn extra set credit."}</div>}
         <label style={lbl}>Notes<input value={notes} onChange={e=>setNotes(e.target.value)} placeholder="optional" /></label>
       </div>
-      <button onClick={addSet} disabled={!exName || !reps || (!isBW && !weight)} className="btn-primary"
+      <button onClick={addSet} disabled={!exName || (isTimed?!Number(holdSeconds):!reps) || (!isTimed&&!isBW&&!weight)} className="btn-primary"
         style={{ width:"100%", padding:"14px", fontSize:16 }}>
         Save set {setNum}
       </button>
 
       {justSaved && (
         <div style={{marginTop:12, textAlign:"center", fontSize:14}}>
-          Saved: {justSaved.exercise} — set {justSaved.set}{justSaved.weight!=null?`, ${dispW(justSaved.weight,units)}×${justSaved.reps}`:`, ${justSaved.reps} reps`}
+          Saved: {justSaved.exercise} — set {justSaved.set}{justSaved.seconds?`, ${fmtHold(justSaved.seconds)}${justSaved.weight!=null?` at +${dispW(justSaved.weight,units)} ${uLabel(units)}`:""}`:justSaved.weight!=null?`, ${dispW(justSaved.weight,units)}×${justSaved.reps}`:`, ${justSaved.reps} reps`}
           {justSaved.drops?.length ? ` + ${justSaved.drops.length} drop${justSaved.drops.length===1?"":"s"}` : ""}
           {justSaved.pr && <span className="chip" style={{background:T.mint, color:T.green, marginLeft:8}}>🎉 New PR!</span>}
           <div style={{marginTop:8}}>
@@ -2227,7 +2261,7 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
       <input value={histQ} onChange={e=>{setHistQ(e.target.value); setHistLimit(50);}} placeholder="🔍 Filter by exercise or muscle…"
         autoCapitalize="none" autoCorrect="off" spellCheck={false} style={{marginBottom:10}} />
       <div style={{overflowX:"auto"}}>
-        <table><thead><tr><th>Date</th><th>Exercise</th><th style={{textAlign:"center"}}>Set</th><th style={{textAlign:"center"}}>Weight ({uLabel(units)})</th><th style={{textAlign:"center"}}>Reps</th><th>Effort</th><th></th></tr></thead>
+        <table><thead><tr><th>Date</th><th>Exercise</th><th style={{textAlign:"center"}}>Set</th><th style={{textAlign:"center"}}>Weight ({uLabel(units)})</th><th style={{textAlign:"center"}}>Reps / time</th><th>Effort</th><th></th></tr></thead>
           <tbody>{recent.map(e => { const isToday = e.date === todayStr(); const muscleQuick = !!e.muscleOnly; return (<Fragment key={e.id}>
             <tr onClick={()=>pickFromHistory(e)} onKeyDown={ev=>{if(!muscleQuick&&(ev.key==="Enter"||ev.key===" ")){ev.preventDefault();pickFromHistory(e);}}}
               role={muscleQuick?undefined:"button"} tabIndex={muscleQuick?undefined:0}
@@ -2235,7 +2269,7 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
               style={{...(isToday ? {background:"rgba(var(--accent-rgb),.05)"} : {}),cursor:muscleQuick?"default":"pointer"}}>
               <td>{isToday ? <span style={{color:"#00A804", fontWeight:800}}>Today</span> : fmtDate(e.date)}</td><td>{muscleQuick ? <span><b style={{color:T.green}}>⚡ {e.muscle}</b><span style={{display:"block", fontSize:10, color:T.sub}}>muscle-only</span></span> : e.exercise}</td><td style={{textAlign:"center"}}>{muscleQuick ? `${setCountOf(e)} total` : e.set}</td>
               <td style={{textAlign:"center"}}>{e.quick ? "—" : e.weight==null ? "BW" : dispW(e.weight, units)}{e.drops?.length ? <span style={{color:T.sub}}>{" ↘ "}{e.drops.map(dr=>dispW(dr.weight, units)).join(" ↘ ")}</span> : null}</td>
-              <td style={{textAlign:"center"}}>{e.quick ? <span title="Quick workout — no weight or reps tracked" style={{color:T.sub}}>{muscleQuick ? "quick" : "🧮 quick"}</span> : <>{e.reps}{e.drops?.length ? <span style={{color:T.sub}}>{" / "}{e.drops.map(dr=>dr.reps).join(" / ")}</span> : null}</>}</td>
+              <td style={{textAlign:"center"}}>{e.quick ? <span title="Quick workout — no weight or reps tracked" style={{color:T.sub}}>{muscleQuick ? "quick" : "🧮 quick"}</span> : e.seconds?<b style={{color:T.green}}>{fmtHold(e.seconds)}</b>:<>{e.reps}{e.drops?.length ? <span style={{color:T.sub}}>{" / "}{e.drops.map(dr=>dr.reps).join(" / ")}</span> : null}</>}</td>
               <td style={{color:T.sub}}>{e.effort||""}</td>
               <td onClick={ev=>ev.stopPropagation()} onKeyDown={ev=>ev.stopPropagation()} style={{whiteSpace:"nowrap"}}>
                 {String(e.notes||"").trim() && (
@@ -2246,7 +2280,7 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
                 )}
                 <PencilBtn onClick={()=>setEdit(muscleQuick
                   ? { id:e.id, date:e.date, exercise:e.exercise, muscle:e.muscle, sets:setCountOf(e), muscleOnly:true }
-                  : { id:e.id, date:e.date, exercise:e.exercise, set:e.set, weight:e.weight==null ? "" : dispW(e.weight, units), reps:e.reps, effort:e.effort||"", notes:e.notes||"", gym:e.gym||"" })} />
+                  : { id:e.id, date:e.date, exercise:e.exercise, set:e.set, weight:e.weight==null ? "" : dispW(e.weight, units), reps:e.reps??"", seconds:e.seconds??"", effort:e.effort||"", notes:e.notes||"", gym:e.gym||"" })} />
                 <ConfirmX onConfirm={()=>setData(d=>({...d, log:d.log.filter(x=>x.id!==e.id)}))} />
               </td>
             </tr>
@@ -2294,8 +2328,8 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
                     </label>
                   )}
                   <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:8}}>
-                    <label style={lbl}>{editIsBW ? "+ Added weight (optional)" : `Weight (${uLabel(units)})`}<input type="number" inputMode="decimal" value={edit.weight} onChange={ev=>setEdit(s=>({...s, weight:ev.target.value}))} /></label>
-                    <label style={lbl}>Reps<input type="number" inputMode="numeric" value={edit.reps} onChange={ev=>setEdit(s=>({...s, reps:ev.target.value}))} /></label>
+                    <label style={lbl}>{editIsBW||editIsTimed ? "+ Added weight (optional)" : `Weight (${uLabel(units)})`}<input type="number" inputMode="decimal" value={edit.weight} onChange={ev=>setEdit(s=>({...s, weight:ev.target.value}))} /></label>
+                    {editIsTimed?<label style={lbl}>Hold time (seconds)<input type="number" inputMode="numeric" value={edit.seconds} onChange={ev=>setEdit(s=>({...s, seconds:ev.target.value}))} /></label>:<label style={lbl}>Reps<input type="number" inputMode="numeric" value={edit.reps} onChange={ev=>setEdit(s=>({...s, reps:ev.target.value}))} /></label>}
                   </div>
                   <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:10}}>
                     <label style={lbl}>Effort
@@ -3265,6 +3299,8 @@ function Dashboard({ data, exMap, setData, own = true, user, sharedSteps = null,
   useEffect(() => { localStorage.setItem("lt-range", range); }, [range]);
   /* per-bodyweight-exercise chart mode: "reps" (volume) or "strength" (est. 1RM) */
   const [bwMode, setBwMode] = useState({});
+  /* Timed holds use duration by default; weighted holds can switch to load × time. */
+  const [timedMode, setTimedMode] = useState({});
   /* draggable dashboard widget order (remembered on this device) */
   const [arrange, setArrange] = useState(false);
   const [wOrder, setWOrder] = useReorder("lt-dash-order-v3", DASH_WIDGETS);
@@ -3345,7 +3381,9 @@ function Dashboard({ data, exMap, setData, own = true, user, sharedSteps = null,
     let entries = data.log.filter(e => e.exercise===exName && !(e.effort==="Warm-up") && !e.quick);
     if (isMachineEx && effGym && !showingAll) entries = entries.filter(e => e.gym === effGym);
     if (!entries.length) return [];
-    const repTracked = tracksProgressByReps(ex, entries);
+    const timed = timedOf(ex);
+    const repTracked = !timed && tracksProgressByReps(ex, entries);
+    const loadTime = timed && timedMode[exName] === "loadtime" && entries.some(e=>Number(e.seconds)>0&&Number(e.weight)>0);
     /* Bodyweight and zero-external-load lifts: total reps per day or best single set. */
     const best = repTracked && bwMode[exName]==="best";
     const dotColorFor = (gymId) => showingAll ? gymColor(gyms, gymId) : null;
@@ -3354,6 +3392,12 @@ function Dashboard({ data, exMap, setData, own = true, user, sharedSteps = null,
     if (range === "1D") {
       const lastDate = entries.reduce((a,b)=>a.date>b.date?a:b).date;
       const day = entries.filter(e=>e.date===lastDate).sort((a,b)=>(a.id||0)-(b.id||0));
+      if (timed) return day.filter(e=>Number(e.seconds)>0).map((e,i) => {
+        const seconds=Number(e.seconds)||0, weight=dispW(Number(e.weight)||0,units);
+        return {date:lastDate,label:`Set ${e.set??i+1}`,value:loadTime?Math.round(weight*seconds*10)/10:seconds,
+          detail:`${fmtHold(seconds)}${weight>0?` at +${weight} ${uLabel(units)}`:" · bodyweight"}`,
+          sub:loadTime?`${fmtHold(seconds)} × ${weight} ${uLabel(units)}`:"Hold duration",dotColor:dotColorFor(e.gym)};
+      });
       if (repTracked && best) {
         let top = 0;
         return day.map((e,i) => (top = Math.max(top, e.reps), { date:lastDate, label:`Set ${e.set ?? i+1}`, value:e.reps, sub:`${e.reps} reps${e.reps>=top?" · best so far":""}`, dotColor:dotColorFor(e.gym) }));
@@ -3368,8 +3412,14 @@ function Dashboard({ data, exMap, setData, own = true, user, sharedSteps = null,
     /* longer ranges: one point per day */
     const byDate = {};
     for (const e of entries) {
-      const b = byDate[e.date] || (byDate[e.date] = { reps:0, sets:0, bestSet:0, best1rm:0, bestWeight:null, bestReps:0, gym:e.gym, bestGym:e.gym });
-      b.sets++; b.reps += e.reps; b.bestSet = Math.max(b.bestSet, e.reps); b.gym = e.gym || b.gym; // last entry's gym for the day
+      const b = byDate[e.date] || (byDate[e.date] = { reps:0, sets:0, bestSet:0, best1rm:0, bestWeight:null, bestReps:0, totalSeconds:0, bestSeconds:0, bestLoadTime:0, timedWeight:0, gym:e.gym, bestGym:e.gym });
+      b.sets++; b.reps += Number(e.reps)||0; b.bestSet = Math.max(b.bestSet, Number(e.reps)||0); b.gym = e.gym || b.gym; // last entry's gym for the day
+      if(timed&&Number(e.seconds)>0){
+        const seconds=Number(e.seconds),weight=dispW(Number(e.weight)||0,units),score=weight*seconds;
+        b.totalSeconds+=seconds;
+        if(seconds>b.bestSeconds)b.bestSeconds=seconds;
+        if(score>b.bestLoadTime){b.bestLoadTime=score;b.timedWeight=weight;b.timedSeconds=seconds;b.bestGym=e.gym;}
+      }
       if (!repTracked && Number(e.weight)>0) {
         const estimate=dispW(e1rm(e.weight||0,e.reps),units);
         if(estimate>b.best1rm){b.best1rm=estimate;b.bestWeight=dispW(e.weight||0,units);b.bestReps=e.reps;b.bestGym=e.gym;}
@@ -3379,6 +3429,17 @@ function Dashboard({ data, exMap, setData, own = true, user, sharedSteps = null,
       .map(([d,b])=>{
         const setTxt = `${b.sets} set${b.sets>1?"s":""}`;
         const gymTag = showingAll && (b.bestGym||b.gym) ? ` · ${gymName(gyms, b.bestGym||b.gym)}` : "";
+        if(timed){
+          if(loadTime){
+            if(!b.bestLoadTime)return null;
+            return {date:d,label:fmtDate(d),value:Math.round(b.bestLoadTime*10)/10,
+              detail:`Best weighted hold: ${fmtHold(b.timedSeconds)} at +${b.timedWeight} ${uLabel(units)}`,
+              sub:`${setTxt} · ${fmtHold(b.totalSeconds)} total${gymTag}`,dotColor:dotColorFor(b.bestGym||b.gym)};
+          }
+          if(!b.bestSeconds)return null;
+          return {date:d,label:fmtDate(d),value:b.bestSeconds,detail:`Best hold: ${fmtHold(b.bestSeconds)}`,
+            sub:`${setTxt} · ${fmtHold(b.totalSeconds)} total${gymTag}`,dotColor:dotColorFor(b.gym)};
+        }
         if (repTracked && best) return { date:d, label:fmtDate(d),
           value: b.bestSet, sub: `${setTxt} · ${b.reps} total reps${gymTag}`, dotColor:dotColorFor(b.gym) };
         if (repTracked) return { date:d, label:fmtDate(d),
@@ -3470,13 +3531,16 @@ function Dashboard({ data, exMap, setData, own = true, user, sharedSteps = null,
       const pts = seriesFor(p);
       const pinned = isPinned(i);
       const isBW = exMap[p]?.type==="Bodyweight";
+      const isTimed = timedOf(exMap[p]);
       const metricEntries = data.log.filter(e=>e.exercise===p&&e.effort!=="Warm-up"&&!e.quick);
-      const repTracked = tracksProgressByReps(exMap[p],metricEntries);
+      const repTracked = !isTimed&&tracksProgressByReps(exMap[p],metricEntries);
+      const hasTimedLoad=isTimed&&metricEntries.some(e=>Number(e.seconds)>0&&Number(e.weight)>0);
+      const loadTimeMode=isTimed&&timedMode[p]==="loadtime"&&hasTimedLoad;
       if (minimizedCharts[p]) {
         const latest = pts[pts.length-1];
         return <div className="card compact-card" key={p} style={{display:"flex", alignItems:"center", gap:8}}>
           <span style={{fontSize:17}}>📈</span>
-          <div style={{minWidth:0, flex:1}}><div className="h" style={{fontSize:14, color:T.tealDk, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{p}</div><div style={{fontSize:11, color:T.sub}}>{latest ? `Latest: ${latest.value}${repTracked?" reps":` ${uLabel(units)}`}` : "No chart data yet"}</div></div>
+          <div style={{minWidth:0, flex:1}}><div className="h" style={{fontSize:14, color:T.tealDk, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{p}</div><div style={{fontSize:11, color:T.sub}}>{latest ? `Latest: ${latest.value}${isTimed?(loadTimeMode?` ${uLabel(units)}·s`:" sec"):repTracked?" reps":` ${uLabel(units)}`}` : "No chart data yet"}</div></div>
           <button onClick={()=>minimizeChart(p,false)} style={showSectionBtn}>Show</button>
         </div>;
       }
@@ -3484,7 +3548,8 @@ function Dashboard({ data, exMap, setData, own = true, user, sharedSteps = null,
       const sess = data.log.filter(e => e.exercise===p && e.effort!=="Warm-up" && !e.quick);
       const lastDate = sess.length ? sess.reduce((a,b)=>a.date>b.date?a:b).date : null;
       const daySets = lastDate ? sess.filter(e=>e.date===lastDate) : [];
-      const dayReps = daySets.reduce((s,e)=>s+e.reps, 0);
+      const dayReps = daySets.reduce((s,e)=>s+(Number(e.reps)||0), 0);
+      const daySeconds = daySets.reduce((s,e)=>s+(Number(e.seconds)||0),0);
       const bestMode = repTracked && bwMode[p]==="best";
       const isMachineEx = multiGymOn && machineOf(exMap[p]);
       const exGyms = isMachineEx ? gymsUsedFor(p) : [];
@@ -3540,18 +3605,24 @@ function Dashboard({ data, exMap, setData, own = true, user, sharedSteps = null,
             })}
           </div>
         )}
+        {isTimed&&hasTimedLoad&&(
+          <div className="seg" style={{display:"inline-flex",marginBottom:8}} title="Compare hold duration, or added load multiplied by time">
+            {[["time","Hold time"],["loadtime","Load × time"]].map(([m,lbl])=>{const on=(loadTimeMode?"loadtime":"time")===m;return <button key={m} onClick={()=>setTimedMode(s=>({...s,[p]:m}))} className={"seg-btn"+(on?" on":"")} style={{padding:"6px 14px",fontSize:12.5}}>{lbl}</button>;})}
+          </div>
+        )}
         {lastDate && (
           <div style={{fontSize:12.5, color:T.ink, marginBottom:2}}>
-            Last workout {fmtDate(lastDate)}: <b style={{color:T.green}}>{daySets.length} set{daySets.length===1?"":"s"}</b> · <b style={{color:T.green}}>{dayReps} reps</b>
+            Last workout {fmtDate(lastDate)}: <b style={{color:T.green}}>{daySets.length} set{daySets.length===1?"":"s"}</b> · <b style={{color:T.green}}>{isTimed?`${fmtHold(daySeconds)} total`: `${dayReps} reps`}</b>
           </div>
         )}
         <div style={{fontSize:11.5, color:T.sub, fontStyle:"italic", marginBottom:4}}>
           {range==="1D" ? "Latest session, set by set — tap a dot for the details"
+            : isTimed ? (loadTimeMode?`Tracked by added load × hold time (${uLabel(units)}·s)`:"Tracked by best hold duration (seconds)")
             : !repTracked ? `Tracked by est. 1RM (${uLabel(units)})`
             : bestMode ? "Best set — top reps in a single set" : "Volume — total reps per day"}
         </div>
         {pts.length
-          ? <Suspense fallback={<ChartFallback h={210} />}><TrendChart pts={pts} dots={range==="1D"} unit={repTracked ? " reps" : " "+uLabel(units)} /></Suspense>
+          ? <Suspense fallback={<ChartFallback h={210} />}><TrendChart pts={pts} dots={range==="1D"} unit={isTimed?(loadTimeMode?` ${uLabel(units)}·s`:" sec"):repTracked ? " reps" : " "+uLabel(units)} /></Suspense>
           : <div style={{color:T.sub, fontSize:14, padding:"28px 0", textAlign:"center"}}>No sessions logged for this lift yet.</div>}
       </div>
       );
@@ -5181,6 +5252,7 @@ function ExercisesTab({ data, setData, user }) {
   const [name, setName] = useState(""); const [muscles, setMuscles] = useState([]);
   const [muscles2, setMuscles2] = useState([]); const [equip, setEquip] = useState("Barbell (plates)");
   const [machine, setMachine] = useState(false);
+  const [timed, setTimed] = useState(false);
   const [regionSetup, setRegionSetup] = useState({choice:"",regions:null,customized:false});
   const [visualOpen, setVisualOpen] = useState(null);
   const [newVisual, setNewVisual] = useState(null);
@@ -5208,7 +5280,7 @@ function ExercisesTab({ data, setData, user }) {
       exercises: d.exercises.map(x => x.name===edit.orig ? { ...x, name:nn, muscle:edit.muscles[0], muscles:edit.muscles, muscles2:edit.muscles2,
         regions:editIsSeed?(edit.regions||regionMapFromReference(edit.orig,edit.muscles,edit.muscles2)):(edit.regions||regionMapFromReference(edit.regionChoice,edit.muscles,edit.muscles2)),
         regionSource:editIsSeed?{type:"curated",reference:edit.orig,version:17}:{type:edit.regionChoice===CUSTOM_REGION_GENERAL?"unspecified":edit.regionCustomized?"user-set":"research-copy",reference:edit.regionChoice===CUSTOM_REGION_GENERAL?null:edit.regionChoice,version:17},
-        machine: edit.equip==="Bodyweight" ? false : edit.machine, ...fromEquip(edit.equip) } : x),
+        machine: edit.equip==="Bodyweight" ? false : edit.machine, timed:!!edit.timed, ...fromEquip(edit.equip) } : x),
       log: nn !== edit.orig ? d.log.map(e => e.exercise===edit.orig ? { ...e, exercise:nn } : e) : d.log,
       routines: nn !== edit.orig ? (d.routines||[]).map(r => ({ ...r, items:(r.items||[]).map(it => it.exercise===edit.orig ? { ...it, exercise:nn } : it) })) : d.routines,
     }));
@@ -5239,8 +5311,8 @@ function ExercisesTab({ data, setData, user }) {
       const visualPath = newVisual ? await uploadExerciseMedia(user.id, newVisual) : null;
       const regions=regionSetup.regions||regionMapFromReference(regionSetup.choice,muscles,muscles2);
       const regionSource={type:regionSetup.choice===CUSTOM_REGION_GENERAL?"unspecified":regionSetup.customized?"user-set":"research-copy",reference:regionSetup.choice===CUSTOM_REGION_GENERAL?null:regionSetup.choice,version:17};
-      setData(d=>({...d, exercises:[...d.exercises, {name:nn, muscle:muscles[0], muscles, muscles2, regions, regionSource, machine:equip==="Bodyweight"?false:machine, ...fromEquip(equip), ...(visualPath?{visualPath,visualKind:newVisual.type==="image/gif"?"gif":"image"}:{})}]}));
-      setName(""); setMuscles([]); setMuscles2([]); setMachine(false); setNewVisual(null); setAddMsg(null); setRegionSetup({choice:"",regions:null,customized:false});
+      setData(d=>({...d, exercises:[...d.exercises, {name:nn, muscle:muscles[0], muscles, muscles2, regions, regionSource, machine:equip==="Bodyweight"?false:machine, timed, ...fromEquip(equip), ...(visualPath?{visualPath,visualKind:newVisual.type==="image/gif"?"gif":"image"}:{})}]}));
+      setName(""); setMuscles([]); setMuscles2([]); setMachine(false);setTimed(false); setNewVisual(null); setAddMsg(null); setRegionSetup({choice:"",regions:null,customized:false});
     } catch (err) { setMediaMsg(err?.message || "Couldn't upload that visual."); }
     finally { setMediaBusy(false); }
   };
@@ -5273,9 +5345,9 @@ function ExercisesTab({ data, setData, user }) {
   const exMuscle = Object.fromEntries(data.exercises.map(x => [x.name, muscleLabel(x)]));
   const stamp = todayStr();
   const exportLog = () => download(`workout-log-${stamp}.csv`, "﻿" + [
-    "date,exercise,muscle,set,sets_count,weight_lb,reps,effort,quick_workout,notes",
+    "date,exercise,muscle,set,sets_count,weight_lb,reps,duration_sec,effort,quick_workout,notes",
     ...[...data.log].sort((a,b)=>a.date.localeCompare(b.date)||a.id-b.id)
-      .map(e => [e.date, entryLabel(e), e.muscleOnly?e.muscle:(exMuscle[e.exercise]||""), e.set, setCountOf(e), e.quick?"":(e.weight ?? "BW"), e.reps??"", e.effort||"", e.muscleOnly?"yes":"no", e.notes||""].map(csvEsc).join(",")),
+      .map(e => [e.date, entryLabel(e), e.muscleOnly?e.muscle:(exMuscle[e.exercise]||""), e.set, setCountOf(e), e.quick?"":(e.weight ?? "BW"), e.reps??"", e.seconds??"", e.effort||"", e.muscleOnly?"yes":"no", e.notes||""].map(csvEsc).join(",")),
   ].join("\n"), "text/csv");
   const exportBW = () => download(`body-weight-${stamp}.csv`, "﻿" + [
     "date,weight_lb,creatine",
@@ -5293,7 +5365,7 @@ function ExercisesTab({ data, setData, user }) {
   return (<>
     <div className="card">
       <div className="h" style={{fontSize:19, color:T.tealDk, marginBottom:4}}>📚 Exercise library</div>
-      <div style={{fontSize:12.5, color:T.sub, marginBottom:6}}>Add your own moves (e.g. Decline Push-Up). Pick <b>Barbell</b> to get the plate helper when logging; <b>Bodyweight</b> moves auto-track by reps.</div>
+      <div style={{fontSize:12.5, color:T.sub, marginBottom:6}}>Add your own moves (e.g. Decline Push-Up). Pick <b>Barbell</b> for the plate helper, or <b>Timed hold</b> to log seconds with optional added weight.</div>
       <div style={{fontSize:11.5, color:T.sub, marginBottom:11, lineHeight:1.45}}>Exercises with a visual show it beside the name. Add your own image or GIF below; exercises without one stay clean and text-only.</div>
       <div style={{display:"flex", gap:8, marginBottom:10, flexWrap:"wrap"}}>
         <input value={name} onChange={e=>{setName(e.target.value); setAddMsg(null);}} placeholder="Type to add exercise…" style={{flex:2, minWidth:150}} />
@@ -5305,6 +5377,10 @@ function ExercisesTab({ data, setData, user }) {
           🏢 Compare this machine separately at each gym
         </label>
       )}
+      <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:T.ink,marginBottom:10,cursor:"pointer"}}>
+        <input type="checkbox" checked={timed} onChange={e=>setTimed(e.target.checked)} style={{width:17,height:17,minHeight:0}} />
+        ⏱ Timed hold — log seconds instead of reps
+      </label>
       <div style={{fontSize:12, color:T.sub, marginBottom:6}}>Muscle groups: tap once = <b style={{color:T.green}}>✓ main</b> (full set credit) · tap again = <b style={{color:AMBER}}>½ secondary</b> (half credit) · third tap clears. First main pick decides where it sorts.</div>
       <MuscleChips prim={muscles} sec={muscles2} onChange={(p,s)=>{setMuscles(p);setMuscles2(s);setRegionSetup(r=>({...r,regions:r.choice?regionMapFromReference(r.choice,p,s):null,customized:false}));}} />
       <CustomRegionAssessment name={name} muscles={muscles} muscles2={muscles2} {...regionSetup} onChange={setRegionSetup} />
@@ -5336,9 +5412,9 @@ function ExercisesTab({ data, setData, user }) {
       <div style={{overflowX:"auto"}}>
         <table><thead><tr><th>Exercise</th><th>Muscle</th><th>Equipment</th><th></th></tr></thead>
           <tbody>{shownEx.map(x=>(<Fragment key={x.name}>
-             <tr><td><div style={{display:"flex", alignItems:"center", gap:hasExerciseVisual(x)?10:0, minWidth:175}}>{hasExerciseVisual(x) && <ExerciseThumb exercise={x} size={48} onOpen={()=>setVisualOpen(x)} />}{hasExerciseVisual(x)?<button type="button" onClick={()=>setVisualOpen(x)} style={{padding:0, background:"none", color:T.ink, textAlign:"left", fontSize:13.5, fontWeight:700, overflowWrap:"anywhere"}}>{x.name}</button>:<span style={{fontSize:13.5,fontWeight:700,color:T.ink}}>{x.name}</span>}</div></td><td>{muscleLabel(x)}<ExerciseRegionDetails exercise={x}/></td><td>{equipOf(x)}{machineOf(x) && <span title="Compared separately by gym" style={{marginLeft:5}}>🏢</span>}</td>
+             <tr><td><div style={{display:"flex", alignItems:"center", gap:hasExerciseVisual(x)?10:0, minWidth:175}}>{hasExerciseVisual(x) && <ExerciseThumb exercise={x} size={48} onOpen={()=>setVisualOpen(x)} />}{hasExerciseVisual(x)?<button type="button" onClick={()=>setVisualOpen(x)} style={{padding:0, background:"none", color:T.ink, textAlign:"left", fontSize:13.5,fontWeight:700,overflowWrap:"anywhere"}}>{x.name}</button>:<span style={{fontSize:13.5,fontWeight:700,color:T.ink}}>{x.name}</span>}</div></td><td>{muscleLabel(x)}<ExerciseRegionDetails exercise={x}/></td><td>{equipOf(x)}{timedOf(x)&&<span title="Timed hold" style={{marginLeft:5}}>⏱</span>}{machineOf(x) && <span title="Compared separately by gym" style={{marginLeft:5}}>🏢</span>}</td>
               <td style={{whiteSpace:"nowrap"}}>
-                <PencilBtn onClick={()=>{ const p=musclesOf(x),s=secondariesOf(x),seed=!!SEED_REGION_PROFILES[x.name],savedChoice=x.regionSource?.reference||(x.regionSource?.type==="unspecified"?CUSTOM_REGION_GENERAL:""); setEdit({ orig:x.name, name:x.name, muscles:p, muscles2:s, equip:equipOf(x), machine:machineOf(x), regionChoice:seed?x.name:savedChoice, regions:x.regions||regionMapFromReference(seed?x.name:(savedChoice||CUSTOM_REGION_GENERAL),p,s), regionCustomized:x.regionSource?.type==="user-set" }); setMergeTo(""); }} />
+                <PencilBtn onClick={()=>{ const p=musclesOf(x),s=secondariesOf(x),seed=!!SEED_REGION_PROFILES[x.name],savedChoice=x.regionSource?.reference||(x.regionSource?.type==="unspecified"?CUSTOM_REGION_GENERAL:""); setEdit({ orig:x.name, name:x.name, muscles:p, muscles2:s, equip:equipOf(x), machine:machineOf(x), timed:timedOf(x), regionChoice:seed?x.name:savedChoice, regions:x.regions||regionMapFromReference(seed?x.name:(savedChoice||CUSTOM_REGION_GENERAL),p,s), regionCustomized:x.regionSource?.type==="user-set" }); setMergeTo(""); }} />
                 <ConfirmX onConfirm={()=>removeExercise(x)} />
               </td></tr>
             {edit?.orig === x.name && (
@@ -5355,6 +5431,10 @@ function ExercisesTab({ data, setData, user }) {
                       🏢 Compare this machine separately at each gym
                     </label>
                   )}
+                  <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:T.ink,marginBottom:10,cursor:"pointer"}}>
+                    <input type="checkbox" checked={!!edit.timed} onChange={ev=>setEdit(s=>({...s,timed:ev.target.checked}))} style={{width:17,height:17,minHeight:0}} />
+                    ⏱ Timed hold — log seconds instead of reps
+                  </label>
                   <div style={{fontSize:12, color:T.sub, marginBottom:6}}>Tap once = ✓ main (full credit) · again = ½ secondary (half credit) · again = off:</div>
                   <div style={{marginBottom:10}}>
                     <MuscleChips prim={edit.muscles} sec={edit.muscles2} onChange={(p,s2)=>setEdit(s=>({...s, muscles:p, muscles2:s2, regions:regionMapFromReference(editIsSeed?s.orig:s.regionChoice,p,s2), regionCustomized:false}))} />
@@ -6949,7 +7029,10 @@ function customCyclePosition(data, log, exMap) {
     }
   }
   // 1) log-driven anchor: match your latest logged session to the best-fitting training day
-  const dates = [...new Set(eligibleLog.map(e => e.date))].sort().reverse();
+  // Optional catch-up work logged on a planned rest day counts toward volume and can
+  // finish a pending day, but it must not re-anchor the normal rotation by itself.
+  const restCatchupDates=data.profile?.coachRestCatchupDates||{};
+  const dates = [...new Set(eligibleLog.filter(e=>!restCatchupDates[e.date]).map(e => e.date))].sort().reverse();
   let lastDate=null, bestIdx=-1;
   for(const date of dates){
     const g=groupsLoggedOn(eligibleLog,exMap,date);
@@ -7053,6 +7136,7 @@ function todayWorkoutPlan(data, exMap, nowMs=Date.now()) {
     })[0]||null;
   }
   const todayGroups=groupsLoggedOn(log,exMap,today);
+  const restCatchupActive=split==="custom"&&!!data.profile?.coachRestCatchupDates?.[today];
   const todayEntries=log.filter(e=>e.date===today&&e.effort!=="Warm-up").slice().sort((a,b)=>(Number(a.id)||0)-(Number(b.id)||0));
   const firstGroups=new Set(todayEntries.length?entryPrimaryMuscles(todayEntries[0],exMap):[]);
   const primaryVolume=Object.fromEntries(MUSCLES.map(m=>[m,0]));
@@ -7075,7 +7159,7 @@ function todayWorkoutPlan(data, exMap, nowMs=Date.now()) {
   let chosen=null, reason="", actualProgress=null, clarification=null, staleChoice=false, provisional=false, tokenExpired=false;
   // Once the log clearly matches a split day, make the visible session follow what
   // the person is actually doing; missed-work coaching is still evaluated separately.
-  if(todayGroups.size){
+  if(todayGroups.size&&!restCatchupActive){
     const ranked=candidates.slice().sort((a,b)=>matchScore(b)-matchScore(a));
     const candidatePrimary=c=>c.muscles.reduce((sum,m)=>sum+(primaryVolume[m]||0),0);
     const meaningfulPrimary=Math.max(1.5,totalPrimary*.3);
@@ -7557,8 +7641,9 @@ function CoachCard({ data, exMap, user, setData, onOpenLog }) {
   const suppressedCatchUp=(catchUpHidden||catchUpDelayed)?workoutPlan.catchUp:null;
   const addedToday=data.profile?.coachAddedMusclesByDate?.[gymDayStr()]||[];
   const catchUpAdded=!!(visibleCatchUp&&visibleCatchUp.muscles.every(m=>addedToday.includes(m)));
-  const addCatchUpToday=()=>visibleCatchUp&&setData(d=>{const byDate={...(d.profile?.coachAddedMusclesByDate||{})};byDate[gymDayStr()]=[...new Set([...(byDate[gymDayStr()]||[]),...visibleCatchUp.muscles])];return {...d,profile:{...(d.profile||{}),coachAddedMusclesByDate:byDate}};});
-  const removeAddedMuscles=(muscles)=>setData(d=>{const byDate={...(d.profile?.coachAddedMusclesByDate||{})};byDate[gymDayStr()]=(byDate[gymDayStr()]||[]).filter(m=>!muscles.includes(m));if(!byDate[gymDayStr()].length) delete byDate[gymDayStr()];return {...d,profile:{...(d.profile||{}),coachAddedMusclesByDate:byDate}};});
+  const restCatchUpAdded=workoutPlan.rest&&!!data.profile?.coachRestCatchupDates?.[gymDayStr()]&&addedToday.length>0;
+  const addCatchUpToday=()=>visibleCatchUp&&setData(d=>{const today=gymDayStr(),byDate={...(d.profile?.coachAddedMusclesByDate||{})},restDates={...(d.profile?.coachRestCatchupDates||{})};byDate[today]=[...new Set([...(byDate[today]||[]),...visibleCatchUp.muscles])];if(workoutPlan.rest)restDates[today]=true;return {...d,profile:{...(d.profile||{}),coachAddedMusclesByDate:byDate,coachRestCatchupDates:restDates}};});
+  const removeAddedMuscles=(muscles)=>setData(d=>{const today=gymDayStr(),byDate={...(d.profile?.coachAddedMusclesByDate||{})},restDates={...(d.profile?.coachRestCatchupDates||{})};byDate[today]=(byDate[today]||[]).filter(m=>!muscles.includes(m));if(!byDate[today].length){delete byDate[today];delete restDates[today];}return {...d,profile:{...(d.profile||{}),coachAddedMusclesByDate:byDate,coachRestCatchupDates:restDates}};});
   const saveCatchUpForLater=()=>visibleCatchUp&&setData(d=>({...d,profile:{...(d.profile||{}),coachCatchupLater:{key:visibleCatchUp.key,until:gymDayStr()}}}));
   const hideCatchUp=()=>visibleCatchUp&&setData(d=>({...d,profile:{...(d.profile||{}),coachCatchupDismissed:[...new Set([...(d.profile?.coachCatchupDismissed||[]),visibleCatchUp.key])]}}));
   const showCatchUpAgain=()=>suppressedCatchUp&&setData(d=>{const profile={...(d.profile||{}),coachCatchupDismissed:(d.profile?.coachCatchupDismissed||[]).filter(key=>key!==suppressedCatchUp.key)};if(profile.coachCatchupLater?.key===suppressedCatchUp.key) delete profile.coachCatchupLater;return {...d,profile};});
@@ -7662,10 +7747,15 @@ function CoachCard({ data, exMap, user, setData, onOpenLog }) {
           <div style={{fontSize:13,color:T.ink,fontWeight:800,lineHeight:1.4,marginTop:4}}>{naturalList(visibleCatchUp.muscles)} still needs a meaningful dose</div>
           <div style={{fontSize:10.5,color:T.sub,lineHeight:1.45,marginTop:3}}>{visibleCatchUp.muscles.map(m=>`${m}: ${fmtSets(visibleCatchUp.weekly[m])}/${fmtSets(visibleCatchUp.targets[m])} last 7 days · up to ${fmtSets(visibleCatchUp.suggested[m])} sets`).join(" · ")}.</div>
           <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:8}}>
-            <button type="button" onClick={addCatchUpToday} disabled={catchUpAdded} style={{padding:"6px 9px",borderRadius:8,background:catchUpAdded?T.mint:"color-mix(in srgb,var(--cal-cardio) 12%,var(--input))",border:`1px solid ${catchUpAdded?T.green:"color-mix(in srgb,var(--cal-cardio) 45%,var(--line))"}`,color:catchUpAdded?T.green:T.ink,fontSize:10.5,fontWeight:850}}>{catchUpAdded?`✓ ${naturalList(visibleCatchUp.muscles)} added`:`+ Add ${naturalList(visibleCatchUp.muscles)} today`}</button>
+            <button type="button" onClick={addCatchUpToday} disabled={catchUpAdded} style={{padding:"6px 9px",borderRadius:8,background:catchUpAdded?T.mint:"color-mix(in srgb,var(--cal-cardio) 12%,var(--input))",border:`1px solid ${catchUpAdded?T.green:"color-mix(in srgb,var(--cal-cardio) 45%,var(--line))"}`,color:catchUpAdded?T.green:T.ink,fontSize:10.5,fontWeight:850}}>{catchUpAdded?`✓ ${naturalList(visibleCatchUp.muscles)} added`:workoutPlan.rest?`+ Add ${naturalList(visibleCatchUp.muscles)} to rest day`:`+ Add ${naturalList(visibleCatchUp.muscles)} today`}</button>
             <button type="button" onClick={saveCatchUpForLater} style={{padding:"6px 9px",borderRadius:8,background:T.input,border:`1px solid ${T.line}`,color:T.sub,fontSize:10.5,fontWeight:800}}>Later</button>
             <button type="button" onClick={hideCatchUp} style={{padding:"6px 9px",borderRadius:8,background:"transparent",border:`1px solid ${T.line}`,color:T.sub,fontSize:10.5,fontWeight:800}}>Hide</button>
           </div>
+        </div>}
+        {restCatchUpAdded&&<div style={{marginTop:10,padding:"10px 11px",borderRadius:11,background:"color-mix(in srgb,var(--cal-cardio) 9%,var(--input))",border:"1px solid color-mix(in srgb,var(--cal-cardio) 38%,var(--line))"}}>
+          <div style={{display:"flex",alignItems:"center",gap:8}}><div style={{flex:1,minWidth:0}}><div style={{fontSize:10,fontWeight:900,color:"var(--cal-cardio)",letterSpacing:'.06em',textTransform:'uppercase'}}>Optional rest-day catch-up</div><div style={{fontSize:12.5,fontWeight:800,color:T.ink,marginTop:3}}>{naturalList(addedToday)} added</div></div><button type="button" onClick={()=>removeAddedMuscles(addedToday)} style={{padding:"5px 8px",borderRadius:7,background:"transparent",border:`1px solid ${T.line}`,color:T.sub,fontSize:10,fontWeight:800}}>Remove</button></div>
+          <button type="button" onClick={onOpenLog} className="btn-primary" style={{width:"100%",padding:"9px 12px",fontSize:12.5,marginTop:8}}>Open Log</button>
+          <div style={{fontSize:9.8,color:T.sub,lineHeight:1.4,marginTop:6}}>This work counts toward your missed volume without turning the rest day into a new split day.</div>
         </div>}
         {suppressedCatchUp&&<div className="member-menu-pop" style={{display:"flex",alignItems:"center",gap:8,marginTop:9,padding:"7px 9px",borderRadius:9,background:T.input,border:`1px solid ${T.line}`}}><span style={{fontSize:10.5,color:T.sub,flex:1,minWidth:0}}>{catchUpDelayed?"Catch-up saved for later.":"Catch-up hidden."}</span><button type="button" onClick={showCatchUpAgain} style={{padding:"5px 8px",borderRadius:7,background:T.mint,border:`1px solid ${T.green}`,color:T.green,fontSize:10,fontWeight:850}}>Show again</button></div>}
         {split === "custom" && cycle.length > 0 && !editing && (
@@ -7987,13 +8077,13 @@ function MemberLog({ pdata, who }) {
       <input value={q} onChange={e=>{setQ(e.target.value); setLimit(30);}} placeholder="🔍 Filter by exercise or muscle…"
         autoCapitalize="none" autoCorrect="off" spellCheck={false} style={{marginBottom:10}} />
       <div style={{overflowX:"auto"}}>
-        <table><thead><tr><th>Date</th><th>Exercise</th><th>Set</th><th>Weight ({uLabel(units)})</th><th>Reps</th><th>Effort</th></tr></thead>
+        <table><thead><tr><th>Date</th><th>Exercise</th><th>Set</th><th>Weight ({uLabel(units)})</th><th>Reps / time</th><th>Effort</th></tr></thead>
           <tbody>{shown.map(e => (
             <tr key={e.id || `${e.date}-${e.exercise}-${e.set}`}>
               <td>{e.date === todayStr() ? <span style={{color:"#00A804", fontWeight:800}}>Today</span> : fmtDate(e.date)}</td>
               <td>{e.muscleOnly ? <b style={{color:T.green}}>⚡ {e.muscle}</b> : e.exercise}</td><td>{e.muscleOnly ? `${setCountOf(e)} total` : e.set}</td>
               <td>{e.quick ? "—" : e.weight==null ? "BW" : dispW(e.weight, units)}{e.drops?.length ? <span style={{color:T.sub}}>{" ↘ "}{e.drops.map(dr=>dispW(dr.weight, units)).join(" ↘ ")}</span> : null}</td>
-              <td>{e.quick ? "quick" : e.reps}{e.drops?.length ? <span style={{color:T.sub}}>{" / "}{e.drops.map(dr=>dr.reps).join(" / ")}</span> : null}</td>
+              <td>{e.quick ? "quick" : e.seconds ? fmtHold(e.seconds) : e.reps}{e.drops?.length ? <span style={{color:T.sub}}>{" / "}{e.drops.map(dr=>dr.reps).join(" / ")}</span> : null}</td>
               <td style={{color:T.sub}}>{e.effort||""}</td>
             </tr>
           ))}

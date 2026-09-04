@@ -13,8 +13,10 @@ function NiceTip({ active, payload, label, unit }) {
   const p = payload[0];
   return (
     <div style={{
-      background: "rgba(18,19,20,.96)", border: `1px solid ${T.line}`, borderRadius: 10,
-      padding: "8px 12px", boxShadow: "0 6px 18px rgba(0,0,0,.55)", pointerEvents: "none",
+      background: "linear-gradient(145deg,rgba(14,17,20,.78),rgba(var(--accent-rgb),.20))",
+      border: "1px solid rgba(var(--accent-rgb),.48)", borderRadius: 11,
+      padding: "8px 12px", boxShadow: "0 8px 24px rgba(0,0,0,.42),0 0 18px rgba(var(--accent-rgb),.14)", pointerEvents: "none",
+      backdropFilter:"blur(12px) saturate(135%)",WebkitBackdropFilter:"blur(12px) saturate(135%)",
       maxWidth:"min(260px,calc(100vw - 44px))",
     }}>
       <div style={{ fontSize: 11, color: T.sub, marginBottom: 2 }}>{p.payload?.tipLabel || label}</div>
