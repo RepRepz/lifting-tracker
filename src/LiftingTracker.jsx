@@ -54,7 +54,7 @@ const SEED_EXERCISES = [
   ["T-Bar Row",["Back"],["Biceps"]],["Inverted Row",["Back"],["Biceps"]],["Seated Single-Arm Cross-Body Cable Row",["Back"],["Biceps"]],
   ["Barbell Shrug",["Back"]],["Dumbbell Shrug",["Back"]],["Back Extension",["Back"],["Legs"]],["Superman",["Back"]],["Dead Hang",["Back"]],
   // biceps
-  ["Barbell Curl",["Biceps"]],["Dumbbell Curl",["Biceps"]],["Incline Dumbbell Curl",["Biceps"]],["Hammer Curl",["Biceps"]],
+  ["Barbell Curl",["Biceps"]],["Dumbbell Curl",["Biceps"]],["Incline Dumbbell Curl",["Biceps"]],["Hammer Curl",["Biceps"]],["Reverse Curl",["Biceps"]],
   ["Preacher Curl",["Biceps"]],["Cable Curl",["Biceps"]],["Concentration Curl",["Biceps"]],["Concentration Curl Machine",["Biceps"]],
   // legs
   ["Back Squat",["Legs"]],["Front Squat",["Legs"]],["Machine Squat",["Legs"]],["Hack Squat",["Legs"]],
@@ -256,6 +256,7 @@ const SEED_REGION_PROFILES = Object.fromEntries([
   ...profileAssignments(["Superman"],{Back:"backDeadlift"}),
   ...profileAssignments(["Barbell Curl","Dumbbell Curl","Incline Dumbbell Curl","Preacher Curl","Cable Curl","Concentration Curl","Concentration Curl Machine"],{Biceps:"bicepsCurl"}),
   ...profileAssignments(["Hammer Curl"],{Biceps:"bicepsHammer"}),
+  ...profileAssignments(["Reverse Curl"],{Biceps:"bicepsReverse"}),
   ...profileAssignments(["Back Squat","Goblet Squat","Bodyweight Squat"],{Legs:"quadsCompound"}),
   ...profileAssignments(["Front Squat"],{Legs:"quadsFront"}),
   ...profileAssignments(["Machine Squat","Hack Squat","Smith Machine Squat","Leg Press"],{Legs:"quadsMachine"}),
@@ -321,6 +322,7 @@ const regionalCreditsOf = (ex, muscle) => {
   if (muscle==="Biceps") {
     /* Curl studies show regional (proximal/distal) differences, but do not validate
        dependable long-head versus short-head isolation. Keep the two heads balanced. */
+    if (/reverse(?:.?grip)?.?curl/.test(n)) return regionParts([["Long head",.15],["Short head",.15],["Brachialis",.35],["Brachioradialis",.35]]);
     if (/hammer|neutral|cross.?body/.test(n)) return regionParts([["Long head",.20],["Short head",.20],["Brachialis",.35],["Brachioradialis",.25]]);
     if (/chin.?up/.test(n)) return regionParts([["Long head",.35],["Short head",.35],["Brachialis",.20],["Brachioradialis",.10]]);
     if(knownSeed||/curl|chin|pull|row/.test(n)) return regionParts([["Long head",.40],["Short head",.40],["Brachialis",.15],["Brachioradialis",.05]]);
@@ -662,7 +664,7 @@ const defaultData = {
   journal: {}, // { "YYYY-MM-DD": { mood, sleep, text } } — daily notes
   profile: {}, // heightIn (inches) lives here once set
   pins: [],    // pinned dashboard charts (exercise names)
-  libraryV: 22, // v22 adds timed holds and the shared Dead Hang
+  libraryV: 23, // v23 adds the shared Reverse Curl (reverse-grip curl)
 };
 
 /* One-time upgrade of previously saved data: pull in newly added seed exercises and
