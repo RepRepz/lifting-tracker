@@ -7135,7 +7135,7 @@ function todayWorkoutPlan(data, exMap, nowMs=Date.now()) {
     // The active card is itself proof that this muscle belongs to today's workout.
     // Do not require the separate overdue detector to agree before assigning a target.
     const activeWorkoutMuscle=!!chosen?.muscles?.includes(m);
-    let sessionFloor=0;
+    let sessionFloor=0, recoveryLimited=false;
     if((due||activeWorkoutMuscle)&&base>0){
       /* For hypertrophy, a due workout is a new growth exposure—not a request to
          perform the smallest top-up that reaches a rolling quota. Prescribe the
@@ -7143,8 +7143,16 @@ function todayWorkoutPlan(data, exMap, nowMs=Date.now()) {
          evidence-based ceiling of about 10 credited sets per muscle per session.
          Only unusually high recent volume invokes a recovery-aware reduction. */
       if(goalModeOf(data)==="hypertrophy"){
-        sessionFloor=Math.min(10,base);
-        if(priorRatio>=1.5) sessionFloor=Math.min(sessionFloor,Math.max(2,Math.ceil(base*.5)));
+        if(due){
+          sessionFloor=Math.min(10,base);
+          if(priorRatio>=1.5) sessionFloor=Math.min(sessionFloor,Math.max(2,Math.ceil(base*.5)));
+        } else {
+          // If someone starts the muscle again before it is recovered, acknowledge the
+          // work with one fixed meaningful exposure instead of prescribing a second
+          // full session or displaying the impossible "sets / 0" state.
+          sessionFloor=Math.min(base,Math.ceil(meaningfulDoseFor(data,m)));
+          recoveryLimited=true;
+        }
       } else {
         const fraction=overdue ? .67 : .5;
         sessionFloor=Math.max(1,Math.round(base*fraction));
@@ -7152,7 +7160,7 @@ function todayWorkoutPlan(data, exMap, nowMs=Date.now()) {
       }
     }
     const goal=Math.min(base,Math.max(rollingGoal,sessionFloor));
-    return {goal,base,rollingGoal,sessionFloor,daysSince,interval,recencyFloorApplied:sessionFloor>rollingGoal};
+    return {goal,base,rollingGoal,sessionFloor,daysSince,interval,priorRatio,recoveryLimited,recencyFloorApplied:sessionFloor>rollingGoal};
   };
   let scheduled=null;
   if(split==="custom"){
@@ -7758,7 +7766,7 @@ function CoachCard({ data, exMap, user, setData, onOpenLog }) {
                   </div>
                   <div style={{height:7,background:T.input,border:"1px solid "+T.line,borderRadius:99,overflow:"hidden"}}><div style={{height:"100%",width:pct+"%",background:hit?T.green:MUSCLE_COLORS[MUSCLES.indexOf(row.muscle)],borderRadius:99,transition:"width .25s ease"}} /></div>
                   <div style={{fontSize:10.5,color:hit?T.green:T.sub,fontWeight:hit?750:500,marginTop:4}}>{hit?"Target reached — more is optional":<>{fmtSets(left)} left today · {fmtSets(row.weekly)} / {fmtSets(row.weeklyGoal)} last 7 days</>}</div>
-                  {row.recencyFloorApplied&&<div style={{fontSize:9.8,color:"var(--cal-cardio)",lineHeight:1.4,marginTop:3}}>{goalModeOf(data)==="hypertrophy"?"Planned hypertrophy dose":"Recency minimum"}: {row.daysSince>=30?"no recent meaningful session":`${row.daysSince} days since a meaningful session`}; older volume still counts, but cannot reduce today below {fmtSets(row.sessionFloor)} sets.</div>}
+                  {row.recencyFloorApplied&&<div style={{fontSize:9.8,color:"var(--cal-cardio)",lineHeight:1.4,marginTop:3}}>{row.recoveryLimited?"Recovery-aware cap":goalModeOf(data)==="hypertrophy"?"Planned hypertrophy dose":"Recency minimum"}: {row.daysSince>=30?"no recent meaningful session":`${row.daysSince} day${row.daysSince===1?"":"s"} since a meaningful session`}; {row.recoveryLimited?`today stays at ${fmtSets(row.sessionFloor)} meaningful sets instead of another full dose.`:`older volume still counts, but cannot reduce today below ${fmtSets(row.sessionFloor)} sets.`}</div>}
                   {!!row.subgroups?.length&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginTop:6}}>{row.subgroups.map(s=><span key={s.name} style={{padding:"3px 7px",borderRadius:99,background:T.input,border:`1px solid ${T.line}`,color:T.sub,fontSize:9.5,fontWeight:700}}>{subgroupDisplayName(row.muscle,s.name)} <b style={{color:T.ink}}>{fmtSets(s.sets)}</b></span>)}</div>}
                 </div>;
               })}
