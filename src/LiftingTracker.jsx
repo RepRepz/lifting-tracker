@@ -6947,16 +6947,18 @@ const subgroupDisplayName = (muscle,name) => {
   if(/glute/i.test(name)) return `Glutes · ${name}`;
   return name;
 };
-/* Recency should mean a useful training exposure, not merely the last date a muscle
-   appeared anywhere. Small sets remain in weekly volume but do not reset overdue work. */
+/* Weekly volume and recency deliberately use different accounting. Secondary work
+   (for example biceps during rows) keeps its half-set weekly credit, but only primary
+   work can reset the muscle's training date. Otherwise a Chest & Back day incorrectly
+   makes the following Shoulders & Arms day look like biceps were directly trained. */
 const meaningfulLastTrained = (data, log, exMap) => {
   const byDate={};
   for(const e of (log||[])){
     if(e.effort==="Warm-up") continue;
-    for(const [m,credit] of entryMuscleCredits(e,exMap)){
+    for(const m of entryPrimaryMuscles(e,exMap)){
       if(!MUSCLES.includes(m)) continue;
       byDate[e.date] ||= {};
-      byDate[e.date][m]=(byDate[e.date][m]||0)+credit*setCountOf(e);
+      byDate[e.date][m]=(byDate[e.date][m]||0)+setCountOf(e);
     }
   }
   const last={};
@@ -7766,7 +7768,7 @@ function CoachCard({ data, exMap, user, setData, onOpenLog }) {
                   </div>
                   <div style={{height:7,background:T.input,border:"1px solid "+T.line,borderRadius:99,overflow:"hidden"}}><div style={{height:"100%",width:pct+"%",background:hit?T.green:MUSCLE_COLORS[MUSCLES.indexOf(row.muscle)],borderRadius:99,transition:"width .25s ease"}} /></div>
                   <div style={{fontSize:10.5,color:hit?T.green:T.sub,fontWeight:hit?750:500,marginTop:4}}>{hit?"Target reached — more is optional":<>{fmtSets(left)} left today · {fmtSets(row.weekly)} / {fmtSets(row.weeklyGoal)} last 7 days</>}</div>
-                  {row.recencyFloorApplied&&<div style={{fontSize:9.8,color:"var(--cal-cardio)",lineHeight:1.4,marginTop:3}}>{row.recoveryLimited?"Recovery-aware cap":goalModeOf(data)==="hypertrophy"?"Planned hypertrophy dose":"Recency minimum"}: {row.daysSince>=30?"no recent meaningful session":`${row.daysSince} day${row.daysSince===1?"":"s"} since a meaningful session`}; {row.recoveryLimited?`today stays at ${fmtSets(row.sessionFloor)} meaningful sets instead of another full dose.`:`older volume still counts, but cannot reduce today below ${fmtSets(row.sessionFloor)} sets.`}</div>}
+                  {row.recencyFloorApplied&&<div style={{fontSize:9.8,color:"var(--cal-cardio)",lineHeight:1.4,marginTop:3}}>{row.recoveryLimited?"Recovery-aware cap":goalModeOf(data)==="hypertrophy"?"Planned hypertrophy dose":"Recency minimum"}: {row.daysSince>=30?"no recent direct session":`${row.daysSince} day${row.daysSince===1?"":"s"} since meaningful primary work`}; {row.recoveryLimited?`today stays at ${fmtSets(row.sessionFloor)} meaningful sets instead of another full dose.`:`indirect volume still counts, but cannot replace today's ${fmtSets(row.sessionFloor)}-set dose.`}</div>}
                   {!!row.subgroups?.length&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginTop:6}}>{row.subgroups.map(s=><span key={s.name} style={{padding:"3px 7px",borderRadius:99,background:T.input,border:`1px solid ${T.line}`,color:T.sub,fontSize:9.5,fontWeight:700}}>{subgroupDisplayName(row.muscle,s.name)} <b style={{color:T.ink}}>{fmtSets(s.sets)}</b></span>)}</div>}
                 </div>;
               })}
