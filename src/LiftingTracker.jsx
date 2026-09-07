@@ -1796,6 +1796,7 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
 
   const isBW = exMap[exName]?.type === "Bodyweight";
   const isTimed = timedOf(exMap[exName]);
+  const selectedCredits = exName ? entryMuscleCredits({exercise:exName},exMap) : [];
   useEffect(()=>{
     if(!holdStartedAt) return;
     const tick=()=>setHoldElapsed(Math.max(0,Math.floor((Date.now()-holdStartedAt)/1000)));
@@ -2076,6 +2077,10 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
             {isTimed
               ? <div style={{fontSize:12,color:T.sub,marginTop:2}}>Timed hold — tracked by seconds. Added weight is optional and can also be graphed as load × time.</div>
               : isBW && <div style={{fontSize:12, color:T.sub, marginTop:2}}>Bodyweight move — tracked by reps. Add weight below if you used a belt/vest; it still counts as bodyweight everywhere.</div>}
+            {!!selectedCredits.length&&<div aria-live="polite" style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginTop:6,fontSize:10.5,color:T.sub}}>
+              <span style={{fontWeight:800,color:T.ink}}>{effort==="Warm-up"?"Warm-up:":"Counts toward:"}</span>
+              {effort==="Warm-up"?<span>no set-volume credit</span>:selectedCredits.map(([muscle,credit])=><span key={muscle} style={{padding:"2px 6px",borderRadius:99,background:T.input,border:`1px solid ${T.line}`,whiteSpace:"nowrap"}}><b style={{color:T.green}}>{muscle}</b> {credit===1?"+1":"+½"}</span>)}
+            </div>}
             {sparkPts && sparkPts.length >= 2 && (
               <div style={{display:"flex", alignItems:"center", gap:10, marginTop:8}}>
                 <Spark pts={sparkPts} w={110} h={28} />
