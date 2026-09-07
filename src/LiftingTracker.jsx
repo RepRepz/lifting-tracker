@@ -7097,11 +7097,6 @@ function todayWorkoutPlan(data, exMap, nowMs=Date.now()) {
       if (e.date===today) todayDone[m]+=amount;
     }
   }
-  const goalFor=(m)=>{
-    const base=Math.round((targets[m]/Math.max(1,frequency[m]))*2)/2;
-    const left=Math.max(0,targets[m]-weekly[m]);
-    return Math.max(0,Math.round(Math.min(base,todayDone[m]+left)*2)/2);
-  };
   if (!split) return {muscles:[],rows:[],reason:"Choose a split so the coach can build today's session.",complete:false};
   let candidates=[];
   if(split==="custom") candidates=(data.profile?.customSplit||[]).filter(d=>!d.rest&&d.muscles?.length).map(d=>({id:d.id,muscles:d.muscles}));
@@ -7121,6 +7116,41 @@ function todayWorkoutPlan(data, exMap, nowMs=Date.now()) {
   const beforeGap=m=>lastBefore[m]?dayGap(today,lastBefore[m]):30;
   const beforeWeekly=Object.fromEntries(MUSCLES.map(m=>[m,0]));
   for(const e of beforeToday) if(e.effort!=="Warm-up"&&inRollingDays(e.date,today)) for(const [m,credit] of entryMuscleCredits(e,exMap)) if(MUSCLES.includes(m)) beforeWeekly[m]+=credit*setCountOf(e);
+  /* Weekly volume and session recency answer different questions. The rolling window
+     prevents unnecessary volume chasing, while this floor prevents a six-day-old set
+     from shrinking a newly due workout to one token set just before it rolls off. */
+  const prescriptionFor=(m)=>{
+    const freq=Math.max(1,frequency[m]||1);
+    const base=Math.max(0,Math.round(((targets[m]||0)/freq)*2)/2);
+    // Freeze the recommendation from volume completed before today. Otherwise the
+    // denominator follows extra sets upward (1/1 becomes 3/3 after logging two more),
+    // which makes a completed target look as though the coach moved the goalposts.
+    const remainingBeforeToday=Math.max(0,(targets[m]||0)-(beforeWeekly[m]||0));
+    const rollingGoal=Math.max(0,Math.round(Math.min(base,remainingBeforeToday)*2)/2);
+    const interval=7/freq;
+    const daysSince=lastBefore[m]?dayGap(today,lastBefore[m]):30;
+    const due=daysSince>=Math.max(2,Math.floor(interval));
+    const overdue=daysSince>=Math.max(3,Math.ceil(interval*1.5));
+    const priorRatio=(targets[m]||0)>0?(beforeWeekly[m]||0)/(targets[m]||1):0;
+    let sessionFloor=0;
+    if(due&&base>0){
+      /* For hypertrophy, a due workout is a new growth exposure—not a request to
+         perform the smallest top-up that reaches a rolling quota. Prescribe the
+         normal weekly-target / frequency dose, while respecting the practical
+         evidence-based ceiling of about 10 credited sets per muscle per session.
+         Only unusually high recent volume invokes a recovery-aware reduction. */
+      if(goalModeOf(data)==="hypertrophy"){
+        sessionFloor=Math.min(10,base);
+        if(priorRatio>=1.5) sessionFloor=Math.min(sessionFloor,Math.max(2,Math.ceil(base*.5)));
+      } else {
+        const fraction=overdue ? .67 : .5;
+        sessionFloor=Math.max(1,Math.round(base*fraction));
+        if(priorRatio>=1.25) sessionFloor=Math.min(sessionFloor,Math.ceil(meaningfulDoseFor(data,m)));
+      }
+    }
+    const goal=Math.min(base,Math.max(rollingGoal,sessionFloor));
+    return {goal,base,rollingGoal,sessionFloor,daysSince,interval,recencyFloorApplied:sessionFloor>rollingGoal};
+  };
   let scheduled=null;
   if(split==="custom"){
     const pos=customCyclePosition(data,beforeToday,exMap);
@@ -7279,7 +7309,7 @@ function todayWorkoutPlan(data, exMap, nowMs=Date.now()) {
     const existingGap=catchUp?.muscles?.length?Math.max(...catchUp.muscles.map(gapFor)):-1;
     if(anchorGap>=existingGap) catchUp=overdueCatchUp;
   }
-  const rowFor=m=>({muscle:m,done:Math.round(todayDone[m]*10)/10,goal:goalFor(m),weekly:Math.round(weekly[m]*10)/10,weeklyGoal:targets[m],subgroups:subgroupCreditsOn(log,exMap,today,m)});
+  const rowFor=m=>({muscle:m,done:Math.round(todayDone[m]*10)/10,weekly:Math.round(weekly[m]*10)/10,weeklyGoal:targets[m],subgroups:subgroupCreditsOn(log,exMap,today,m),...prescriptionFor(m)});
   const rows=(chosen?.muscles||[]).map(rowFor).filter(r=>r.goal>0||r.done>0);
   const addedMuscles=[...new Set(data.profile?.coachAddedMusclesByDate?.[today]||[])].filter(m=>MUSCLES.includes(m)&&!chosen?.muscles?.includes(m));
   const addedRows=addedMuscles.map(rowFor).filter(r=>r.goal>0||r.done>0);
@@ -7725,6 +7755,7 @@ function CoachCard({ data, exMap, user, setData, onOpenLog }) {
                   </div>
                   <div style={{height:7,background:T.input,border:"1px solid "+T.line,borderRadius:99,overflow:"hidden"}}><div style={{height:"100%",width:pct+"%",background:hit?T.green:MUSCLE_COLORS[MUSCLES.indexOf(row.muscle)],borderRadius:99,transition:"width .25s ease"}} /></div>
                   <div style={{fontSize:10.5,color:hit?T.green:T.sub,fontWeight:hit?750:500,marginTop:4}}>{hit?"Target reached — more is optional":<>{fmtSets(left)} left today · {fmtSets(row.weekly)} / {fmtSets(row.weeklyGoal)} last 7 days</>}</div>
+                  {row.recencyFloorApplied&&<div style={{fontSize:9.8,color:"var(--cal-cardio)",lineHeight:1.4,marginTop:3}}>{goalModeOf(data)==="hypertrophy"?"Planned hypertrophy dose":"Recency minimum"}: {row.daysSince>=30?"no recent meaningful session":`${row.daysSince} days since a meaningful session`}; older volume still counts, but cannot reduce today below {fmtSets(row.sessionFloor)} sets.</div>}
                   {!!row.subgroups?.length&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginTop:6}}>{row.subgroups.map(s=><span key={s.name} style={{padding:"3px 7px",borderRadius:99,background:T.input,border:`1px solid ${T.line}`,color:T.sub,fontSize:9.5,fontWeight:700}}>{subgroupDisplayName(row.muscle,s.name)} <b style={{color:T.ink}}>{fmtSets(s.sets)}</b></span>)}</div>}
                 </div>;
               })}
