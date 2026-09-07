@@ -7132,8 +7132,11 @@ function todayWorkoutPlan(data, exMap, nowMs=Date.now()) {
     const due=daysSince>=Math.max(2,Math.floor(interval));
     const overdue=daysSince>=Math.max(3,Math.ceil(interval*1.5));
     const priorRatio=(targets[m]||0)>0?(beforeWeekly[m]||0)/(targets[m]||1):0;
+    // The active card is itself proof that this muscle belongs to today's workout.
+    // Do not require the separate overdue detector to agree before assigning a target.
+    const activeWorkoutMuscle=!!chosen?.muscles?.includes(m);
     let sessionFloor=0;
-    if(due&&base>0){
+    if((due||activeWorkoutMuscle)&&base>0){
       /* For hypertrophy, a due workout is a new growth exposure—not a request to
          perform the smallest top-up that reaches a rolling quota. Prescribe the
          normal weekly-target / frequency dose, while respecting the practical
