@@ -3306,6 +3306,9 @@ function Dashboard({ data, exMap, setData, own = true, user, sharedSteps = null,
   useEffect(() => { localStorage.setItem("lt-range", range); }, [range]);
   /* per-bodyweight-exercise chart mode: "reps" (volume) or "strength" (est. 1RM) */
   const [bwMode, setBwMode] = useState({});
+  /* Weighted exercises can legitimately have both unloaded and loaded sessions. Keep
+     both histories available without plotting reps and pounds on the same axis. */
+  const [mixedLoadMode, setMixedLoadMode] = useState({});
   /* Timed holds use duration by default; weighted holds can switch to load × time. */
   const [timedMode, setTimedMode] = useState({});
   /* draggable dashboard widget order (remembered on this device) */
@@ -3389,7 +3392,13 @@ function Dashboard({ data, exMap, setData, own = true, user, sharedSteps = null,
     if (isMachineEx && effGym && !showingAll) entries = entries.filter(e => e.gym === effGym);
     if (!entries.length) return [];
     const timed = timedOf(ex);
-    const repTracked = !timed && tracksProgressByReps(ex, entries);
+    const hasUnloaded = !timed && ex.type!=="Bodyweight" && entries.some(e=>Number(e.weight)<=0);
+    const hasLoaded = !timed && ex.type!=="Bodyweight" && entries.some(e=>Number(e.weight)>0);
+    const mixedLoad = hasUnloaded && hasLoaded;
+    const defaultMixedMode = tracksProgressByReps(ex, entries) ? "reps" : "strength";
+    const activeMixedMode = mixedLoadMode[exName] || defaultMixedMode;
+    if(mixedLoad) entries=entries.filter(e=>activeMixedMode==="reps"?Number(e.weight)<=0:Number(e.weight)>0);
+    const repTracked = !timed && (mixedLoad ? activeMixedMode==="reps" : tracksProgressByReps(ex, entries));
     const loadTime = timed && timedMode[exName] === "loadtime" && entries.some(e=>Number(e.seconds)>0&&Number(e.weight)>0);
     /* Bodyweight and zero-external-load lifts: total reps per day or best single set. */
     const best = repTracked && bwMode[exName]==="best";
@@ -3540,7 +3549,12 @@ function Dashboard({ data, exMap, setData, own = true, user, sharedSteps = null,
       const isBW = exMap[p]?.type==="Bodyweight";
       const isTimed = timedOf(exMap[p]);
       const metricEntries = data.log.filter(e=>e.exercise===p&&e.effort!=="Warm-up"&&!e.quick);
-      const repTracked = !isTimed&&tracksProgressByReps(exMap[p],metricEntries);
+      const unloadedEntries=metricEntries.filter(e=>Number(e.weight)<=0);
+      const loadedEntries=metricEntries.filter(e=>Number(e.weight)>0);
+      const mixedLoad=!isTimed&&exMap[p]?.type!=="Bodyweight"&&unloadedEntries.length>0&&loadedEntries.length>0;
+      const defaultMixedMode=tracksProgressByReps(exMap[p],metricEntries)?"reps":"strength";
+      const activeMixedMode=mixedLoadMode[p]||defaultMixedMode;
+      const repTracked = !isTimed&&(mixedLoad?activeMixedMode==="reps":tracksProgressByReps(exMap[p],metricEntries));
       const hasTimedLoad=isTimed&&metricEntries.some(e=>Number(e.seconds)>0&&Number(e.weight)>0);
       const loadTimeMode=isTimed&&timedMode[p]==="loadtime"&&hasTimedLoad;
       if (minimizedCharts[p]) {
@@ -3600,6 +3614,16 @@ function Dashboard({ data, exMap, setData, own = true, user, sharedSteps = null,
           </div>
         )}
         {/* Total/Best on its own row so it never squeezes the exercise name */}
+        {mixedLoad && (
+          <div className="seg" style={{display:"inline-flex", marginBottom:8, maxWidth:"100%"}}
+            title="Unloaded rep sessions and weighted strength sessions are both saved; switch the chart without mixing unlike units">
+            {[["reps",`Unloaded reps (${new Set(unloadedEntries.map(e=>e.date)).size})`],["strength",`Weighted 1RM (${new Set(loadedEntries.map(e=>e.date)).size})`]].map(([m,lbl])=>{
+              const on=activeMixedMode===m;
+              return <button key={m} onClick={()=>setMixedLoadMode(s=>({...s,[p]:m}))} className={"seg-btn"+(on?" on":"")}
+                style={{padding:"6px 12px",fontSize:11.5,whiteSpace:"nowrap"}}>{lbl}</button>;
+            })}
+          </div>
+        )}
         {repTracked && (
           <div className="seg" style={{display:"inline-flex", marginBottom:8}}
             title="Total reps per day, or your best single set">
