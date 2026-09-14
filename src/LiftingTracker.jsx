@@ -3567,8 +3567,9 @@ function Dashboard({ data, exMap, setData, own = true, user, sharedSteps = null,
       }
       /* latest session totals for this exercise (working sets only) */
       const sess = data.log.filter(e => e.exercise===p && e.effort!=="Warm-up" && !e.quick);
-      const lastDate = sess.length ? sess.reduce((a,b)=>a.date>b.date?a:b).date : null;
-      const daySets = lastDate ? sess.filter(e=>e.date===lastDate) : [];
+      const visibleSess=mixedLoad?sess.filter(e=>activeMixedMode==="reps"?Number(e.weight)<=0:Number(e.weight)>0):sess;
+      const lastDate = visibleSess.length ? visibleSess.reduce((a,b)=>a.date>b.date?a:b).date : null;
+      const daySets = lastDate ? visibleSess.filter(e=>e.date===lastDate) : [];
       const dayReps = daySets.reduce((s,e)=>s+(Number(e.reps)||0), 0);
       const daySeconds = daySets.reduce((s,e)=>s+(Number(e.seconds)||0),0);
       const bestMode = repTracked && bwMode[p]==="best";
