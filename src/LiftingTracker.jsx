@@ -821,6 +821,12 @@ export default function LiftingTracker({ user }) {
     const pref = localStorage.getItem("lt-start-tab") || "dash";
     return pref === "last" ? (localStorage.getItem("lt-last-tab") || "dash") : pref;
   });
+  const [historyGraphRequest, setHistoryGraphRequest] = useState(null);
+  const openHistoryGraph = (exercise) => {
+    if (!exercise) return;
+    setHistoryGraphRequest({ exercise, id: Date.now() });
+    setTab("dash");
+  };
   useEffect(() => { localStorage.setItem("lt-last-tab", tab); }, [tab]);
   const [showSettings, setShowSettings] = useState(false);
   const [navHidden, setNavHidden] = useState(false); // bottom bar slides away on scroll-down
@@ -1465,8 +1471,8 @@ export default function LiftingTracker({ user }) {
 
       <main className={"app-main" + (tab === "macros" ? " app-main-wide" : "")}>
         <div className="tabview" key={tab}>
-          {tab==="dash" && liftingOn && <Dashboard data={data} exMap={exMap} setData={setData} user={user} isPro={isPro} coachEnabled={coachEnabled} stepsEnabled={stepsEnabled} nutritionOn={nutritionOn} multiGymOn={multiGymOn} openSettings={()=>setShowSettings(true)} setTab={setTab} />}
-          {tab==="log" && liftingOn && <LogTab data={data} exMap={exMap} setData={setData} routinesOn={routinesOn} multiGymOn={multiGymOn} />}
+          {tab==="dash" && liftingOn && <Dashboard data={data} exMap={exMap} setData={setData} user={user} isPro={isPro} coachEnabled={coachEnabled} stepsEnabled={stepsEnabled} nutritionOn={nutritionOn} multiGymOn={multiGymOn} openSettings={()=>setShowSettings(true)} setTab={setTab} historyGraphRequest={historyGraphRequest} onHistoryGraphHandled={()=>setHistoryGraphRequest(null)} />}
+          {tab==="log" && liftingOn && <LogTab data={data} exMap={exMap} setData={setData} routinesOn={routinesOn} multiGymOn={multiGymOn} onViewHistory={openHistoryGraph} />}
           {tab==="records" && liftingOn && <RecordsTab data={data} exMap={exMap} setData={setData} />}
           {tab==="journal" && <JournalTab data={data} setData={setData} />}
           {tab==="friends" && <FriendsTab user={user} data={data} setData={setData} exMap={exMap} nutritionOn={nutritionOn} streaksOn={streaksOn} isPro={isPro} openPro={()=>setShowSettings(true)} />}
@@ -1682,7 +1688,7 @@ function GymPicker({ gyms, value, onChange, onCreate }) {
   );
 }
 
-function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
+function LogTab({ data, exMap, setData, routinesOn, multiGymOn, onViewHistory }) {
   const entryFormRef = useRef(null);
   const sorted = useMemo(()=>[...data.log].sort((a,b)=>a.date.localeCompare(b.date)||a.id-b.id),[data.log]);
   const last = [...sorted].reverse().find(e=>!e.muscleOnly && exMap[e.exercise]);
@@ -2074,8 +2080,11 @@ function LogTab({ data, exMap, setData, routinesOn, multiGymOn }) {
             </button>}
             {lastTime?.first
               ? <b>First time logging this!</b>
-              : <>Last time: <b>{lastTime.text}</b> <span style={{color:T.sub}}>({fmtDate(lastTime.date)})</span> — beat it.
-                {beaten && <span className="chip" style={{background:T.mint, color:T.green, marginLeft:8}}>🔥 Beating last time!</span>}</>}
+              : <>Last time: <b>{lastTime.text}</b> <span style={{color:T.sub}}>({fmtDate(lastTime.date)})</span> — beat it.</>}
+            <div style={{display:"flex",alignItems:"center",gap:7,flexWrap:"wrap",marginTop:6}}>
+              {beaten && <span className="chip" style={{background:T.mint,color:T.green}}>🔥 Beating last time!</span>}
+              <button type="button" onClick={()=>onViewHistory?.(exName)} style={{padding:"5px 9px",minHeight:0,borderRadius:99,background:"rgba(var(--accent-rgb),.1)",border:`1px solid ${T.green}`,color:T.green,fontSize:10.5,fontWeight:800,letterSpacing:".25px"}}>📈 View history graph</button>
+            </div>
             {isTimed
               ? <div style={{fontSize:12,color:T.sub,marginTop:2}}>Timed hold — tracked by seconds. Added weight is optional and can also be graphed as load × time.</div>
               : isBW && <div style={{fontSize:12, color:T.sub, marginTop:2}}>Bodyweight move — tracked by reps. Add weight below if you used a belt/vest; it still counts as bodyweight everywhere.</div>}
@@ -3272,7 +3281,7 @@ function StatTile({ icon, value, label, hero }) {
   );
 }
 
-function Dashboard({ data, exMap, setData, own = true, user, sharedSteps = null, isPro, coachEnabled, stepsEnabled, nutritionOn, multiGymOn, openSettings, setTab }) {
+function Dashboard({ data, exMap, setData, own = true, user, sharedSteps = null, isPro, coachEnabled, stepsEnabled, nutritionOn, multiGymOn, openSettings, setTab, historyGraphRequest, onHistoryGraphHandled }) {
   const units = useUnit();
   const syncedDashSteps = useOwnSteps(user, 370, !!(own && stepsEnabled && user?.id));
   const stepSource = own ? syncedDashSteps : (sharedSteps || {});
@@ -3318,6 +3327,7 @@ function Dashboard({ data, exMap, setData, own = true, user, sharedSteps = null,
      friends' profiles show THEIR pins. Local state first, then persisted when it's your own. */
   const [pins, setPins] = useState(() => Array.isArray(data.pins) ? data.pins : []);
   const [chartChoices, setChartChoices] = useState({});
+  const handledHistoryRequest = useRef(null);
   useEffect(() => {
     if (!own) return;
     setData(d => {
@@ -3343,13 +3353,26 @@ function Dashboard({ data, exMap, setData, own = true, user, sharedSteps = null,
   const validPins = pins.filter(p => exMap[p]);
   const picks = useMemo(() => {
     const pool=[...validPins,...logged.filter(name=>!validPins.includes(name))], out=[];
-    for(let i=0;i<4;i++){
+    const slotCount=chartChoices[4]?5:4;
+    for(let i=0;i<slotCount;i++){
       const requested=chartChoices[i];
       const name=requested&&exMap[requested]&&!out.includes(requested)?requested:pool.find(p=>!out.includes(p));
       if(name) out.push(name);
     }
     return out;
   }, [validPins, logged, exMap, chartChoices]);
+
+  useEffect(()=>{
+    const request=historyGraphRequest;
+    if(!request?.exercise||!exMap[request.exercise]||handledHistoryRequest.current===request.id)return;
+    handledHistoryRequest.current=request.id;
+    const existing=picks.indexOf(request.exercise);
+    const openSlot=existing>=0?existing:(()=>{const i=picks.findIndex(name=>!validPins.includes(name));return i>=0?i:4;})();
+    if(existing<0)setChartChoices(cur=>({...cur,[openSlot]:request.exercise}));
+    setData(d=>({...d,profile:{...(d.profile||{}),minimizedCharts:{...(d.profile?.minimizedCharts||{}),[request.exercise]:false}}}));
+    onHistoryGraphHandled?.();
+    window.setTimeout(()=>document.getElementById(`progress-chart-${openSlot}`)?.scrollIntoView({behavior:"smooth",block:"center"}),80);
+  },[historyGraphRequest,exMap,picks,validPins,setData,onHistoryGraphHandled]);
 
   const isPinned = (i) => validPins.includes(picks[i]);
   /* Dropdown changes are just browsing. Pinning is a separate, explicit action. */
@@ -3559,7 +3582,7 @@ function Dashboard({ data, exMap, setData, own = true, user, sharedSteps = null,
       const loadTimeMode=isTimed&&timedMode[p]==="loadtime"&&hasTimedLoad;
       if (minimizedCharts[p]) {
         const latest = pts[pts.length-1];
-        return <div className="card compact-card" key={p} style={{display:"flex", alignItems:"center", gap:8}}>
+        return <div id={`progress-chart-${i}`} className="card compact-card" key={p} style={{display:"flex", alignItems:"center", gap:8}}>
           <span style={{fontSize:17}}>📈</span>
           <div style={{minWidth:0, flex:1}}><div className="h" style={{fontSize:14, color:T.tealDk, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{p}</div><div style={{fontSize:11, color:T.sub}}>{latest ? `Latest: ${latest.value}${isTimed?(loadTimeMode?` ${uLabel(units)}·s`:" sec"):repTracked?" reps":` ${uLabel(units)}`}` : "No chart data yet"}</div></div>
           <button onClick={()=>minimizeChart(p,false)} style={showSectionBtn}>Show</button>
@@ -3577,7 +3600,7 @@ function Dashboard({ data, exMap, setData, own = true, user, sharedSteps = null,
       const exGyms = isMachineEx ? gymsUsedFor(p) : [];
       const effGym = isMachineEx ? (gymFilter[p] ?? mostUsedGym(p)) : "";
       return (
-      <div className="card" key={p}>
+      <div id={`progress-chart-${i}`} className="card" key={p}>
         <div style={{display:"flex", gap:8, alignItems:"center", marginBottom: repTracked?8:6}}>
           <ChartExercisePicker value={p} options={chartOpts} exMap={exMap} onPick={x=>changePick(i, x)} />
           {own && (
