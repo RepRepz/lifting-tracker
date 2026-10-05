@@ -7596,6 +7596,7 @@ function coachTips(data, exMap, units) {
 function CoachCard({ data, exMap, user, setData, onOpenLog }) {
   const units = useUnit();
   const [coachClock,setCoachClock]=useState(()=>Date.now());
+  const [openMuscleWorkouts,setOpenMuscleWorkouts]=useState(null);
   useEffect(()=>{const id=setInterval(()=>setCoachClock(Date.now()),60*1000);return()=>clearInterval(id);},[]);
   const tips = useMemo(() => coachTips(data, exMap, units), [data, exMap, units]);
   const [groupTip, setGroupTip] = useState(null);
@@ -7694,6 +7695,26 @@ function CoachCard({ data, exMap, user, setData, onOpenLog }) {
   const all = (groupTip && coachPrefs.balance ? [...tips, groupTip] : tips).filter(t => !dismissed.includes(t.key));
   const otherTips = all.filter(t => t.cat !== "Training focus");
   const workoutPlan = useMemo(()=>todayWorkoutPlan(data,exMap,coachClock),[data,exMap,coachClock]);
+  const todayMuscleWorkouts = useMemo(()=>{
+    const today=gymDayStr();
+    const result=Object.fromEntries(MUSCLES.map(m=>[m,[]]));
+    for(const entry of (data.log||[])){
+      if(entry.date!==today||entry.effort==="Warm-up") continue;
+      for(const [muscle,credit] of entryMuscleCredits(entry,exMap)){
+        if(!result[muscle]||credit<=0) continue;
+        result[muscle].push({entry,credit,total:credit*setCountOf(entry),primary:credit===1});
+      }
+    }
+    return result;
+  },[data.log,exMap]);
+  const workoutSetLine=(entry)=>{
+    if(entry.muscleOnly) return `${setCountOf(entry)} set${setCountOf(entry)===1?"":"s"} · quick workout`;
+    const setLabel=`Set ${entry.set||1}`;
+    const load=entry.weight==null?"BW":`${dispW(entry.weight,units)} ${uLabel(units)}`;
+    const performance=entry.seconds?`${entry.weight==null?"":load+" · "}${fmtHold(entry.seconds)}`:`${load} × ${entry.reps??"—"}`;
+    const drops=entry.drops?.length?` · drops ${entry.drops.map(d=>`${dispW(d.weight,units)} ${uLabel(units)} × ${d.reps}`).join(" → ")}`:"";
+    return `${setLabel} · ${performance}${drops}`;
+  };
   const workoutStartedToday = useMemo(()=>groupsLoggedOn(data.log||[],exMap,gymDayStr()).size>0,[data.log,exMap]);
   const activeRestSkip = workoutPlan.restSkipApplied ? data.profile?.coachRestSkip : null;
   const skipRestDay = () => workoutPlan.rest&&workoutPlan.nextRestDay&&setData(d=>({...d,profile:{...(d.profile||{}),coachRestSkip:{date:gymDayStr(),fromId:cycle[cyPos]?.id||workoutPlan.nextRestDay.id,createdAt:Date.now()}}}));
@@ -7816,6 +7837,8 @@ function CoachCard({ data, exMap, user, setData, onOpenLog }) {
                 const hit=row.goal===0||row.done>=row.goal;
                 const left=Math.max(0,row.goal-row.done);
                 const pct=row.goal>0?Math.min(100,row.done/row.goal*100):100;
+                const contributors=todayMuscleWorkouts[row.muscle]||[];
+                const contributorsOpen=openMuscleWorkouts===row.muscle;
                 return <div key={row.muscle} style={{padding:"10px 0",borderTop:i?"1px solid "+T.line:"none"}}>
                   <div style={{display:"flex",alignItems:"baseline",gap:8,marginBottom:6}}>
                     <span style={{fontSize:13.5,fontWeight:800,color:T.ink,flex:1}}>{row.muscle}</span>
@@ -7825,6 +7848,21 @@ function CoachCard({ data, exMap, user, setData, onOpenLog }) {
                   <div style={{fontSize:10.5,color:hit?T.green:T.sub,fontWeight:hit?750:500,marginTop:4}}>{hit?"Target reached — more is optional":<>{fmtSets(left)} left today · {fmtSets(row.weekly)} / {fmtSets(row.weeklyGoal)} last 7 days</>}</div>
                   {row.daysSince<5&&<div style={{fontSize:9.8,color:"var(--cal-cardio)",lineHeight:1.4,marginTop:3}}>Direct recovery: {row.daysSince===0?"meaningful primary work earlier today":`${row.daysSince} day${row.daysSince===1?"":"s"} since meaningful primary work`}{row.recoveryLimited?` · target capped at ${fmtSets(row.sessionFloor)} sets.`:"."}</div>}
                   {!!row.subgroups?.length&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginTop:6}}>{row.subgroups.map(s=><span key={s.name} style={{padding:"3px 7px",borderRadius:99,background:T.input,border:`1px solid ${T.line}`,color:T.sub,fontSize:9.5,fontWeight:700}}>{subgroupDisplayName(row.muscle,s.name)} <b style={{color:T.ink}}>{fmtSets(s.sets)}</b></span>)}</div>}
+                  {!!contributors.length&&<>
+                    <button type="button" onClick={()=>setOpenMuscleWorkouts(contributorsOpen?null:row.muscle)} aria-expanded={contributorsOpen} aria-controls={`coach-workouts-${row.muscle}`} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,width:"100%",marginTop:7,padding:"6px 8px",borderRadius:9,background:contributorsOpen?"color-mix(in srgb,var(--accent) 10%,var(--input))":T.input,border:`1px solid ${contributorsOpen?"color-mix(in srgb,var(--accent) 38%,var(--line))":T.line}`,color:contributorsOpen?T.ink:T.sub,fontSize:10,fontWeight:800,textAlign:"left"}}>
+                      <span>{contributorsOpen?"Hide workouts":"Show workouts"} <span style={{fontWeight:600,color:T.sub}}>· {contributors.reduce((sum,x)=>sum+setCountOf(x.entry),0)} logged set{contributors.reduce((sum,x)=>sum+setCountOf(x.entry),0)===1?"":"s"}</span></span>
+                      <span aria-hidden="true" style={{fontSize:9,color:contributorsOpen?T.green:T.sub}}>{contributorsOpen?"▲":"▼"}</span>
+                    </button>
+                    {contributorsOpen&&<div id={`coach-workouts-${row.muscle}`} style={{marginTop:6,padding:"4px 9px",borderRadius:10,background:"linear-gradient(145deg,color-mix(in srgb,var(--accent) 7%,var(--input)),var(--input))",border:`1px solid color-mix(in srgb,var(--accent) 24%,var(--line))`,boxShadow:"0 8px 24px rgba(0,0,0,.12)"}}>
+                      {contributors.map(({entry,credit,total,primary},j)=><div key={`${entry.id||entry.date}-${entry.exercise||entry.muscle}-${entry.set||j}`} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 0",borderTop:j?`1px solid ${T.line}`:"none"}}>
+                        <div style={{minWidth:0,flex:1}}>
+                          <div style={{fontSize:11,color:T.ink,fontWeight:800,lineHeight:1.3,overflowWrap:"anywhere"}}>{entryLabel(entry)}</div>
+                          <div style={{fontSize:9.5,color:T.sub,lineHeight:1.4,marginTop:2}}>{workoutSetLine(entry)}</div>
+                        </div>
+                        <span style={{flexShrink:0,padding:"3px 6px",borderRadius:99,background:primary?T.mint:"color-mix(in srgb,var(--cal-cardio) 10%,var(--card))",border:`1px solid ${primary?T.green:"color-mix(in srgb,var(--cal-cardio) 42%,var(--line))"}`,color:primary?T.green:"var(--cal-cardio)",fontSize:9,fontWeight:850,whiteSpace:"nowrap"}}>+{fmtSets(total)} {primary?"primary":"secondary"}</span>
+                      </div>)}
+                    </div>}
+                  </>}
                 </div>;
               })}
             </div>
