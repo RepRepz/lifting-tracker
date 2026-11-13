@@ -963,6 +963,7 @@ export default function LiftingTracker({ user }) {
   }, [data?.profile?.theme]);
   useEffect(() => {
     if (tab === "steps" && !stepsEnabled) setTab("dash"); // hide the Steps tab when off / not Pro
+    if (tab === "health" && !stepsEnabled) setTab("dash");
   }, [stepsEnabled, tab]);
   useEffect(() => {
     if (tab === "macros" && !nutritionOn) setTab("dash");
@@ -1154,6 +1155,7 @@ export default function LiftingTracker({ user }) {
   const tabs = [
     ...(liftingOn ? [["dash","Dash","📊"],["log","Log","📝"],["cardio","Cardio","🏃"]] : []),
     ...(liftingOn && stepsEnabled ? [["steps","Steps","👟"]] : []),
+    ...(liftingOn && stepsEnabled ? [["health","Health","⌚"]] : []),
     ...(nutritionOn ? [["macros","Macros","🥗"]] : []),
     ["friends","Groups","👥"],
     ...(liftingOn ? [["records","Records","🏆"],["ex","Library","📚"],["body","Body","⚖️"]] : []),
@@ -1479,6 +1481,12 @@ export default function LiftingTracker({ user }) {
           {tab==="body" && liftingOn && <BodyTab data={data} setData={setData} hunit={hunit} />}
           {tab==="cardio" && liftingOn && <CardioTab data={data} setData={setData} latestBW={latestBW} user={user} stepsOn={stepsEnabled} />}
           {tab==="steps" && liftingOn && stepsEnabled && <StepsTab user={user} data={data} setData={setData} />}
+          {tab==="health" && liftingOn && stepsEnabled && <div className="card">
+            <div className="h" style={{color:T.ink,fontSize:20,marginBottom:5}}>⌚ Health</div>
+            <div style={{color:T.sub,fontSize:13,marginBottom:12}}>Connect a device to import daily totals into Steps.</div>
+            <HealthSourceCard user={user} data={data} setData={setData} />
+            <button className="btn-primary" style={{width:"100%",marginTop:12}} onClick={()=>setTab("steps")}>View Steps</button>
+          </div>}
           {tab==="ex" && liftingOn && <ExercisesTab data={data} setData={setData} user={user} />}
           {tab==="macros" && nutritionOn && <Suspense fallback={<ChartFallback h={520} />}><MacroTab data={data} setData={setData} streaksOn={streaksOn} waterOn={waterOn} /></Suspense>}
         </div>
