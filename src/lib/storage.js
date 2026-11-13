@@ -137,6 +137,33 @@ export async function stepsFor(userIds, sinceDay) {
   return out;
 }
 
+/* ---------- Google Health (Fitbit / Pixel Watch) ---------- */
+
+async function googleHealthAction(action) {
+  const { data, error } = await supabase.functions.invoke("google-health", { body: { action } });
+  if (error) throw error;
+  if (data?.error) throw new Error(data.error);
+  return data;
+}
+
+/** Returns an OAuth URL. Tokens and the OAuth client secret never enter the browser. */
+export async function startGoogleHealthConnect() {
+  return (await googleHealthAction("start")).url;
+}
+
+export async function getGoogleHealthStatus() {
+  return googleHealthAction("status");
+}
+
+/** Imports reconciled daily Fitbit/Pixel Watch steps for the most recent 14 days. */
+export async function syncGoogleHealthSteps() {
+  return googleHealthAction("sync");
+}
+
+export async function disconnectGoogleHealth() {
+  return googleHealthAction("disconnect");
+}
+
 /* ---------- The Lab Pro (premium flag) ---------- */
 
 /** Whether the currently signed-in account has an active Pro membership. */

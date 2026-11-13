@@ -1,6 +1,6 @@
 import { useState, useEffect, useLayoutEffect, useMemo, useRef, lazy, Suspense, Fragment, createContext, useContext } from "react";
 import { createPortal } from "react-dom";
-import { supabase, loadUserStateRecord, loadSharedUserStates, saveUserState, uploadExerciseMedia, getExerciseMediaUrl, deleteExerciseMedia, listMyGroups, listMembers, createGroup, joinGroup, leaveGroup, listReactions, addReaction, removeReaction, lastActiveFor, setGroupEmoji, resetInviteCode, getStepToken, rotateStepToken, disconnectSteps, stepsFor, lastStepSync, createDuel, listDuels, deleteDuel, acceptDuel, declineDuel, forfeitDuel, requestDuelCancel, clearDuelCancel, setGroupRecordLifts, getMyProStatus, listProUserIds, generateBackupCodes, hasBackupCodes, requestAccountDeletion, clearLocalAccountData } from "./lib/storage.js";
+import { supabase, loadUserStateRecord, loadSharedUserStates, saveUserState, uploadExerciseMedia, getExerciseMediaUrl, deleteExerciseMedia, listMyGroups, listMembers, createGroup, joinGroup, leaveGroup, listReactions, addReaction, removeReaction, lastActiveFor, setGroupEmoji, resetInviteCode, getStepToken, rotateStepToken, disconnectSteps, stepsFor, lastStepSync, startGoogleHealthConnect, getGoogleHealthStatus, syncGoogleHealthSteps, disconnectGoogleHealth, createDuel, listDuels, deleteDuel, acceptDuel, declineDuel, forfeitDuel, requestDuelCancel, clearDuelCancel, setGroupRecordLifts, getMyProStatus, listProUserIds, generateBackupCodes, hasBackupCodes, requestAccountDeletion, clearLocalAccountData } from "./lib/storage.js";
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -4519,8 +4519,13 @@ function useSteps(user, sinceDays) {
 
 /* One reliable "Sync now" launcher — runs the phone shortcut via its URL scheme.
    Works only while the phone is unlocked (Apple's Health rule), which it is when you tap. */
-function SyncNowButton({ block, small }) {
+function SyncNowButton({ block, small, provider="apple", onSynced }) {
+  const [busy,setBusy]=useState(false);
   const href = `shortcuts://run-shortcut?name=${encodeURIComponent("The Lab: Steps")}`;
+  if (provider === "google") return <button onClick={async()=>{setBusy(true);try{await syncGoogleHealthSteps();await onSynced?.();}finally{setBusy(false);}}} disabled={busy}
+    style={{display:block?"flex":"inline-flex",width:block?"100%":"auto",alignItems:"center",justifyContent:"center",gap:7,background:"var(--cal-cardio)",color:"var(--cal-cardio-ink)",fontWeight:800,fontSize:small?12.5:14.5,padding:small?"7px 13px":"12px 16px",borderRadius:small?99:11}}>
+    {busy ? "Syncing Google…" : "🔄 Sync Google / Fitbit"}
+  </button>;
   return (
     <a href={href} style={{ display: block ? "flex" : "inline-flex", width: block ? "100%" : "auto",
       alignItems:"center", justifyContent:"center", gap:7, background:"var(--cal-cardio)", color:"var(--cal-cardio-ink)", fontWeight:800,
@@ -4532,12 +4537,13 @@ function SyncNowButton({ block, small }) {
 
 /* Reusable goal ring + Apple-Health-style ranged chart for a single person's step map.
    Powers both your own tab and the tap-to-view popup for any groupmate. */
-function StepRingChart({ map, goal, meta }) {
+function StepRingChart({ map, goal, meta, provider="apple" }) {
   const [range, setRange] = useState("M");
   const [sel, setSel] = useState(null);
   const plotRef = useRef(null);
   const hasManual = meta && Object.values(meta).some(v => v !== "auto");
-  const srcLabel = { manual:"✍️ manual entry", both:"Apple Health + manual", auto:"Apple Health" };
+  const automaticSource = provider === "google" ? "Google / Fitbit" : "Apple Health";
+  const srcLabel = { manual:"✍️ manual entry", both:`${automaticSource} + manual`, auto:automaticSource };
   const m = map || {};
   const yStr = dAdd(todayStr(), -1);
   const yCount = m[yStr] || 0;
@@ -4829,7 +4835,8 @@ function DuelsCard({ user, all, nameOf, myId, myName, proIds = [], minimized = f
    and a once-a-day whole-group celebration. */
 function StepsTab({ user, data, setData }) {
   const goal = (data.profile?.stepGoal) || 10000;
-  const { mine, all, nameOf, board, celebrate, dismiss, yStr, myId, lastSync } = useSteps(user, 5*365 + 40);
+  const { mine, all, nameOf, board, celebrate, dismiss, yStr, myId, lastSync, reload } = useSteps(user, 5*365 + 40);
+  const healthProvider = data.profile?.healthStepProvider || "apple";
   const myName = nameOf[myId] || (user.user_metadata?.username || "you");
   const [proIds, setProIds] = useState([]);
   useEffect(()=>{ listProUserIds().then(setProIds).catch(()=>{}); }, []);
@@ -4874,7 +4881,7 @@ function StepsTab({ user, data, setData }) {
         <div style={{fontSize:40, marginBottom:8}}>👟</div>
         <div className="h" style={{fontSize:19, color:T.tealDk, marginBottom:6}}>No steps yet</div>
         <div style={{fontSize:13, color:T.sub, lineHeight:1.55, maxWidth:340, margin:"0 auto"}}>
-          Set up the iPhone Shortcut in <b style={{color:T.ink}}>Settings → 🚶 Apple Health steps</b>, then tap <b style={{color:T.ink}}>Sync now</b> when you want to refresh.
+          Connect {healthProvider==="google" ? <b style={{color:T.ink}}>Google / Fitbit</b> : <>the iPhone Shortcut</>} in <b style={{color:T.ink}}>Settings → 🚶 Health & steps</b>, then tap <b style={{color:T.ink}}>Sync now</b> when you want to refresh.
           After the first sync your ring, charts, and group board fill in here.
         </div>
       </div>
@@ -4896,7 +4903,7 @@ function StepsTab({ user, data, setData }) {
           </div>
         )}
       </div>
-      {IS_MOBILE && <SyncNowButton block />}
+      {IS_MOBILE && <SyncNowButton block provider={healthProvider} onSynced={reload} />}
       {(() => {
         if (lastSync) {
           const ms = Date.now() - new Date(lastSync).getTime();
@@ -4914,7 +4921,7 @@ function StepsTab({ user, data, setData }) {
       })()}
     </div>
 
-    <StepRingChart map={merged.map} goal={goal} meta={merged.meta} />
+    <StepRingChart map={merged.map} goal={goal} meta={merged.meta} provider={healthProvider} />
 
     <DuelsCard user={user} all={all} nameOf={nameOf} myId={myId} myName={myName} proIds={proIds}
       minimized={!!data.profile?.minimizedSections?.stepDuels}
@@ -5908,12 +5915,12 @@ function SettingsModal({ user, username, data, setData, startTab, setStartTab, t
         </SettingsSection>
 
 
-        <SettingsSection icon="🚶" title="Apple Health steps" desc={isPro ? "Sync daily steps from your iPhone" : "iPhone step syncing · Pro"}>
+        <SettingsSection icon="🚶" title="Health & steps" desc={isPro ? "Choose Apple Health or Google/Fitbit" : "Private health syncing · Pro"}>
           {isPro ? (<>
             <FeatureToggle label="Show the Steps tab" on={stepsOn} setOn={setStepsOn}
               desc="Adds a 👟 Steps tab (goal ring, 1D/W/M/6M/Y/5Y charts, group leaderboard, step duels) and a steps recap on the Cardio tab. On by default. Set up syncing below." />
-            <StepsCard user={user} data={data} setData={setData} />
-          </>) : <ProLocked feature="Apple Health steps" note="Sync iPhone steps, battle friends in step duels, and climb the group steps board." onGoPro={goPro} />}
+            <HealthSourceCard user={user} data={data} setData={setData} />
+          </>) : <ProLocked feature="Health steps" note="Sync Apple Health or Google/Fitbit steps, battle friends in step duels, and climb the group steps board." onGoPro={goPro} />}
         </SettingsSection>
 
         <SettingsSection icon="🛡️" title="Privacy & sharing" desc="Control exactly what groupmates receive">
@@ -6132,6 +6139,92 @@ function StepBlock({ n, title, children }) {
       {children}
     </div>
   );
+}
+
+function HealthSourceCard({ user, data, setData }) {
+  const provider = data.profile?.healthStepProvider || "apple";
+  const [switching, setSwitching] = useState(false);
+  const [msg, setMsg] = useState("");
+  const choose = async (next) => {
+    if (next === provider || switching) return;
+    setSwitching(true); setMsg("");
+    try {
+      // Keep historical step totals, but revoke the other provider so two sources can
+      // never overwrite the same day. The newly selected provider is connected below.
+      if (next === "google") {
+        const available = await getGoogleHealthStatus();
+        if (!available?.configured) throw new Error("Google/Fitbit setup is not finished yet. Apple Health is still connected.");
+        await disconnectSteps(false);
+      } else await disconnectGoogleHealth();
+      setData(d => ({ ...d, profile:{ ...(d.profile||{}), healthStepProvider:next } }));
+      setMsg(next === "google"
+        ? "Google/Fitbit selected. Connect your Google account below."
+        : "Apple Health selected. Set up or reconnect the iPhone Shortcut below.");
+    } catch (e) { setMsg(e?.message || "Couldn't switch health providers."); }
+    finally { setSwitching(false); }
+  };
+  return <>
+    <div style={{ ...sCard }}>
+      <div style={{fontSize:14,fontWeight:800,color:T.ink,marginBottom:3}}>Step data source</div>
+      <div style={{fontSize:12,color:T.sub,lineHeight:1.5,marginBottom:10}}>Choose exactly one. Switching revokes the other connection but keeps steps already imported.</div>
+      <div className="seg" style={{display:"flex",borderRadius:12}}>
+        {[["apple"," Apple Health"],["google","Google / Fitbit"]].map(([id,label])=><button key={id}
+          onClick={()=>choose(id)} disabled={switching} className={"seg-btn"+(provider===id?" on":"")}
+          style={{flex:1,padding:"11px 6px",borderRadius:9,fontSize:13,opacity:switching ? .65 : 1}}>{label}</button>)}
+      </div>
+      {msg && <div style={{fontSize:11.5,color:msg.startsWith("Couldn't")?T.danger:T.green,fontWeight:700,marginTop:9,lineHeight:1.45}}>{msg}</div>}
+    </div>
+    {provider === "google" ? <GoogleHealthCard user={user} /> : <StepsCard user={user} data={data} setData={setData} />}
+  </>;
+}
+
+function GoogleHealthCard({ user }) {
+  const [status, setStatus] = useState({ loading:true, connected:false, configured:true });
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const refresh = async () => {
+    try { setStatus({ ...(await getGoogleHealthStatus()), loading:false }); }
+    catch (e) { setStatus({loading:false,connected:false,configured:false}); setMsg(e?.message || "Google Health is not configured yet."); }
+  };
+  useEffect(()=>{ refresh(); }, [user.id]);
+  useEffect(()=>{
+    const p = new URLSearchParams(location.search);
+    const result = p.get("google_health");
+    if (!result) return;
+    setMsg(result === "connected" ? "Google/Fitbit connected securely. Syncing your steps…" : decodeURIComponent(p.get("message") || "Google connection failed."));
+    p.delete("google_health"); p.delete("message");
+    history.replaceState(null,"",`${location.pathname}${p.toString()?`?${p.toString()}`:""}${location.hash}`);
+    if (result === "connected") syncGoogleHealthSteps().then(()=>{ setMsg("Google/Fitbit steps are up to date."); refresh(); }).catch(e=>setMsg(e?.message||"Connected, but the first sync failed."));
+  }, []);
+  const connect = async () => {
+    setBusy(true); setMsg("");
+    try { location.assign(await startGoogleHealthConnect()); }
+    catch (e) { setMsg(e?.message || "Couldn't start Google sign-in."); setBusy(false); }
+  };
+  const sync = async () => {
+    setBusy(true); setMsg("");
+    try { const r=await syncGoogleHealthSteps(); setMsg(`${r.days || 0} days synced from Google/Fitbit.`); await refresh(); }
+    catch (e) { setMsg(e?.message || "Couldn't sync Google/Fitbit right now."); }
+    finally { setBusy(false); }
+  };
+  const disconnect = async () => {
+    setBusy(true); setMsg("");
+    try { await disconnectGoogleHealth(); setStatus(s=>({...s,connected:false,lastSync:null})); setMsg("Google/Fitbit disconnected. Imported history was kept."); }
+    catch (e) { setMsg(e?.message || "Couldn't disconnect Google/Fitbit."); }
+    finally { setBusy(false); }
+  };
+  return <div style={{...sCard,marginBottom:0}}>
+    <div style={{fontSize:14,fontWeight:800,color:T.ink,marginBottom:3}}>Google Health · Fitbit & Pixel Watch</div>
+    <div style={{fontSize:12,color:T.sub,lineHeight:1.55,marginBottom:10}}>Privately imports your reconciled daily steps from the Google account linked to your Fitbit app. The Lab never puts Google tokens in this browser.</div>
+    {status.loading ? <div style={{fontSize:12,color:T.sub}}>Checking connection…</div> : status.connected ? <>
+      <div style={{padding:"10px 11px",borderRadius:10,background:"rgba(var(--accent-rgb),.10)",border:`1px solid ${T.green}`,fontSize:12,color:T.sub,marginBottom:10}}>
+        <b style={{color:T.ink}}>Connected ✓</b>{status.lastSync ? ` · Last sync ${new Date(status.lastSync).toLocaleString()}` : " · Ready for first sync"}
+      </div>
+      <div style={{display:"flex",gap:8}}><button onClick={sync} disabled={busy} style={{flex:1,background:T.green,color:"#000",fontWeight:800,padding:11}}>{busy?"Syncing…":"Sync now"}</button><ConfirmX label="Disconnect" onConfirm={disconnect} /></div>
+    </> : <button onClick={connect} disabled={busy || status.configured===false} style={{width:"100%",background:T.green,color:"#000",fontWeight:800,padding:11,opacity:(busy||status.configured===false) ? .5 : 1}}>{busy?"Opening Google…":"Connect Google / Fitbit"}</button>}
+    {msg && <div style={{fontSize:11.5,color:msg.includes("failed")||msg.includes("Couldn't")?T.danger:T.green,fontWeight:700,lineHeight:1.45,marginTop:9}}>{msg}</div>}
+    {status.configured===false && <div style={{fontSize:11.5,color:T.sub,lineHeight:1.5,marginTop:8}}>The app owner still needs to add the Google OAuth client ID and secret to Supabase. No public/shared API key can safely replace them.</div>}
+  </div>;
 }
 
 /* Apple Health steps: a website can't read Health directly (Apple only allows native
