@@ -924,6 +924,35 @@ export default function LiftingTracker({ user }) {
   useEffect(() => { localStorage.setItem("lt-coach-on", coachOn ? "1" : "0"); }, [coachOn]);
   // Steps & the AI Coach are Pro features (default on for Pro). Non-Pro never see them.
   const stepsEnabled = isPro && stepsOn;
+  const autoFitbit = isPro && data.profile?.healthStepProvider === "google";
+  useEffect(() => {
+    if (!user?.id || !autoFitbit) return;
+    const interval = 15 * 60_000;
+    let stopped = false, busy = false, lastAttempt = 0;
+    const refresh = async () => {
+      if (stopped || busy || document.visibilityState !== "visible" || !navigator.onLine || Date.now() - lastAttempt < 60_000) return;
+      busy = true;
+      lastAttempt = Date.now();
+      try {
+        const status = await getGoogleHealthStatus();
+        if (!stopped && status.configured && status.connected &&
+          (!status.lastSync || Date.now() - Date.parse(status.lastSync) >= interval)) await syncGoogleHealthSteps();
+      } catch { /* Keep last imported totals if Fitbit is temporarily unavailable. */ }
+      finally { busy = false; }
+    };
+    refresh();
+    const timer = window.setInterval(refresh, interval);
+    document.addEventListener("visibilitychange", refresh);
+    window.addEventListener("focus", refresh);
+    window.addEventListener("online", refresh);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refresh);
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener("online", refresh);
+    };
+  }, [user?.id, autoFitbit]);
   const coachEnabled = isPro && coachOn;
   // These toggles are PROFILE-WIDE: flipping one on a device syncs to the rest via the
   // cloud state (data.profile), so enabling on your phone lights it up on your PC too.
@@ -4513,8 +4542,9 @@ function useSteps(user, sinceDays) {
     // re-fetch when the app regains focus (e.g. after running the Sync shortcut and returning)
     const onVis = () => { if (document.visibilityState === "visible") load(); };
     document.addEventListener("visibilitychange", onVis);
+    window.addEventListener("lab:steps-synced", onVis);
     window.addEventListener("focus", onVis);
-    return () => { alive = false; document.removeEventListener("visibilitychange", onVis); window.removeEventListener("focus", onVis); };
+    return () => { alive = false; document.removeEventListener("visibilitychange", onVis); window.removeEventListener("focus", onVis); window.removeEventListener("lab:steps-synced", onVis); };
   }, [user.id, sinceDays]);
   const dismiss = () => { localStorage.setItem(`lt-allin-${yStr}`, "1"); setCelebrate(null); };
   return { mine, all, nameOf, board, celebrate, dismiss, yStr, myId: user.id, lastSync, reload: () => reloadRef.current() };
@@ -6145,7 +6175,7 @@ function StepBlock({ n, title, children }) {
 }
 
 function HealthDashboard({ user, data, setData, openSteps }) {
-  const steps = useOwnSteps(user, 14);
+  const steps = useOwnSteps(user, 370);
   const dates = Object.keys(steps).sort();
   const latest = dates.at(-1);
   const week = dates.filter(day=>day>=dAdd(todayStr(),-6) && day<=todayStr());
@@ -6163,6 +6193,9 @@ function HealthDashboard({ user, data, setData, openSteps }) {
     </div>
     <HealthSourceCard user={user} data={data} setData={setData} />
     <button className="btn-primary" style={{width:"100%",marginTop:12}} onClick={openSteps}>View Steps history</button>
+    {dates.length > 0 && <div style={{marginTop:14}}>
+      <StepRingChart map={steps} goal={data.profile?.stepGoal || 10000} provider={data.profile?.healthStepProvider} />
+    </div>}
   </div>;
 }
 
@@ -6213,10 +6246,15 @@ function GoogleHealthCard({ user }) {
   };
   useEffect(()=>{ refresh(); }, [user.id]);
   useEffect(()=>{
+    const synced = event => setStatus(s=>({...s,lastSync:event.detail?.lastSync || s.lastSync}));
+    window.addEventListener("lab:steps-synced",synced);
+    return ()=>window.removeEventListener("lab:steps-synced",synced);
+  }, []);
+  useEffect(()=>{
     const p = new URLSearchParams(location.search);
     const result = p.get("google_health");
     if (!result) return;
-    setMsg(result === "connected" ? "Google/Fitbit connected securely. Syncing your steps…" : decodeURIComponent(p.get("message") || "Google connection failed."));
+    setMsg(result === "connected" ? "Google/Fitbit connected securely. Syncing your steps…" : (p.get("message") || "Google connection failed."));
     p.delete("google_health"); p.delete("message");
     history.replaceState(null,"",`${location.pathname}${p.toString()?`?${p.toString()}`:""}${location.hash}`);
     if (result === "connected") syncGoogleHealthSteps().then(()=>{ setMsg("Google/Fitbit steps are up to date."); refresh(); }).catch(e=>setMsg(e?.message||"Connected, but the first sync failed."));
@@ -6240,7 +6278,7 @@ function GoogleHealthCard({ user }) {
   };
   return <div style={{...sCard,marginBottom:0}}>
     <div style={{fontSize:14,fontWeight:800,color:T.ink,marginBottom:3}}>Google Health · Fitbit & Pixel Watch</div>
-    <div style={{fontSize:12,color:T.sub,lineHeight:1.55,marginBottom:10}}>Imports up to 14 recent days of step totals on connection and when you tap Sync now. Sync your tracker to Fitbit first. There is no scheduled background import.</div>
+    <div style={{fontSize:12,color:T.sub,lineHeight:1.55,marginBottom:10}}>Refreshes when you open The Lab or return to it with older data, and checks every 15 minutes while the app is visible. Imports up to 14 recent days already uploaded to Google Health. Use Sync now for an immediate refresh.</div>
     {status.loading ? <div style={{fontSize:12,color:T.sub}}>Checking connection…</div> : status.connected ? <>
       <div style={{padding:"10px 11px",borderRadius:10,background:"rgba(var(--accent-rgb),.10)",border:`1px solid ${T.green}`,fontSize:12,color:T.sub,marginBottom:10}}>
         <b style={{color:T.ink}}>Connected ✓</b>{status.lastSync ? ` · Last sync ${new Date(status.lastSync).toLocaleString()}` : " · Ready for first sync"}

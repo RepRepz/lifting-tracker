@@ -156,10 +156,15 @@ export async function getGoogleHealthStatus() {
 }
 
 /** Imports reconciled daily Fitbit/Pixel Watch steps for the most recent 14 days. */
-export async function syncGoogleHealthSteps() {
-  const result = await googleHealthAction("sync");
-  if (typeof window !== "undefined") window.dispatchEvent(new Event("lab:steps-synced"));
-  return result;
+let googleHealthSyncInFlight;
+export function syncGoogleHealthSteps() {
+  if (!googleHealthSyncInFlight) {
+    googleHealthSyncInFlight = googleHealthAction("sync").then(result => {
+      if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("lab:steps-synced", { detail: result }));
+      return result;
+    }).finally(() => { googleHealthSyncInFlight = null; });
+  }
+  return googleHealthSyncInFlight;
 }
 
 export async function disconnectGoogleHealth() {
