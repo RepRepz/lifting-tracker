@@ -6210,6 +6210,8 @@ function FitbitHeartCard({ user }) {
   const [checked,setChecked] = useState(false);
   const [connected,setConnected] = useState(false);
   const [busy,setBusy] = useState(false);
+  const [range,setRange] = useState(7);
+  const [selected,setSelected] = useState("");
   useEffect(()=>{
     let active=true;
     const load=async()=>{
@@ -6230,25 +6232,47 @@ function FitbitHeartCard({ user }) {
     window.addEventListener("lab:steps-synced",load);
     return ()=>{active=false;window.removeEventListener("lab:steps-synced",load);};
   },[user.id]);
-  const points=heart?.points||[], last=points.at(-1);
-  const max=Math.max(...points.map(p=>p.bpm),1), min=Math.min(...points.map(p=>p.bpm),max);
+  const points=heart?.points||[];
+  const end=todayStr();
+  const days=Array.from({length:range},(_,i)=>dAdd(end,i-range+1));
+  const byDay=new Map(points.map(p=>[p.day,p]));
+  const visible=days.map(day=>byDay.get(day)).filter(Boolean);
+  const current=visible.find(p=>p.day===selected)||visible.at(-1);
+  const low=Math.floor((Math.min(...visible.map(p=>p.bpm),100)-5)/10)*10;
+  const high=Math.ceil((Math.max(...visible.map(p=>p.bpm),low+15)+5)/10)*10;
+  const x=i=>40+i*280/(range-1), y=bpm=>110-(bpm-low)*94/(high-low);
   return <section style={{...sCard,marginBottom:12}}>
     <div style={{fontSize:14,fontWeight:800,color:T.ink}}>♥ Heart rate</div>
     <p style={{fontSize:12,color:T.sub}}>Daily average from recorded Fitbit readings, not resting or live BPM.</p>
     {!checked && <p role="status" style={{color:T.sub,fontSize:12}}>Checking Fitbit connection…</p>}
     {checked && !available && !message && <p style={{color:T.sub,fontSize:12}}>{connected ? "Heart-rate import is not enabled on the server yet." : "Connect Google / Fitbit under Manage health connection to get started."}</p>}
-    {last && <>
-      <div style={{fontSize:24,color:T.green,fontWeight:800}}>{last.bpm} BPM</div>
-      <div style={{fontSize:12,color:T.sub}}>{fmtDate(last.day)} · latest recorded day</div>
-      <div aria-label="Daily average heart rate for the last 14 days" style={{display:"grid",gridTemplateColumns:"repeat(14,minmax(0,1fr))",alignItems:"end",gap:4,height:70,marginTop:10}}>
-        {Array.from({length:14},(_,i)=>{
-          const day=dAdd(last.day,i-13), point=points.find(p=>p.day===day);
-          return <div key={day} title={point?`${fmtDate(day)} · ${point.bpm} BPM`:`${fmtDate(day)} · no data`}
-            style={{height:point?`${28+72*(point.bpm-min)/Math.max(1,max-min)}%`:"2px",borderRadius:4,background:point?T.green:T.line}} />;
-        })}
+    {points.length>0 && <>
+      <div className="seg" style={{display:"inline-flex",marginBottom:10}}>
+        {[7,14].map(n=><button key={n} className={"seg-btn"+(n===range?" on":"")} aria-pressed={n===range} onClick={()=>{setRange(n);setSelected("");}}>{n} days</button>)}
       </div>
+      {current ? <>
+        <div style={{fontSize:28,color:T.green,fontWeight:800}}>{current.bpm} <span style={{fontSize:14}}>BPM</span></div>
+        <div aria-live="polite" style={{fontSize:12,color:T.sub}}>{fmtDate(current.day)} · daily average</div>
+        <svg viewBox="0 0 340 138" role="img" aria-label="Daily average heart rate in beats per minute" style={{display:"block",width:"100%",marginTop:8}}>
+          {[low,(low+high)/2,high].map(v=><g key={v}><line x1="40" x2="320" y1={y(v)} y2={y(v)} stroke={T.line}/><text x="32" y={y(v)+3} textAnchor="end" fill={T.sub} fontSize="10">{v}</text></g>)}
+          {days.map((day,i)=>{
+            const p=byDay.get(day), prev=byDay.get(days[i-1]);
+            return p&&prev?<line key={day} x1={x(i-1)} y1={y(prev.bpm)} x2={x(i)} y2={y(p.bpm)} stroke={T.green} strokeWidth="2"/>:null;
+          })}
+          {days.map((day,i)=>{
+            const p=byDay.get(day);
+            return p?<g key={day} onClick={()=>setSelected(day)} style={{cursor:"pointer"}}><title>{fmtDate(day)} · {p.bpm} BPM</title><rect x={x(i)-10} y="10" width="20" height="108" fill="transparent"/><circle cx={x(i)} cy={y(p.bpm)} r={day===current.day?5:3} fill={T.green}/></g>:null;
+          })}
+          {[0,Math.floor((range-1)/2),range-1].map(i=><text key={i} x={x(i)} y="130" textAnchor="middle" fill={T.sub} fontSize="10">{fmtDate(days[i])}</text>)}
+        </svg>
+        <label style={{color:T.sub,fontSize:12}}>Recorded date
+          <select value={current.day} onChange={e=>setSelected(e.target.value)} style={{display:"block",marginTop:4}}>
+            {visible.map(p=><option key={p.day} value={p.day}>{fmtDate(p.day)} · {p.bpm} BPM</option>)}
+          </select>
+        </label>
+      </> : <p style={{fontSize:12,color:T.sub}}>No readings in this range.</p>}
     </>}
-    {heart?.permission===true&&!last&&!message&&<p style={{color:T.sub,fontSize:12}}>No heart-rate readings have synced yet.</p>}
+    {heart?.permission===true&&!points.length&&!message&&<p style={{color:T.sub,fontSize:12}}>No heart-rate readings have synced yet.</p>}
     {heart?.permission===false&&<button className="btn-primary" disabled={busy} onClick={async()=>{
       setBusy(true);
       try{location.assign(await startGoogleHealthConnect(true));}
