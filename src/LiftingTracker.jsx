@@ -1,6 +1,6 @@
 import { useState, useEffect, useLayoutEffect, useMemo, useRef, lazy, Suspense, Fragment, createContext, useContext } from "react";
 import { createPortal } from "react-dom";
-import { supabase, loadUserStateRecord, loadSharedUserStates, saveUserState, uploadExerciseMedia, getExerciseMediaUrl, deleteExerciseMedia, listMyGroups, listMembers, createGroup, joinGroup, leaveGroup, listReactions, addReaction, removeReaction, lastActiveFor, setGroupEmoji, resetInviteCode, getStepToken, rotateStepToken, disconnectSteps, stepsFor, lastStepSync, startGoogleHealthConnect, getGoogleHealthStatus, syncGoogleHealthSteps, disconnectGoogleHealth, createDuel, listDuels, deleteDuel, acceptDuel, declineDuel, forfeitDuel, requestDuelCancel, clearDuelCancel, setGroupRecordLifts, getMyProStatus, listProUserIds, generateBackupCodes, hasBackupCodes, requestAccountDeletion, clearLocalAccountData } from "./lib/storage.js";
+import { supabase, loadUserStateRecord, loadSharedUserStates, saveUserState, uploadExerciseMedia, getExerciseMediaUrl, deleteExerciseMedia, listMyGroups, listMembers, createGroup, joinGroup, leaveGroup, listReactions, addReaction, removeReaction, lastActiveFor, setGroupEmoji, resetInviteCode, getStepToken, rotateStepToken, disconnectSteps, stepsFor, lastStepSync, startGoogleHealthConnect, getGoogleHealthStatus, syncGoogleHealthSteps, importGoogleHealthHistory, getGoogleHealthHeart, disconnectGoogleHealth, createDuel, listDuels, deleteDuel, acceptDuel, declineDuel, forfeitDuel, requestDuelCancel, clearDuelCancel, setGroupRecordLifts, getMyProStatus, listProUserIds, generateBackupCodes, hasBackupCodes, requestAccountDeletion, clearLocalAccountData } from "./lib/storage.js";
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -6191,12 +6191,70 @@ function HealthDashboard({ user, data, setData, openSteps }) {
             <div style={{color:T.sub,fontSize:12}}>{label}</div>
           </div>)}
     </div>
-    <HealthSourceCard user={user} data={data} setData={setData} />
+    <details style={{marginBottom:12}}>
+      <summary style={{color:T.ink,fontWeight:800,cursor:"pointer",padding:"8px 0"}}>Manage health connection</summary>
+      <HealthSourceCard user={user} data={data} setData={setData} />
+    </details>
+    {data.profile?.healthStepProvider === "google" && <FitbitHeartCard user={user} />}
     <button className="btn-primary" style={{width:"100%",marginTop:12}} onClick={openSteps}>View Steps history</button>
     {dates.length > 0 && <div style={{marginTop:14}}>
       <StepRingChart map={steps} goal={data.profile?.stepGoal || 10000} provider={data.profile?.healthStepProvider} />
     </div>}
   </div>;
+}
+
+function FitbitHeartCard({ user }) {
+  const [heart,setHeart] = useState(null);
+  const [message,setMessage] = useState("");
+  const [available,setAvailable] = useState(false);
+  const [checked,setChecked] = useState(false);
+  const [connected,setConnected] = useState(false);
+  const [busy,setBusy] = useState(false);
+  useEffect(()=>{
+    let active=true;
+    const load=async()=>{
+      try {
+        const status=await getGoogleHealthStatus();
+        if(!active)return;
+        setConnected(Boolean(status.connected));
+        setAvailable(Boolean(status.connected&&status.heartAvailable));
+        if(status.connected&&status.heartAvailable){
+          const result=await getGoogleHealthHeart();
+          if(active){setHeart(result);setMessage("");}
+        }
+      } catch { if(active)setMessage("Couldn't refresh heart rate."); }
+      finally { if(active)setChecked(true); }
+    };
+    load();
+    window.addEventListener("lab:steps-synced",load);
+    return ()=>{active=false;window.removeEventListener("lab:steps-synced",load);};
+  },[user.id]);
+  const points=heart?.points||[], last=points.at(-1);
+  const max=Math.max(...points.map(p=>p.bpm),1), min=Math.min(...points.map(p=>p.bpm),max);
+  return <section style={{...sCard,marginBottom:12}}>
+    <div style={{fontSize:14,fontWeight:800,color:T.ink}}>♥ Heart rate</div>
+    <p style={{fontSize:12,color:T.sub}}>Daily average from recorded Fitbit readings, not resting or live BPM.</p>
+    {!checked && <p role="status" style={{color:T.sub,fontSize:12}}>Checking Fitbit connection…</p>}
+    {checked && !available && !message && <p style={{color:T.sub,fontSize:12}}>{connected ? "Heart-rate import is not enabled on the server yet." : "Connect Google / Fitbit under Manage health connection to get started."}</p>}
+    {last && <>
+      <div style={{fontSize:24,color:T.green,fontWeight:800}}>{last.bpm} BPM</div>
+      <div style={{fontSize:12,color:T.sub}}>{fmtDate(last.day)} · latest recorded day</div>
+      <div aria-label="Daily average heart rate for the last 14 days" style={{display:"grid",gridTemplateColumns:"repeat(14,minmax(0,1fr))",alignItems:"end",gap:4,height:70,marginTop:10}}>
+        {Array.from({length:14},(_,i)=>{
+          const day=dAdd(last.day,i-13), point=points.find(p=>p.day===day);
+          return <div key={day} title={point?`${fmtDate(day)} · ${point.bpm} BPM`:`${fmtDate(day)} · no data`}
+            style={{height:point?`${28+72*(point.bpm-min)/Math.max(1,max-min)}%`:"2px",borderRadius:4,background:point?T.green:T.line}} />;
+        })}
+      </div>
+    </>}
+    {heart?.permission===true&&!last&&!message&&<p style={{color:T.sub,fontSize:12}}>No heart-rate readings have synced yet.</p>}
+    {heart?.permission===false&&<button className="btn-primary" disabled={busy} onClick={async()=>{
+      setBusy(true);
+      try{location.assign(await startGoogleHealthConnect(true));}
+      catch{setMessage("Couldn't open Google permissions.");setBusy(false);}
+    }}>Enable heart rate</button>}
+    {message&&<p role="status" style={{color:T.danger,fontSize:12}}>{message}</p>}
+  </section>;
 }
 
 function HealthSourceCard({ user, data, setData }) {
@@ -6241,9 +6299,19 @@ function GoogleHealthCard({ user }) {
   const [status, setStatus] = useState({ loading:true, connected:false, configured:true });
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+  const [historyDays, setHistoryDays] = useState(30);
+  const importHistory = async () => {
+    setBusy(true); setMsg("");
+    try {
+      const result = await importGoogleHealthHistory(historyDays);
+      setMsg(result.days ? `Imported ${result.days} recorded days from the last ${historyDays} days.` : "No step data was available in that range.");
+      await refresh();
+    } catch { setMsg("Couldn't import Fitbit history. Try again after checking the connection."); }
+    finally { setBusy(false); }
+  };
   const refresh = async () => {
-    try { setStatus({ ...(await getGoogleHealthStatus()), loading:false }); }
-    catch (e) { setStatus({loading:false,connected:false,configured:false}); setMsg(e?.message || "Google Health is not configured yet."); }
+    try { setStatus({ ...(await getGoogleHealthStatus()), loading:false, unavailable:false }); }
+    catch { setStatus(s=>({...s,loading:false,unavailable:true})); }
   };
   useEffect(()=>{ refresh(); }, [user.id]);
   useEffect(()=>{
@@ -6280,11 +6348,22 @@ function GoogleHealthCard({ user }) {
   return <div style={{...sCard,marginBottom:0}}>
     <div style={{fontSize:14,fontWeight:800,color:T.ink,marginBottom:3}}>Google Health · Fitbit & Pixel Watch</div>
     <div style={{fontSize:12,color:T.sub,lineHeight:1.55,marginBottom:10}}>Refreshes when you open The Lab or return to it with older data, and checks every 5 minutes while the app is visible. Imports up to 14 recent days already uploaded to Google Health. Use Sync now for an immediate refresh.</div>
-    {status.loading ? <div style={{fontSize:12,color:T.sub}}>Checking connection…</div> : status.connected ? <>
+    {status.loading ? <div style={{fontSize:12,color:T.sub}}>Checking connection…</div> : status.unavailable ? <button onClick={refresh}>Couldn't check connection · Retry</button> : status.connected ? <>
       <div style={{padding:"10px 11px",borderRadius:10,background:"rgba(var(--accent-rgb),.10)",border:`1px solid ${T.green}`,fontSize:12,color:T.sub,marginBottom:10}}>
         <b style={{color:T.ink}}>Connected ✓</b>{status.lastSync ? ` · Last sync ${new Date(status.lastSync).toLocaleString()}` : " · Ready for first sync"}
       </div>
       <div style={{display:"flex",gap:8}}><button onClick={sync} disabled={busy} style={{flex:1,background:T.green,color:"#000",fontWeight:800,padding:11}}>{busy?"Syncing…":"Sync now"}</button><ConfirmX label="Disconnect" onConfirm={disconnect} /></div>
+      {status.historyRanges?.includes(90) && <div style={{paddingTop:12,marginTop:12,borderTop:`1px solid ${T.line}`}}>
+        <label style={{display:"block",color:T.ink,fontWeight:700,fontSize:13}}>
+          Import past steps
+          <select value={historyDays} onChange={e=>setHistoryDays(Number(e.target.value))} disabled={busy} style={{display:"block",marginTop:6}}>
+            <option value={30}>Last 30 days</option>
+            <option value={90}>Last 90 days</option>
+          </select>
+        </label>
+        <p style={{color:T.sub,fontSize:12,margin:"6px 0"}}>One-time import after connecting. Daily totals replace overlapping dates rather than adding duplicate steps.</p>
+        <button className="btn-primary" onClick={importHistory} disabled={busy}>Import step history</button>
+      </div>}
     </> : <button onClick={connect} disabled={busy || status.configured===false} style={{width:"100%",background:T.green,color:"#000",fontWeight:800,padding:11,opacity:(busy||status.configured===false) ? .5 : 1}}>{busy?"Opening Google…":"Connect Google / Fitbit"}</button>}
     {msg && <div style={{fontSize:11.5,color:msg.includes("failed")||msg.includes("Couldn't")?T.danger:T.green,fontWeight:700,lineHeight:1.45,marginTop:9}}>{msg}</div>}
     {status.configured===false && <div style={{fontSize:11.5,color:T.sub,lineHeight:1.5,marginTop:8}}>The app owner still needs to add the Google OAuth client ID and secret to Supabase. No public/shared API key can safely replace them.</div>}

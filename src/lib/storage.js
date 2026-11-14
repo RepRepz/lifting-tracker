@@ -139,16 +139,20 @@ export async function stepsFor(userIds, sinceDay) {
 
 /* ---------- Google Health (Fitbit / Pixel Watch) ---------- */
 
-async function googleHealthAction(action) {
-  const { data, error } = await supabase.functions.invoke("google-health", { body: { action } });
+async function googleHealthAction(action, fields = {}) {
+  const { data, error } = await supabase.functions.invoke("google-health", { body: { action, ...fields } });
   if (error) throw error;
   if (data?.error) throw new Error(data.error);
   return data;
 }
 
 /** Returns an OAuth URL. Tokens and the OAuth client secret never enter the browser. */
-export async function startGoogleHealthConnect() {
-  return (await googleHealthAction("start")).url;
+export async function startGoogleHealthConnect(heart = false) {
+  return (await googleHealthAction("start", { heart })).url;
+}
+
+export async function getGoogleHealthHeart() {
+  return googleHealthAction("heart");
 }
 
 export async function getGoogleHealthStatus() {
@@ -157,6 +161,13 @@ export async function getGoogleHealthStatus() {
 
 /** Imports reconciled daily Fitbit/Pixel Watch steps for the most recent 14 days. */
 let googleHealthSyncInFlight;
+export async function importGoogleHealthHistory(historyDays) {
+  if (![30, 90].includes(historyDays)) throw new Error("Choose 30 or 90 days.");
+  if (googleHealthSyncInFlight) await googleHealthSyncInFlight.catch(() => {});
+  const result = await googleHealthAction("sync", { historyDays });
+  window.dispatchEvent(new CustomEvent("lab:steps-synced", { detail: result }));
+  return result;
+}
 export function syncGoogleHealthSteps() {
   if (!googleHealthSyncInFlight) {
     googleHealthSyncInFlight = googleHealthAction("sync").then(result => {
