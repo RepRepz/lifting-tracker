@@ -1481,12 +1481,7 @@ export default function LiftingTracker({ user }) {
           {tab==="body" && liftingOn && <BodyTab data={data} setData={setData} hunit={hunit} />}
           {tab==="cardio" && liftingOn && <CardioTab data={data} setData={setData} latestBW={latestBW} user={user} stepsOn={stepsEnabled} />}
           {tab==="steps" && liftingOn && stepsEnabled && <StepsTab user={user} data={data} setData={setData} />}
-          {tab==="health" && liftingOn && stepsEnabled && <div className="card">
-            <div className="h" style={{color:T.ink,fontSize:20,marginBottom:5}}>⌚ Health</div>
-            <div style={{color:T.sub,fontSize:13,marginBottom:12}}>Connect a device to import daily totals into Steps.</div>
-            <HealthSourceCard user={user} data={data} setData={setData} />
-            <button className="btn-primary" style={{width:"100%",marginTop:12}} onClick={()=>setTab("steps")}>View Steps</button>
-          </div>}
+          {tab==="health" && liftingOn && stepsEnabled && <HealthDashboard user={user} data={data} setData={setData} openSteps={()=>setTab("steps")} />}
           {tab==="ex" && liftingOn && <ExercisesTab data={data} setData={setData} user={user} />}
           {tab==="macros" && nutritionOn && <Suspense fallback={<ChartFallback h={520} />}><MacroTab data={data} setData={setData} streaksOn={streaksOn} waterOn={waterOn} /></Suspense>}
         </div>
@@ -4466,8 +4461,8 @@ function useOwnSteps(user, sinceDays, enabled=true) {
     const uid=user?.id;
     if(!enabled||!uid){setMine({});return ()=>{alive=false;};}
     const load=()=>stepsFor([uid],dAdd(todayStr(),-sinceDays)).then(s=>{if(alive)setMine(s[uid]||{});}).catch(()=>{});
-    load(); window.addEventListener("focus",load);
-    return ()=>{alive=false;window.removeEventListener("focus",load);};
+    load(); window.addEventListener("focus",load); window.addEventListener("lab:steps-synced",load);
+    return ()=>{alive=false;window.removeEventListener("focus",load);window.removeEventListener("lab:steps-synced",load);};
   },[user?.id,sinceDays,enabled]);
   return mine;
 }
@@ -6149,6 +6144,28 @@ function StepBlock({ n, title, children }) {
   );
 }
 
+function HealthDashboard({ user, data, setData, openSteps }) {
+  const steps = useOwnSteps(user, 14);
+  const dates = Object.keys(steps).sort();
+  const latest = dates.at(-1);
+  const week = dates.filter(day=>day>=dAdd(todayStr(),-6) && day<=todayStr());
+  const average = week.length ? Math.round(week.reduce((sum,day)=>sum+steps[day],0)/week.length) : null;
+  return <div className="card">
+    <div className="h" style={{color:T.ink,fontSize:20,marginBottom:5}}>⌚ Health dashboard</div>
+    <p style={{color:T.sub,fontSize:13,margin:"0 0 12px"}}>Your device activity at a glance. Steps are the only metric imported right now.</p>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:8,marginBottom:12}}>
+      {[[latest ? steps[latest].toLocaleString() : "—",latest ? `Latest steps · ${fmtDate(latest)}` : "Latest steps"],
+        [average?.toLocaleString() ?? "—",`7-day daily average · ${week.length}/7 days recorded`]].map(([value,label])=>
+          <div key={label} style={{...sCard,marginBottom:0}}>
+            <div style={{color:T.green,fontSize:22,fontWeight:800}}>{value}</div>
+            <div style={{color:T.sub,fontSize:12}}>{label}</div>
+          </div>)}
+    </div>
+    <HealthSourceCard user={user} data={data} setData={setData} />
+    <button className="btn-primary" style={{width:"100%",marginTop:12}} onClick={openSteps}>View Steps history</button>
+  </div>;
+}
+
 function HealthSourceCard({ user, data, setData }) {
   const provider = data.profile?.healthStepProvider || "apple";
   const [switching, setSwitching] = useState(false);
@@ -6223,7 +6240,7 @@ function GoogleHealthCard({ user }) {
   };
   return <div style={{...sCard,marginBottom:0}}>
     <div style={{fontSize:14,fontWeight:800,color:T.ink,marginBottom:3}}>Google Health · Fitbit & Pixel Watch</div>
-    <div style={{fontSize:12,color:T.sub,lineHeight:1.55,marginBottom:10}}>Privately imports your reconciled daily steps from the Google account linked to your Fitbit app. The Lab never puts Google tokens in this browser.</div>
+    <div style={{fontSize:12,color:T.sub,lineHeight:1.55,marginBottom:10}}>Imports up to 14 recent days of step totals on connection and when you tap Sync now. Sync your tracker to Fitbit first. There is no scheduled background import.</div>
     {status.loading ? <div style={{fontSize:12,color:T.sub}}>Checking connection…</div> : status.connected ? <>
       <div style={{padding:"10px 11px",borderRadius:10,background:"rgba(var(--accent-rgb),.10)",border:`1px solid ${T.green}`,fontSize:12,color:T.sub,marginBottom:10}}>
         <b style={{color:T.ink}}>Connected ✓</b>{status.lastSync ? ` · Last sync ${new Date(status.lastSync).toLocaleString()}` : " · Ready for first sync"}
