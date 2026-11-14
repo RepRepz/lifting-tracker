@@ -927,7 +927,7 @@ export default function LiftingTracker({ user }) {
   const autoFitbit = isPro && data.profile?.healthStepProvider === "google";
   useEffect(() => {
     if (!user?.id || !autoFitbit) return;
-    const interval = 15 * 60_000;
+    const interval = 5 * 60_000;
     let stopped = false, busy = false, lastAttempt = 0;
     const refresh = async () => {
       if (stopped || busy || document.visibilityState !== "visible" || !navigator.onLine || Date.now() - lastAttempt < 60_000) return;
@@ -6227,6 +6227,7 @@ function HealthSourceCard({ user, data, setData }) {
       <div style={{fontSize:12,color:T.sub,lineHeight:1.5,marginBottom:10}}>Choose exactly one. Switching revokes the other connection but keeps steps already imported.</div>
       <div className="seg" style={{display:"flex",borderRadius:12}}>
         {[["apple"," Apple Health"],["google","Google / Fitbit"]].map(([id,label])=><button key={id}
+          aria-pressed={provider===id}
           onClick={()=>choose(id)} disabled={switching} className={"seg-btn"+(provider===id?" on":"")}
           style={{flex:1,padding:"11px 6px",borderRadius:9,fontSize:13,opacity:switching ? .65 : 1}}>{label}</button>)}
       </div>
@@ -6278,7 +6279,7 @@ function GoogleHealthCard({ user }) {
   };
   return <div style={{...sCard,marginBottom:0}}>
     <div style={{fontSize:14,fontWeight:800,color:T.ink,marginBottom:3}}>Google Health · Fitbit & Pixel Watch</div>
-    <div style={{fontSize:12,color:T.sub,lineHeight:1.55,marginBottom:10}}>Refreshes when you open The Lab or return to it with older data, and checks every 15 minutes while the app is visible. Imports up to 14 recent days already uploaded to Google Health. Use Sync now for an immediate refresh.</div>
+    <div style={{fontSize:12,color:T.sub,lineHeight:1.55,marginBottom:10}}>Refreshes when you open The Lab or return to it with older data, and checks every 5 minutes while the app is visible. Imports up to 14 recent days already uploaded to Google Health. Use Sync now for an immediate refresh.</div>
     {status.loading ? <div style={{fontSize:12,color:T.sub}}>Checking connection…</div> : status.connected ? <>
       <div style={{padding:"10px 11px",borderRadius:10,background:"rgba(var(--accent-rgb),.10)",border:`1px solid ${T.green}`,fontSize:12,color:T.sub,marginBottom:10}}>
         <b style={{color:T.ink}}>Connected ✓</b>{status.lastSync ? ` · Last sync ${new Date(status.lastSync).toLocaleString()}` : " · Ready for first sync"}
