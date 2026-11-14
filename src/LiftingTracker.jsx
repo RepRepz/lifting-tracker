@@ -6176,13 +6176,16 @@ function StepBlock({ n, title, children }) {
 
 function HealthDashboard({ user, data, setData, openSteps }) {
   const steps = useOwnSteps(user, 370);
+  const [heartView,setHeartView] = useState(false);
   const dates = Object.keys(steps).sort();
   const latest = dates.at(-1);
   const week = dates.filter(day=>day>=dAdd(todayStr(),-6) && day<=todayStr());
   const average = week.length ? Math.round(week.reduce((sum,day)=>sum+steps[day],0)/week.length) : null;
+  if(heartView && data.profile?.healthStepProvider==="google")return <FitbitHeartCard user={user} onBack={()=>setHeartView(false)} />;
   return <div className="card">
     <div className="h" style={{color:T.ink,fontSize:20,marginBottom:5}}>⌚ Health dashboard</div>
-    <p style={{color:T.sub,fontSize:13,margin:"0 0 12px"}}>Your device activity at a glance. Steps are the only metric imported right now.</p>
+    <p style={{color:T.sub,fontSize:13,margin:"0 0 12px"}}>Your device activity at a glance.</p>
+    {data.profile?.healthStepProvider === "google" && <button className="btn-primary" style={{width:"100%",marginBottom:12}} onClick={()=>setHeartView(true)}>♥ Open heart-rate dashboard</button>}
     <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:8,marginBottom:12}}>
       {[[latest ? steps[latest].toLocaleString() : "—",latest ? `Latest steps · ${fmtDate(latest)}` : "Latest steps"],
         [average?.toLocaleString() ?? "—",`7-day daily average · ${week.length}/7 days recorded`]].map(([value,label])=>
@@ -6195,7 +6198,6 @@ function HealthDashboard({ user, data, setData, openSteps }) {
       <summary style={{color:T.ink,fontWeight:800,cursor:"pointer",padding:"8px 0"}}>Manage health connection</summary>
       <HealthSourceCard user={user} data={data} setData={setData} />
     </details>
-    {data.profile?.healthStepProvider === "google" && <FitbitHeartCard user={user} />}
     <button className="btn-primary" style={{width:"100%",marginTop:12}} onClick={openSteps}>View Steps history</button>
     {dates.length > 0 && <div style={{marginTop:14}}>
       <StepRingChart map={steps} goal={data.profile?.stepGoal || 10000} provider={data.profile?.healthStepProvider} />
@@ -6203,7 +6205,7 @@ function HealthDashboard({ user, data, setData, openSteps }) {
   </div>;
 }
 
-function FitbitHeartCard({ user }) {
+function FitbitHeartCard({ user, onBack }) {
   const [heart,setHeart] = useState(null);
   const [message,setMessage] = useState("");
   const [available,setAvailable] = useState(false);
@@ -6212,6 +6214,9 @@ function FitbitHeartCard({ user }) {
   const [busy,setBusy] = useState(false);
   const [range,setRange] = useState(7);
   const [selected,setSelected] = useState("");
+  const [historyEnabled,setHistoryEnabled] = useState(false);
+  const [history,setHistory] = useState(null);
+  const [progress,setProgress] = useState("");
   useEffect(()=>{
     let active=true;
     const load=async()=>{
@@ -6219,6 +6224,7 @@ function FitbitHeartCard({ user }) {
         const status=await getGoogleHealthStatus();
         if(!active)return;
         setConnected(Boolean(status.connected));
+        setHistoryEnabled(status.heartHistory===true);
         setAvailable(Boolean(status.configured&&status.heartAvailable));
         if(!status.connected&&status.configured&&status.heartAvailable)setHeart({permission:false});
         if(status.connected&&status.heartAvailable){
@@ -6232,47 +6238,74 @@ function FitbitHeartCard({ user }) {
     window.addEventListener("lab:steps-synced",load);
     return ()=>{active=false;window.removeEventListener("lab:steps-synced",load);};
   },[user.id]);
-  const points=heart?.points||[];
+  useEffect(()=>{
+    if(range<=14 || !historyEnabled || heart?.permission!==true)return;
+    let active=true;
+    const load=async()=>{
+      setHistory(null);setMessage("");
+      const found=new Map();
+      try {
+        for(let offset=0;offset<range;offset+=14){
+          if(!active)return;
+          setProgress(`Loading history · ${Math.min(offset,range)} of ${range} days checked`);
+          const result=await getGoogleHealthHeart(offset);
+          if(!result.permission)throw Error("Heart-rate permission needs to be renewed.");
+          for(const p of result.points||[])found.set(p.day,p);
+        }
+        if(active)setHistory([...found.values()]);
+      } catch {if(active)setMessage("Couldn't load the full range. Pick a shorter range or try again.");}
+      finally {if(active)setProgress("");}
+    };
+    load();
+    return ()=>{active=false;};
+  },[range,historyEnabled,heart?.permission,user.id]);
+  const points=range>14 ? history||[] : heart?.points||[];
   const end=todayStr();
   const days=Array.from({length:range},(_,i)=>dAdd(end,i-range+1));
-  const byDay=new Map(points.map(p=>[p.day,p]));
-  const visible=days.map(day=>byDay.get(day)).filter(Boolean);
+  const visible=points.filter(p=>p.day>=days[0]&&p.day<=end).sort((a,b)=>a.day.localeCompare(b.day));
+  const periodAverage=visible.length?Math.round(visible.reduce((sum,p)=>sum+p.bpm,0)/visible.length):null;
+  const buckets=range===365?Array.from({length:12},(_,i)=>{
+    const samples=visible.filter(p=>p.day>=days[Math.floor(i*365/12)]&&p.day<=(days[Math.floor((i+1)*365/12)-1]||end));
+    return {day:days[Math.floor(i*365/12)],bpm:samples.length?Math.round(samples.reduce((sum,p)=>sum+p.bpm,0)/samples.length):null};
+  }):days.map(day=>({day,bpm:visible.find(p=>p.day===day)?.bpm??null}));
   const current=visible.find(p=>p.day===selected)||visible.at(-1);
   const low=Math.floor((Math.min(...visible.map(p=>p.bpm),100)-5)/10)*10;
   const high=Math.ceil((Math.max(...visible.map(p=>p.bpm),low+15)+5)/10)*10;
-  const x=i=>40+i*280/(range-1), y=bpm=>110-(bpm-low)*94/(high-low);
-  return <section style={{...sCard,marginBottom:12}}>
-    <div style={{fontSize:14,fontWeight:800,color:T.ink}}>♥ Heart rate</div>
-    <p style={{fontSize:12,color:T.sub}}>Daily average from recorded Fitbit readings, not resting or live BPM.</p>
+  const x=i=>40+i*280/(buckets.length-1), y=bpm=>150-(bpm-low)*134/(high-low);
+  return <section className="card" style={{padding:"clamp(14px, 3vw, 28px)"}}>
+    <button onClick={onBack} style={{background:T.input,color:T.ink,border:`1px solid ${T.line}`,borderRadius:12,padding:"8px 12px",marginBottom:16}}>← Health overview</button>
+    <h2 style={{fontSize:"clamp(24px, 5vw, 36px)",lineHeight:1.15,margin:"0 0 6px",color:T.ink}}>Heart rate</h2>
+    <p style={{fontSize:14,color:T.sub,margin:"0 0 16px"}}>Synced Fitbit readings · not resting or live BPM</p>
     {!checked && <p role="status" style={{color:T.sub,fontSize:12}}>Checking Fitbit connection…</p>}
     {checked && !available && !message && <p style={{color:T.sub,fontSize:12}}>{connected ? "Heart-rate import is not enabled on the server yet." : "Connect Google / Fitbit under Manage health connection to get started."}</p>}
-    {points.length>0 && <>
+    {heart?.permission===true && <>
       <div className="seg" style={{display:"inline-flex",marginBottom:10}}>
-        {[7,14].map(n=><button key={n} className={"seg-btn"+(n===range?" on":"")} aria-pressed={n===range} onClick={()=>{setRange(n);setSelected("");}}>{n} days</button>)}
+        {(historyEnabled?[[7,"Week"],[30,"Month"],[365,"Year"]]:[[7,"Week"],[14,"14 days"]]).map(([n,label])=><button key={n} className={"seg-btn"+(n===range?" on":"")} aria-pressed={n===range} onClick={()=>{setRange(n);setSelected("");setProgress("");setMessage("");}}>{label}</button>)}
       </div>
+      {progress && <p role="status" style={{color:T.sub}}>{progress}</p>}
       {current ? <>
-        <div style={{fontSize:28,color:T.green,fontWeight:800}}>{current.bpm} <span style={{fontSize:14}}>BPM</span></div>
-        <div aria-live="polite" style={{fontSize:12,color:T.sub}}>{fmtDate(current.day)} · daily average</div>
-        <svg viewBox="0 0 340 138" role="img" aria-label="Daily average heart rate in beats per minute" style={{display:"block",width:"100%",marginTop:8}}>
+        <div style={{fontSize:"clamp(36px, 8vw, 60px)",lineHeight:1.05,color:T.green,fontWeight:850,fontVariantNumeric:"tabular-nums"}}>{periodAverage} <span style={{fontSize:16}}>BPM</span></div>
+        <div style={{fontSize:14,color:T.sub,marginTop:5}}>{range===365?"Year":range===30?"30-day":`${range}-day`} average · {visible.length} of {range} days recorded</div>
+        <svg viewBox="0 0 340 182" role="img" aria-label={range===365?"Heart rate grouped into approximately monthly averages":"Daily average heart rate in beats per minute"} style={{display:"block",width:"100%",maxHeight:370,marginTop:14}}>
           {[low,(low+high)/2,high].map(v=><g key={v}><line x1="40" x2="320" y1={y(v)} y2={y(v)} stroke={T.line}/><text x="32" y={y(v)+3} textAnchor="end" fill={T.sub} fontSize="10">{v}</text></g>)}
-          {days.map((day,i)=>{
-            const p=byDay.get(day), prev=byDay.get(days[i-1]);
-            return p&&prev?<line key={day} x1={x(i-1)} y1={y(prev.bpm)} x2={x(i)} y2={y(p.bpm)} stroke={T.green} strokeWidth="2"/>:null;
+          {buckets.map((p,i)=>{
+            const prev=buckets[i-1];
+            return p.bpm!=null&&prev?.bpm!=null?<line key={p.day} x1={x(i-1)} y1={y(prev.bpm)} x2={x(i)} y2={y(p.bpm)} stroke={T.green} strokeWidth="2"/>:null;
           })}
-          {days.map((day,i)=>{
-            const p=byDay.get(day);
-            return p?<g key={day} onClick={()=>setSelected(day)} style={{cursor:"pointer"}}><title>{fmtDate(day)} · {p.bpm} BPM</title><rect x={x(i)-10} y="10" width="20" height="108" fill="transparent"/><circle cx={x(i)} cy={y(p.bpm)} r={day===current.day?5:3} fill={T.green}/></g>:null;
+          {buckets.map((p,i)=>{
+            const {day,bpm}=p;
+            return bpm!=null?<g key={day} onClick={range===365?undefined:()=>setSelected(day)} style={{cursor:range===365?"default":"pointer"}}><title>{fmtDate(day)} · {bpm} BPM</title><rect x={x(i)-5} y="10" width="10" height="148" fill="transparent"/><circle cx={x(i)} cy={y(bpm)} r={day===current.day?5:3} fill={T.green}/></g>:null;
           })}
-          {[0,Math.floor((range-1)/2),range-1].map(i=><text key={i} x={x(i)} y="130" textAnchor="middle" fill={T.sub} fontSize="10">{fmtDate(days[i])}</text>)}
+          {[0,Math.floor((buckets.length-1)/2),buckets.length-1].map(i=><text key={i} x={x(i)} y="174" textAnchor="middle" fill={T.sub} fontSize="10">{fmtDate(buckets[i].day)}</text>)}
         </svg>
-        <label style={{color:T.sub,fontSize:12}}>Recorded date
+        {range===365 && <p style={{color:T.sub,fontSize:13}}>Chart points group recorded days into 12 roughly monthly periods.</p>}
+        <label style={{color:T.sub,fontSize:13}}>Daily reading
           <select value={current.day} onChange={e=>setSelected(e.target.value)} style={{display:"block",marginTop:4}}>
             {visible.map(p=><option key={p.day} value={p.day}>{fmtDate(p.day)} · {p.bpm} BPM</option>)}
           </select>
         </label>
-      </> : <p style={{fontSize:12,color:T.sub}}>No readings in this range.</p>}
+      </> : !progress&&!message&&<p style={{fontSize:14,color:T.sub}}>No readings in this range.</p>}
     </>}
-    {heart?.permission===true&&!points.length&&!message&&<p style={{color:T.sub,fontSize:12}}>No heart-rate readings have synced yet.</p>}
     {heart?.permission===false&&<button className="btn-primary" disabled={busy} onClick={async()=>{
       setBusy(true);
       try{location.assign(await startGoogleHealthConnect(true));}
@@ -6372,6 +6405,10 @@ function GoogleHealthCard({ user }) {
   };
   return <div style={{...sCard,marginBottom:0}}>
     <div style={{fontSize:14,fontWeight:800,color:T.ink,marginBottom:3}}>Google Health · Fitbit & Pixel Watch</div>
+    {!status.loading && !status.connected && <details style={{marginBottom:10,color:T.sub,fontSize:13}}>
+      <summary style={{cursor:"pointer",fontWeight:700,color:T.ink}}>New to Fitbit sync?</summary>
+      <p style={{margin:"6px 0"}}>The Lab is in Google’s private testing program. Ask the app owner to add the Google email linked to your Fitbit before connecting. You’ll still approve access yourself in Google.</p>
+    </details>}
     <div style={{fontSize:12,color:T.sub,lineHeight:1.55,marginBottom:10}}>Refreshes when you open The Lab or return to it with older data, and checks every 5 minutes while the app is visible. Imports up to 14 recent days already uploaded to Google Health. Use Sync now for an immediate refresh.</div>
     {status.loading ? <div style={{fontSize:12,color:T.sub}}>Checking connection…</div> : status.unavailable ? <button onClick={refresh}>Couldn't check connection · Retry</button> : status.connected ? <>
       <div style={{padding:"10px 11px",borderRadius:10,background:"rgba(var(--accent-rgb),.10)",border:`1px solid ${T.green}`,fontSize:12,color:T.sub,marginBottom:10}}>

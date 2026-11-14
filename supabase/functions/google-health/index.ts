@@ -59,13 +59,13 @@ Deno.serve(async req => {
   if(!allowedOrigins.has(origin))return json("https://reprepz.github.io",{error:"Origin not allowed."},403);
   if(req.method==="OPTIONS")return json(origin,{ok:true}); if(req.method!=="POST")return json(origin,{error:"Method not allowed."},405);
   const auth=req.headers.get("Authorization")||""; const client=createClient(SUPABASE_URL,ANON_KEY,{global:{headers:{Authorization:auth}}}); const {data:{user}}=await client.auth.getUser(); if(!user)return json(origin,{error:"Sign in again first."},401);
-  const {action, historyDays, heart}=await req.json().catch(()=>({}));
+  const {action, historyDays, heart, offset}=await req.json().catch(()=>({}));
   const {data:pro}=await client.rpc("my_pro_active");
   if(pro!==true)return json(origin,{error:"Pro required."},403);
   if(action==="status") {
     const {data,error}=await admin.from("google_health_connections").select("connected_at,last_sync_at").eq("user_id",user.id).maybeSingle();
     if(error)return json(origin,{error:"Connection status temporarily unavailable."},503);
-    return json(origin,{configured:configured(),historyRanges:[30,90],heartAvailable:true,connected:!!data?.connected_at,lastSync:data?.last_sync_at||null});
+    return json(origin,{configured:configured(),historyRanges:[30,90],heartAvailable:true,heartHistory:true,connected:!!data?.connected_at,lastSync:data?.last_sync_at||null});
   }
   if(!configured())return json(origin,{error:"Google Health is not configured yet."},503);
   if(action==="start") { const nonce=b64u(crypto.getRandomValues(new Uint8Array(24))), exp=Date.now()+10*60_000; await admin.from("google_health_connections").upsert({user_id:user.id,state_nonce:nonce,state_expires_at:new Date(exp).toISOString(),updated_at:new Date().toISOString()}); const payload=b64u(enc.encode(JSON.stringify({uid:user.id,nonce,exp}))); const state=`${payload}.${await sign(payload)}`; const q=new URLSearchParams({client_id:CLIENT_ID,redirect_uri:REDIRECT_URI,response_type:"code",scope:heart===true?`${SCOPE} ${HEART_SCOPE}`:SCOPE,access_type:"offline",prompt:"consent",state}); return json(origin,{url:`https://accounts.google.com/o/oauth2/v2/auth?${q}`}); }
@@ -82,7 +82,8 @@ Deno.serve(async req => {
       if(!String(saved.scope||"").split(/\s+/).includes(HEART_SCOPE))return json(origin,{permission:false});
       const t=await freshTokens(row);
       const today=new Date().toISOString().slice(0,10);
-      const body={range:{start:{date:dayObject(addDays(today,-13)),time:{}},end:{date:dayObject(addDays(today,1)),time:{}}},windowSizeDays:1};
+      const back=Number.isInteger(offset)&&offset>=0&&offset<=364 ? offset : 0;
+      const body={range:{start:{date:dayObject(addDays(today,Math.max(-364,-13-back))),time:{}},end:{date:dayObject(addDays(today,1-back)),time:{}}},windowSizeDays:1};
       const r=await fetch("https://health.googleapis.com/v4/users/me/dataTypes/heart-rate/dataPoints:dailyRollUp",{method:"POST",headers:{Authorization:`Bearer ${t.access_token}`,"Content-Type":"application/json"},body:JSON.stringify(body)});
       if(!r.ok)return json(origin,{error:"Heart rate could not be refreshed."},502);
       const value=await r.json();

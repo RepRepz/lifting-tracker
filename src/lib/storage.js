@@ -151,8 +151,8 @@ export async function startGoogleHealthConnect(heart = false) {
   return (await googleHealthAction("start", { heart })).url;
 }
 
-export async function getGoogleHealthHeart() {
-  return googleHealthAction("heart");
+export async function getGoogleHealthHeart(offset = 0) {
+  return googleHealthAction("heart", { offset });
 }
 
 export async function getGoogleHealthStatus() {
