@@ -6217,7 +6217,8 @@ function FitbitHeartCard({ user }) {
         const status=await getGoogleHealthStatus();
         if(!active)return;
         setConnected(Boolean(status.connected));
-        setAvailable(Boolean(status.connected&&status.heartAvailable));
+        setAvailable(Boolean(status.configured&&status.heartAvailable));
+        if(!status.connected&&status.configured&&status.heartAvailable)setHeart({permission:false});
         if(status.connected&&status.heartAvailable){
           const result=await getGoogleHealthHeart();
           if(active){setHeart(result);setMessage("");}
@@ -6252,7 +6253,7 @@ function FitbitHeartCard({ user }) {
       setBusy(true);
       try{location.assign(await startGoogleHealthConnect(true));}
       catch{setMessage("Couldn't open Google permissions.");setBusy(false);}
-    }}>Enable heart rate</button>}
+    }}>{connected ? "Enable heart rate" : "Connect Fitbit with heart rate"}</button>}
     {message&&<p role="status" style={{color:T.danger,fontSize:12}}>{message}</p>}
   </section>;
 }
