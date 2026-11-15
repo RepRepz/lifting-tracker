@@ -6176,16 +6176,13 @@ function StepBlock({ n, title, children }) {
 
 function HealthDashboard({ user, data, setData, openSteps }) {
   const steps = useOwnSteps(user, 370);
-  const [heartView,setHeartView] = useState(false);
   const dates = Object.keys(steps).sort();
   const latest = dates.at(-1);
   const week = dates.filter(day=>day>=dAdd(todayStr(),-6) && day<=todayStr());
   const average = week.length ? Math.round(week.reduce((sum,day)=>sum+steps[day],0)/week.length) : null;
-  if(heartView && data.profile?.healthStepProvider==="google")return <FitbitHeartCard user={user} onBack={()=>setHeartView(false)} />;
   return <div className="card">
     <div className="h" style={{color:T.ink,fontSize:20,marginBottom:5}}>⌚ Health dashboard</div>
     <p style={{color:T.sub,fontSize:13,margin:"0 0 12px"}}>Your device activity at a glance.</p>
-    {data.profile?.healthStepProvider === "google" && <button className="btn-primary" style={{width:"100%",marginBottom:12}} onClick={()=>setHeartView(true)}>♥ Open heart-rate dashboard</button>}
     <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:8,marginBottom:12}}>
       {[[latest ? steps[latest].toLocaleString() : "—",latest ? `Latest steps · ${fmtDate(latest)}` : "Latest steps"],
         [average?.toLocaleString() ?? "—",`7-day daily average · ${week.length}/7 days recorded`]].map(([value,label])=>
@@ -6202,24 +6199,30 @@ function HealthDashboard({ user, data, setData, openSteps }) {
     {dates.length > 0 && <div style={{marginTop:14}}>
       <StepRingChart map={steps} goal={data.profile?.stepGoal || 10000} provider={data.profile?.healthStepProvider} />
     </div>}
+    {data.profile?.healthStepProvider === "google" && <FitbitHeartCard key={user.id} user={user} />}
   </div>;
 }
 
-function FitbitHeartCard({ user, onBack }) {
+// Keep fetched readings in memory only; persist chart preferences, not BPM values.
+const fitbitHeartWindows = new Map();
+function FitbitHeartCard({ user }) {
   const [heart,setHeart] = useState(null);
   const [message,setMessage] = useState("");
   const [available,setAvailable] = useState(false);
   const [checked,setChecked] = useState(false);
   const [connected,setConnected] = useState(false);
   const [busy,setBusy] = useState(false);
-  const [range,setRange] = useState(7);
-  const [selected,setSelected] = useState("");
+  const pref = `lt-heart-chart-${user.id}`;
+  const [range,setRange] = useState(()=>Number(localStorage.getItem(pref+"-range")) || 7);
+  const [selected,setSelected] = useState(()=>localStorage.getItem(pref+"-point") || "");
+  const [hovered,setHovered] = useState("");
+  useEffect(()=>{localStorage.setItem(pref+"-range",String(range));localStorage.setItem(pref+"-point",selected);},[pref,range,selected]);
   const [historyEnabled,setHistoryEnabled] = useState(false);
   const [history,setHistory] = useState(null);
   const [progress,setProgress] = useState("");
   useEffect(()=>{
     let active=true;
-    const load=async()=>{
+    const load=async(event)=>{
       try {
         const status=await getGoogleHealthStatus();
         if(!active)return;
@@ -6228,7 +6231,13 @@ function FitbitHeartCard({ user, onBack }) {
         setAvailable(Boolean(status.configured&&status.heartAvailable));
         if(!status.connected&&status.configured&&status.heartAvailable)setHeart({permission:false});
         if(status.connected&&status.heartAvailable){
-          const result=await getGoogleHealthHeart();
+          const key=`${user.id}:${todayStr()}:0`;
+          let result=fitbitHeartWindows.get(key);
+          if(!result || event?.type==="lab:steps-synced"){
+            result=await getGoogleHealthHeart();
+            if(result.permission)fitbitHeartWindows.set(key,result);
+            else fitbitHeartWindows.delete(key);
+          }
           if(active){setHeart(result);setMessage("");}
         }
       } catch { if(active)setMessage("Couldn't refresh heart rate."); }
@@ -6248,7 +6257,12 @@ function FitbitHeartCard({ user, onBack }) {
         for(let offset=0;offset<range;offset+=14){
           if(!active)return;
           setProgress(`Loading history · ${Math.min(offset,range)} of ${range} days checked`);
-          const result=await getGoogleHealthHeart(offset);
+          const key=`${user.id}:${todayStr()}:${offset}`;
+          let result=fitbitHeartWindows.get(key);
+          if(!result){
+            result=await getGoogleHealthHeart(offset);
+            if(result.permission)fitbitHeartWindows.set(key,result);
+          }
           if(!result.permission)throw Error("Heart-rate permission needs to be renewed.");
           for(const p of result.points||[])found.set(p.day,p);
         }
@@ -6269,39 +6283,44 @@ function FitbitHeartCard({ user, onBack }) {
     return {day:days[Math.floor(i*365/12)],bpm:samples.length?Math.round(samples.reduce((sum,p)=>sum+p.bpm,0)/samples.length):null};
   }):days.map(day=>({day,bpm:visible.find(p=>p.day===day)?.bpm??null}));
   const current=visible.find(p=>p.day===selected)||visible.at(-1);
+  const detail=buckets.find(p=>p.day===(hovered||selected)&&p.bpm!=null)||buckets.filter(p=>p.bpm!=null).at(-1);
+  const detailIndex=detail?buckets.indexOf(detail):-1;
   const low=Math.floor((Math.min(...visible.map(p=>p.bpm),100)-5)/10)*10;
   const high=Math.ceil((Math.max(...visible.map(p=>p.bpm),low+15)+5)/10)*10;
   const x=i=>40+i*280/(buckets.length-1), y=bpm=>150-(bpm-low)*134/(high-low);
-  return <section className="card" style={{padding:"clamp(14px, 3vw, 28px)"}}>
-    <button onClick={onBack} style={{background:T.input,color:T.ink,border:`1px solid ${T.line}`,borderRadius:12,padding:"8px 12px",marginBottom:16}}>← Health overview</button>
+  return <section className="card" style={{padding:"clamp(14px, 3vw, 28px)",marginTop:14}}>
     <h2 style={{fontSize:"clamp(24px, 5vw, 36px)",lineHeight:1.15,margin:"0 0 6px",color:T.ink}}>Heart rate</h2>
     <p style={{fontSize:14,color:T.sub,margin:"0 0 16px"}}>Synced Fitbit readings · not resting or live BPM</p>
     {!checked && <p role="status" style={{color:T.sub,fontSize:12}}>Checking Fitbit connection…</p>}
     {checked && !available && !message && <p style={{color:T.sub,fontSize:12}}>{connected ? "Heart-rate import is not enabled on the server yet." : "Connect Google / Fitbit under Manage health connection to get started."}</p>}
     {heart?.permission===true && <>
       <div className="seg" style={{display:"inline-flex",marginBottom:10}}>
-        {(historyEnabled?[[7,"Week"],[30,"Month"],[365,"Year"]]:[[7,"Week"],[14,"14 days"]]).map(([n,label])=><button key={n} className={"seg-btn"+(n===range?" on":"")} aria-pressed={n===range} onClick={()=>{setRange(n);setSelected("");setProgress("");setMessage("");}}>{label}</button>)}
+        {(historyEnabled?[[7,"Week"],[30,"Month"],[365,"Year"]]:[[7,"Week"],[14,"14 days"]]).map(([n,label])=><button key={n} className={"seg-btn"+(n===range?" on":"")} aria-pressed={n===range} onClick={()=>{setRange(n);setHovered("");setProgress("");setMessage("");}}>{label}</button>)}
       </div>
       {progress && <p role="status" style={{color:T.sub}}>{progress}</p>}
       {current ? <>
         <div style={{fontSize:"clamp(36px, 8vw, 60px)",lineHeight:1.05,color:T.green,fontWeight:850,fontVariantNumeric:"tabular-nums"}}>{periodAverage} <span style={{fontSize:16}}>BPM</span></div>
         <div style={{fontSize:14,color:T.sub,marginTop:5}}>{range===365?"Year":range===30?"30-day":`${range}-day`} average · {visible.length} of {range} days recorded</div>
-        <svg viewBox="0 0 340 182" role="img" aria-label={range===365?"Heart rate grouped into approximately monthly averages":"Daily average heart rate in beats per minute"} style={{display:"block",width:"100%",maxHeight:370,marginTop:14}}>
+        <div aria-live="polite" style={{minHeight:40,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",color:T.sub,fontSize:13,marginTop:12}}>
+          {detail&&<><strong style={{color:T.ink,fontSize:20}}>{detail.bpm} BPM</strong><span>{range===365?`Period starting ${fmtDate(detail.day)} · average`:`${fmtDate(detail.day)} · daily average`}</span></>}
+        </div>
+        <svg viewBox="0 0 340 182" role="img" aria-label={range===365?"Heart rate grouped into approximately monthly averages":"Daily average heart rate in beats per minute"} onPointerLeave={()=>setHovered("")} style={{display:"block",width:"100%",maxHeight:370,touchAction:"pan-y"}}>
           {[low,(low+high)/2,high].map(v=><g key={v}><line x1="40" x2="320" y1={y(v)} y2={y(v)} stroke={T.line}/><text x="32" y={y(v)+3} textAnchor="end" fill={T.sub} fontSize="10">{v}</text></g>)}
           {buckets.map((p,i)=>{
             const prev=buckets[i-1];
             return p.bpm!=null&&prev?.bpm!=null?<line key={p.day} x1={x(i-1)} y1={y(prev.bpm)} x2={x(i)} y2={y(p.bpm)} stroke={T.green} strokeWidth="2"/>:null;
           })}
+          {detailIndex>=0&&<line x1={x(detailIndex)} x2={x(detailIndex)} y1="16" y2="150" stroke={T.sub} strokeDasharray="3 4" pointerEvents="none"/>}
           {buckets.map((p,i)=>{
             const {day,bpm}=p;
-            return bpm!=null?<g key={day} onClick={range===365?undefined:()=>setSelected(day)} style={{cursor:range===365?"default":"pointer"}}><title>{fmtDate(day)} · {bpm} BPM</title><rect x={x(i)-5} y="10" width="10" height="148" fill="transparent"/><circle cx={x(i)} cy={y(bpm)} r={day===current.day?5:3} fill={T.green}/></g>:null;
+            return bpm!=null?<g key={day} onPointerEnter={e=>{if(e.pointerType==="mouse")setHovered(day);}} onClick={()=>{setHovered("");setSelected(day);}} style={{cursor:"pointer"}}><title>{fmtDate(day)} · {bpm} BPM</title><rect x={x(i)-140/(buckets.length-1)} y="10" width={280/(buckets.length-1)} height="148" fill="transparent"/><circle cx={x(i)} cy={y(bpm)} r={day===detail?.day?5:3} fill={T.green}/></g>:null;
           })}
           {[0,Math.floor((buckets.length-1)/2),buckets.length-1].map(i=><text key={i} x={x(i)} y="174" textAnchor="middle" fill={T.sub} fontSize="10">{fmtDate(buckets[i].day)}</text>)}
         </svg>
         {range===365 && <p style={{color:T.sub,fontSize:13}}>Chart points group recorded days into 12 roughly monthly periods.</p>}
-        <label style={{color:T.sub,fontSize:13}}>Daily reading
-          <select value={current.day} onChange={e=>setSelected(e.target.value)} style={{display:"block",marginTop:4}}>
-            {visible.map(p=><option key={p.day} value={p.day}>{fmtDate(p.day)} · {p.bpm} BPM</option>)}
+        <label style={{color:T.sub,fontSize:13}}>{range===365?"Recorded period":"Recorded date"}
+          <select value={detail?.day||""} onChange={e=>{setHovered("");setSelected(e.target.value);}} style={{display:"block",marginTop:4}}>
+            {buckets.filter(p=>p.bpm!=null).map(p=><option key={p.day} value={p.day}>{fmtDate(p.day)} · {p.bpm} BPM</option>)}
           </select>
         </label>
       </> : !progress&&!message&&<p style={{fontSize:14,color:T.sub}}>No readings in this range.</p>}
