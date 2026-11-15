@@ -6275,6 +6275,7 @@ function FitbitHeartCard({ user }) {
   return <section className="card" style={{padding:"clamp(14px, 3vw, 28px)",marginTop:14}}>
     <h2 style={{fontSize:"clamp(24px, 5vw, 36px)",lineHeight:1.15,margin:"0 0 6px",color:T.ink}}>Heart rate</h2>
     <p style={{fontSize:14,color:T.sub,margin:"0 0 16px"}}>Synced Fitbit readings · not resting or live BPM</p>
+    {heart?.permission===false&&<p style={{fontSize:13,color:T.sub,lineHeight:1.5}}>Enabling heart rate gives The Lab read-only access to Google Health measurements. The Lab reads daily BPM summaries and resting heart rate for this private dashboard; it doesn’t share them with your groups. You can keep using Fitbit steps without enabling heart rate.</p>}
     {!checked && <p role="status" style={{color:T.sub,fontSize:12}}>Checking Fitbit connection…</p>}
     {checked && !available && !message && <p style={{color:T.sub,fontSize:12}}>{connected ? "Heart-rate import is not enabled on the server yet." : "Connect Google / Fitbit under Manage health connection to get started."}</p>}
     {heart?.permission===true && <>
@@ -6422,6 +6423,7 @@ function GoogleHealthCard({ user }) {
   };
   return <div style={{...sCard,marginBottom:0}}>
     <div style={{fontSize:14,fontWeight:800,color:T.ink,marginBottom:3}}>Google Health · Fitbit & Pixel Watch</div>
+    {!status.loading&&!status.connected&&<p style={{fontSize:13,color:T.sub,lineHeight:1.5,margin:"6px 0 10px"}}>Connecting gives The Lab read-only activity access. The Lab imports daily step totals for your private Health and Steps views. Fitbit totals aren’t shared with your groups. Choose your Fitbit-linked account in Google; heart rate is optional.</p>}
     {!status.loading && !status.connected && <details style={{marginBottom:10,color:T.sub,fontSize:13}}>
       <summary style={{cursor:"pointer",fontWeight:700,color:T.ink}}>New to Fitbit sync?</summary>
       <p style={{margin:"6px 0"}}>The Lab is in Google’s private testing program. Ask the app owner to add the Google email linked to your Fitbit before connecting. You’ll still approve access yourself in Google.</p>
