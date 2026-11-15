@@ -1510,7 +1510,7 @@ export default function LiftingTracker({ user }) {
           {tab==="body" && liftingOn && <BodyTab data={data} setData={setData} hunit={hunit} />}
           {tab==="cardio" && liftingOn && <CardioTab data={data} setData={setData} latestBW={latestBW} user={user} stepsOn={stepsEnabled} />}
           {tab==="steps" && liftingOn && stepsEnabled && <StepsTab user={user} data={data} setData={setData} />}
-          {tab==="health" && liftingOn && stepsEnabled && <HealthDashboard user={user} data={data} setData={setData} openSteps={()=>setTab("steps")} />}
+          {tab==="health" && liftingOn && stepsEnabled && <HealthDashboard user={user} data={data} setData={setData} />}
           {tab==="ex" && liftingOn && <ExercisesTab data={data} setData={setData} user={user} />}
           {tab==="macros" && nutritionOn && <Suspense fallback={<ChartFallback h={520} />}><MacroTab data={data} setData={setData} streaksOn={streaksOn} waterOn={waterOn} /></Suspense>}
         </div>
@@ -4447,15 +4447,12 @@ function mergeSteps(autoMap, cardio) {
 }
 
 /* Build 1D/W/M/6M/Y/5Y bars from a day->count map. Pure — reused by the tab and popups. */
-function computeStepChart(m, range) {
+function computeStepChart(m, range, provider="apple") {
   const today = todayStr(); const yStr = dAdd(today,-1); let bars=[]; let every=1; const isAvg = !(range==="W"||range==="M"||range==="1D");
   if (range==="1D") {
-    // "Yesterday" — the last few finished days so yesterday has a little context, totals not averages
     every=1;
-    for (let i=4;i>=1;i--){ const d=dAdd(today,-i); const dt=new Date(d+"T00:00");
-      bars.push({ label: dt.toLocaleDateString("en-US",{weekday:"short"}),
-        full: d===yStr ? "Yesterday" : dt.toLocaleDateString("en-US",{weekday:"long", month:"short", day:"numeric"}),
-        day: d, value: m[d]||0, has: m[d]!=null, mark: d===yStr }); }
+    const d=provider==="google"?today:yStr, label=provider==="google"?"Today":"Yesterday";
+    bars.push({label,full:label,day:d,value:m[d]??0,has:m[d]!=null,mark:true});
   } else if (range==="W" || range==="M") {
     const n = range==="W"?7:30; every = range==="W"?1:5;
     for (let i=n-1;i>=0;i--){ const d=dAdd(today,-i); const dt=new Date(d+"T00:00");
@@ -4571,23 +4568,24 @@ function SyncNowButton({ block, small, provider="apple", onSynced }) {
 /* Reusable goal ring + Apple-Health-style ranged chart for a single person's step map.
    Powers both your own tab and the tap-to-view popup for any groupmate. */
 function StepRingChart({ map, goal, meta, provider="apple" }) {
-  const [range, setRange] = useState("M");
+  const [range, setRange] = useState("1D");
   const [sel, setSel] = useState(null);
   const plotRef = useRef(null);
   const hasManual = meta && Object.values(meta).some(v => v !== "auto");
   const automaticSource = provider === "google" ? "Google / Fitbit" : "Apple Health";
   const srcLabel = { manual:"✍️ manual entry", both:`${automaticSource} + manual`, auto:automaticSource };
   const m = map || {};
-  const yStr = dAdd(todayStr(), -1);
+  const stepDayLabel = provider==="google"?"Today":"Yesterday";
+  const yStr = dAdd(todayStr(), provider==="google"?0:-1);
   const yCount = m[yStr] || 0;
   const pct = Math.min(1, yCount/goal);
   const R=52, C=2*Math.PI*R;
   const hero = useMemo(()=>{ const seven=[]; for(let i=1;i<=7;i++){ const v=m[dAdd(todayStr(),-i)]; if(v!=null) seven.push(v); }
     const vals=Object.values(m); return { avg:stepAvg(seven), best:vals.length?Math.max(...vals):0 }; }, [map]);
-  const chart = useMemo(()=>computeStepChart(m, range), [map, range]);
+  const chart = computeStepChart(m, range, provider);
   const scrub = (x)=>{ const el=plotRef.current; if(!el) return; const r=el.getBoundingClientRect();
     const n=chart.bars.length; if(!n) return; const idx=Math.floor((x-r.left)/r.width*n); setSel(Math.max(0,Math.min(n-1,idx))); };
-  const rangeSub = { "1D":"Yesterday", W:"Past week", M:"Past 30 days", "6M":"Past 6 months", Y:"Past year", "5Y":"Past 5 years" };
+  const rangeSub = { "1D":stepDayLabel, W:"Past week", M:"Past 30 days", "6M":"Past 6 months", Y:"Past year", "5Y":"Past 5 years" };
   const goalK = goal % 1000 === 0 ? `${goal/1000}k` : goal.toLocaleString();
 
   const hit = yCount >= goal;
@@ -4603,12 +4601,12 @@ function StepRingChart({ map, goal, meta, provider="apple" }) {
               style={{transition:"stroke-dashoffset .8s cubic-bezier(.22,1,.36,1)", filter: hit ? "drop-shadow(0 0 6px color-mix(in srgb,var(--cal-cardio) 70%,transparent))" : "none"}} />
           </svg>
           <div style={{position:"absolute", inset:0, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center"}}>
-            <div style={{fontSize:23, fontWeight:900, color:T.ink, fontVariantNumeric:"tabular-nums", lineHeight:1}}>{yCount.toLocaleString()}</div>
+            <div style={{fontSize:23, fontWeight:900, color:T.ink, fontVariantNumeric:"tabular-nums", lineHeight:1}}>{m[yStr]==null?"—":yCount.toLocaleString()}</div>
             <div style={{fontSize:11, fontWeight:800, color: hit?"var(--cal-cardio)":T.sub, marginTop:3}}>{hit ? "✓ 100%" : `${Math.round(pct*100)}% of ${goalK}`}</div>
           </div>
         </div>
         <div style={{flex:1, minWidth:0}}>
-          <div className="eyebrow" style={{fontSize:10, color:T.sub, marginBottom:7}}>Yesterday</div>
+          <div className="eyebrow" style={{fontSize:10, color:T.sub, marginBottom:7}}>{stepDayLabel}</div>
           {/* clear, high-contrast goal status — no more squinting */}
           <div style={{display:"inline-flex", alignItems:"center", gap:7, padding:"6px 12px", borderRadius:99, marginBottom:13,
             background: hit ? "var(--cal-cardio)" : yCount>0 ? "color-mix(in srgb,var(--cal-cardio) 12%,transparent)" : T.input,
@@ -4630,23 +4628,23 @@ function StepRingChart({ map, goal, meta, provider="apple" }) {
     <div className="card">
       <div style={{display:"flex", background:T.input, borderRadius:10, padding:3, gap:2, marginBottom:14}}>
         {["1D","W","M","6M","Y","5Y"].map(r=>(
-          <button key={r} onClick={()=>{setRange(r); setSel(null);}} style={{flex:1, padding:"7px 0", borderRadius:8, fontSize:12, fontWeight:800,
-            background: range===r?"var(--cal-cardio)":"none", color: range===r?"var(--cal-cardio-ink)":T.sub}}>{r}</button>
+          <button key={r} aria-pressed={range===r} onClick={()=>{setRange(r); setSel(null);}} style={{flex:r==="1D"?1.9:1, padding:"7px 0", borderRadius:8, fontSize:12, fontWeight:800,
+            background: range===r?"var(--cal-cardio)":"none", color: range===r?"var(--cal-cardio-ink)":T.sub}}>{r==="1D"?stepDayLabel:r}</button>
         ))}
       </div>
 
-      {sel!=null && chart.bars[sel] ? (<>
+      {(sel!=null || range==="1D") && chart.bars[sel??0] ? (()=>{const idx=sel??0; return (<>
         <div style={{fontSize:11, fontWeight:800, color:"var(--cal-cardio)", textTransform:"uppercase", letterSpacing:.6}}>
-          {chart.bars[sel].full}
-          {(() => { const s = meta && chart.bars[sel].day && chart.bars[sel].has ? meta[chart.bars[sel].day] : null;
+          {chart.bars[idx].full}
+          {(() => { const s = meta && chart.bars[idx].day && chart.bars[idx].has ? meta[chart.bars[idx].day] : null;
             return s ? <span style={{color: s==="manual"?T.down:T.sub, marginLeft:6}}>· {srcLabel[s]}</span> : null; })()}
         </div>
         <div style={{display:"flex", alignItems:"baseline", gap:6}}>
-          <span style={{fontSize:27, fontWeight:800, color:T.ink, fontVariantNumeric:"tabular-nums"}}>{chart.bars[sel].has ? chart.bars[sel].value.toLocaleString() : "—"}</span>
-          <span style={{fontSize:13, color:T.sub}}>{chart.bars[sel].has ? (chart.isAvg ? "steps/day" : "steps") : "no data"}</span>
+          <span style={{fontSize:27, fontWeight:800, color:T.ink, fontVariantNumeric:"tabular-nums"}}>{chart.bars[idx].has ? chart.bars[idx].value.toLocaleString() : "—"}</span>
+          <span style={{fontSize:13, color:T.sub}}>{chart.bars[idx].has ? (chart.isAvg ? "steps/day" : "steps") : "no data"}</span>
         </div>
-        <div style={{fontSize:12, color:T.sub, marginBottom:14}}>{rangeSub[range]}</div>
-      </>) : (<>
+        {range!=="1D"&&<div style={{fontSize:12, color:T.sub, marginBottom:14}}>{rangeSub[range]}</div>}
+      </>);})() : (<>
         <div style={{fontSize:11, fontWeight:700, color:T.sub, textTransform:"uppercase", letterSpacing:.6}}>Daily average</div>
         <div style={{display:"flex", alignItems:"baseline", gap:6}}>
           <span style={{fontSize:27, fontWeight:800, color:T.ink, fontVariantNumeric:"tabular-nums"}}>{chart.avg.toLocaleString()}</span>
@@ -4655,7 +4653,7 @@ function StepRingChart({ map, goal, meta, provider="apple" }) {
         <div style={{fontSize:12, color:T.sub, marginBottom:14}}>{rangeSub[range]} · <span style={{color:"var(--cal-cardio)"}}>tap a bar for details</span></div>
       </>)}
 
-      <div ref={plotRef}
+      {range!=="1D"&&<div ref={plotRef}
         onPointerDown={e=>scrub(e.clientX)} onPointerMove={e=>{ if (e.pointerType==="mouse" || e.buttons) scrub(e.clientX); }}
         onMouseLeave={()=>setSel(null)}
         style={{display:"flex", alignItems:"flex-end", gap: range==="W"?8:3, height:130, touchAction:"pan-y", cursor:"crosshair"}}>
@@ -4668,12 +4666,12 @@ function StepRingChart({ map, goal, meta, provider="apple" }) {
             <span style={{fontSize:9, color: (sel===i||b.mark)?"var(--cal-cardio)":T.sub, fontWeight: (sel===i||b.mark)?800:400, whiteSpace:"nowrap"}}>{(i%chart.every===0 || i===chart.bars.length-1) ? b.label : ""}</span>
           </div>
         ))}
-      </div>
+      </div>}
       {hasManual && (
         <div style={{display:"flex", gap:14, marginTop:10, fontSize:11, color:T.sub, flexWrap:"wrap"}}>
-          <span style={{display:"flex", alignItems:"center", gap:5}}><span style={{width:9, height:9, borderRadius:2, background:"var(--cal-cardio)"}} /> Apple Health (auto)</span>
+          <span style={{display:"flex", alignItems:"center", gap:5}}><span style={{width:9, height:9, borderRadius:2, background:"var(--cal-cardio)"}} /> {automaticSource}</span>
           <span style={{display:"flex", alignItems:"center", gap:5}}><span style={{width:9, height:9, borderRadius:2, background:T.down}} /> manually entered</span>
-          <span>· hover a bar to check</span>
+          {range!=="1D"&&<span>· hover a bar to check</span>}
         </div>
       )}
     </div>
@@ -6174,31 +6172,17 @@ function StepBlock({ n, title, children }) {
   );
 }
 
-function HealthDashboard({ user, data, setData, openSteps }) {
+function HealthDashboard({ user, data, setData }) {
   const steps = useOwnSteps(user, 370);
-  const dates = Object.keys(steps).sort();
-  const latest = dates.at(-1);
-  const week = dates.filter(day=>day>=dAdd(todayStr(),-6) && day<=todayStr());
-  const average = week.length ? Math.round(week.reduce((sum,day)=>sum+steps[day],0)/week.length) : null;
+  const merged = useMemo(()=>mergeSteps(steps,data.cardio),[steps,data.cardio]);
   return <div className="card">
     <div className="h" style={{color:T.ink,fontSize:20,marginBottom:5}}>⌚ Health dashboard</div>
     <p style={{color:T.sub,fontSize:13,margin:"0 0 12px"}}>Your device activity at a glance.</p>
-    <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:8,marginBottom:12}}>
-      {[[latest ? steps[latest].toLocaleString() : "—",latest ? `Latest steps · ${fmtDate(latest)}` : "Latest steps"],
-        [average?.toLocaleString() ?? "—",`7-day daily average · ${week.length}/7 days recorded`]].map(([value,label])=>
-          <div key={label} style={{...sCard,marginBottom:0}}>
-            <div style={{color:T.green,fontSize:22,fontWeight:800}}>{value}</div>
-            <div style={{color:T.sub,fontSize:12}}>{label}</div>
-          </div>)}
-    </div>
     <details style={{marginBottom:12}}>
       <summary style={{color:T.ink,fontWeight:800,cursor:"pointer",padding:"8px 0"}}>Manage health connection</summary>
       <HealthSourceCard user={user} data={data} setData={setData} />
     </details>
-    <button className="btn-primary" style={{width:"100%",marginTop:12}} onClick={openSteps}>View Steps history</button>
-    {dates.length > 0 && <div style={{marginTop:14}}>
-      <StepRingChart map={steps} goal={data.profile?.stepGoal || 10000} provider={data.profile?.healthStepProvider} />
-    </div>}
+    <StepRingChart map={merged.map} meta={merged.meta} goal={data.profile?.stepGoal || 10000} provider={data.profile?.healthStepProvider} />
     {data.profile?.healthStepProvider === "google" && <FitbitHeartCard key={user.id} user={user} />}
   </div>;
 }
@@ -6281,7 +6265,7 @@ function FitbitHeartCard({ user }) {
   const buckets=range===365?Array.from({length:12},(_,i)=>{
     const samples=visible.filter(p=>p.day>=days[Math.floor(i*365/12)]&&p.day<=(days[Math.floor((i+1)*365/12)-1]||end));
     return {day:days[Math.floor(i*365/12)],bpm:samples.length?Math.round(samples.reduce((sum,p)=>sum+p.bpm,0)/samples.length):null};
-  }):days.map(day=>({day,bpm:visible.find(p=>p.day===day)?.bpm??null}));
+  }):days.map(day=>visible.find(p=>p.day===day) || {day,bpm:null});
   const current=visible.find(p=>p.day===selected)||visible.at(-1);
   const detail=buckets.find(p=>p.day===(hovered||selected)&&p.bpm!=null)||buckets.filter(p=>p.bpm!=null).at(-1);
   const detailIndex=detail?buckets.indexOf(detail):-1;
@@ -6299,11 +6283,25 @@ function FitbitHeartCard({ user }) {
       </div>
       {progress && <p role="status" style={{color:T.sub}}>{progress}</p>}
       {current ? <>
-        <div style={{fontSize:"clamp(36px, 8vw, 60px)",lineHeight:1.05,color:T.green,fontWeight:850,fontVariantNumeric:"tabular-nums"}}>{periodAverage} <span style={{fontSize:16}}>BPM</span></div>
-        <div style={{fontSize:14,color:T.sub,marginTop:5}}>{range===365?"Year":range===30?"30-day":`${range}-day`} average · {visible.length} of {range} days recorded</div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(100%,150px),1fr))",gap:10}}>
+          <div>
+            <div style={{fontSize:"clamp(32px, 7vw, 50px)",lineHeight:1.05,color:T.green,fontWeight:850,fontVariantNumeric:"tabular-nums"}}>{periodAverage} <span style={{fontSize:15}}>BPM</span></div>
+            <div style={{fontSize:13,color:T.sub,marginTop:5}}>{range===365?"Year":range===30?"30-day":`${range}-day`} average · {visible.length} of {range} days recorded</div>
+          </div>
+          <div style={{border:`1px solid ${T.line}`,background:T.input,borderRadius:12,padding:"10px 12px"}}>
+            <div style={{fontSize:13,color:T.sub,fontWeight:700}}>Resting heart rate</div>
+            <div style={{fontSize:25,color:T.ink,fontWeight:850,fontVariantNumeric:"tabular-nums"}}>{heart.resting?.bpm ?? "—"}{heart.resting&&<span style={{fontSize:13}}> BPM</span>}</div>
+            <div style={{fontSize:12,color:T.sub}}>{heart.resting ? `Latest recorded · ${fmtDate(heart.resting.day)}` : "No resting reading available"}</div>
+          </div>
+        </div>
         <div aria-live="polite" style={{minHeight:40,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",color:T.sub,fontSize:13,marginTop:12}}>
           {detail&&<><strong style={{color:T.ink,fontSize:20}}>{detail.bpm} BPM</strong><span>{range===365?`Period starting ${fmtDate(detail.day)} · average`:`${fmtDate(detail.day)} · daily average`}</span></>}
         </div>
+        {range!==365&&detail&&Number.isFinite(detail.min)&&Number.isFinite(detail.max)&&
+          <div style={{display:"flex",gap:16,marginBottom:8,color:T.sub,fontSize:13}}>
+            <span>Daily low <strong style={{color:T.ink}}>{detail.min} BPM</strong></span>
+            <span>Daily high <strong style={{color:T.ink}}>{detail.max} BPM</strong></span>
+          </div>}
         <svg viewBox="0 0 340 182" role="img" aria-label={range===365?"Heart rate grouped into approximately monthly averages":"Daily average heart rate in beats per minute"} onPointerLeave={()=>setHovered("")} style={{display:"block",width:"100%",maxHeight:370,touchAction:"pan-y"}}>
           {[low,(low+high)/2,high].map(v=><g key={v}><line x1="40" x2="320" y1={y(v)} y2={y(v)} stroke={T.line}/><text x="32" y={y(v)+3} textAnchor="end" fill={T.sub} fontSize="10">{v}</text></g>)}
           {buckets.map((p,i)=>{

@@ -90,9 +90,24 @@ Deno.serve(async req => {
       const points=(value.rollupDataPoints||[]).flatMap((p:any)=>{
         const d=p.civilStartTime?.date, bpm=Number(p.heartRate?.beatsPerMinuteAvg);
         if(!d || !Number.isFinite(bpm) || bpm<=0)return [];
-        return [{day:[d.year,String(d.month).padStart(2,"0"),String(d.day).padStart(2,"0")].join("-"),bpm:Math.round(bpm)}];
+        const min=Number(p.heartRate?.beatsPerMinuteMin), max=Number(p.heartRate?.beatsPerMinuteMax);
+        return [{day:[d.year,String(d.month).padStart(2,"0"),String(d.day).padStart(2,"0")].join("-"),bpm:Math.round(bpm),
+          ...(min>0&&max>=min&&Number.isFinite(max)?{min:Math.round(min),max:Math.round(max)}:{})}];
       }).sort((a:any,b:any)=>a.day.localeCompare(b.day));
-      return json(origin,{permission:true,points});
+      let resting=null;
+      if(back===0){
+        try {
+          const rr=await fetch("https://health.googleapis.com/v4/users/me/dataTypes/daily-resting-heart-rate/dataPoints?pageSize=30",{headers:{Authorization:`Bearer ${t.access_token}`}});
+          if(rr.ok){
+            const summary=await rr.json();
+            resting=(summary.dataPoints||[]).flatMap((p:any)=>{
+              const d=p.dailyRestingHeartRate?.date,bpm=Number(p.dailyRestingHeartRate?.beatsPerMinute);
+              return d&&Number.isFinite(bpm)&&bpm>0?[{day:[d.year,String(d.month).padStart(2,"0"),String(d.day).padStart(2,"0")].join("-"),bpm}]:[];
+            }).sort((a:any,b:any)=>b.day.localeCompare(a.day))[0]||null;
+          }
+        }catch{/* Resting data is optional; keep the daily trend available. */}
+      }
+      return json(origin,{permission:true,points,resting});
     } catch { return json(origin,{error:"Heart rate could not be refreshed."},502); }
   }
   if(action==="sync") {
