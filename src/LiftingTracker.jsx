@@ -1,6 +1,6 @@
 import { useState, useEffect, useLayoutEffect, useMemo, useRef, lazy, Suspense, Fragment, createContext, useContext } from "react";
 import { createPortal } from "react-dom";
-import { supabase, loadUserStateRecord, loadSharedUserStates, saveUserState, uploadExerciseMedia, getExerciseMediaUrl, deleteExerciseMedia, listMyGroups, listMembers, createGroup, joinGroup, leaveGroup, listReactions, addReaction, removeReaction, lastActiveFor, setGroupEmoji, resetInviteCode, getStepToken, rotateStepToken, disconnectSteps, stepsFor, lastStepSync, startGoogleHealthConnect, getGoogleHealthStatus, syncGoogleHealthSteps, importGoogleHealthHistory, getGoogleHealthHeart, disconnectGoogleHealth, createDuel, listDuels, deleteDuel, acceptDuel, declineDuel, forfeitDuel, requestDuelCancel, clearDuelCancel, setGroupRecordLifts, getMyProStatus, listProUserIds, generateBackupCodes, hasBackupCodes, requestAccountDeletion, clearLocalAccountData } from "./lib/storage.js";
+import { supabase, loadUserStateRecord, loadSharedUserStates, saveUserState, uploadExerciseMedia, getExerciseMediaUrl, deleteExerciseMedia, listMyGroups, listMembers, createGroup, joinGroup, leaveGroup, listReactions, addReaction, removeReaction, lastActiveFor, setGroupEmoji, resetInviteCode, getStepToken, rotateStepToken, disconnectSteps, stepsFor, lastStepSync, startGoogleHealthConnect, getGoogleHealthStatus, syncGoogleHealthSteps, importGoogleHealthHistory, getGoogleHealthHeart, getLatestGoogleHealthHeart, disconnectGoogleHealth, createDuel, listDuels, deleteDuel, acceptDuel, declineDuel, forfeitDuel, requestDuelCancel, clearDuelCancel, setGroupRecordLifts, getMyProStatus, listProUserIds, generateBackupCodes, hasBackupCodes, requestAccountDeletion, clearLocalAccountData } from "./lib/storage.js";
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -6204,6 +6204,28 @@ function FitbitHeartCard({ user }) {
   const [historyEnabled,setHistoryEnabled] = useState(false);
   const [history,setHistory] = useState(null);
   const [progress,setProgress] = useState("");
+  const [recent,setRecent] = useState(null);
+  const [recentError,setRecentError] = useState(false);
+  useEffect(()=>{
+    if(heart?.permission!==true)return;
+    let alive=true, timer, running=false, delay=120_000, last=0;
+    const check=async()=>{
+      if(!alive||running||document.visibilityState!=="visible"||!navigator.onLine||Date.now()-last<delay)return;
+      running=true; last=Date.now();
+      try {
+        const result=await getLatestGoogleHealthHeart();
+        if(alive){setRecent(result.permission?result:null);setRecentError(false);}
+        delay=120_000;
+      } catch {
+        if(alive)setRecentError(true);
+        delay=Math.min(delay*2,900_000);
+      } finally {running=false;}
+    };
+    check(); timer=window.setInterval(check,30_000);
+    document.addEventListener("visibilitychange",check);
+    window.addEventListener("online",check);
+    return ()=>{alive=false;window.clearInterval(timer);document.removeEventListener("visibilitychange",check);window.removeEventListener("online",check);};
+  },[user.id,heart?.permission]);
   useEffect(()=>{
     let active=true;
     const load=async(event)=>{
@@ -6275,7 +6297,18 @@ function FitbitHeartCard({ user }) {
   return <section className="card" style={{padding:"clamp(14px, 3vw, 28px)",marginTop:14}}>
     <h2 style={{fontSize:"clamp(24px, 5vw, 36px)",lineHeight:1.15,margin:"0 0 6px",color:T.ink}}>Heart rate</h2>
     <p style={{fontSize:14,color:T.sub,margin:"0 0 16px"}}>Synced Fitbit readings · not resting or live BPM</p>
-    {heart?.permission===false&&<p style={{fontSize:13,color:T.sub,lineHeight:1.5}}>Enabling heart rate gives The Lab read-only access to Google Health measurements. The Lab reads daily BPM summaries and resting heart rate for this private dashboard; it doesn’t share them with your groups. You can keep using Fitbit steps without enabling heart rate.</p>}
+    {heart?.permission===true&&<div style={{marginBottom:16}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(100%,150px),1fr))",gap:10}}>
+        {[["Latest Fitbit reading",recent?.latest],["Last active reading",recent?.active]].map(([label,sample])=><div key={label} style={{border:`1px solid ${T.line}`,background:T.input,borderRadius:12,padding:"10px 12px"}}>
+          <div style={{color:T.sub,fontSize:13,fontWeight:700}}>{label}</div>
+          <div style={{color:T.ink,fontWeight:850,fontSize:25}}>{sample?`${sample.bpm} BPM`:"—"}</div>
+          <div style={{color:T.sub,fontSize:12}}>{sample?`Recorded ${new Date(sample.at).toLocaleString()}`:recentError?"Couldn’t refresh readings":recent?"No recent reading found":"Checking Fitbit…"}</div>
+        </div>)}
+      </div>
+      <p style={{color:T.sub,fontSize:12,margin:"8px 0 0"}}>Checks every 2 minutes while visible. Readings arrive after Fitbit syncs; active readings are ones Google labeled as active.</p>
+      {recentError&&recent&&<p role="status" style={{color:T.sub,fontSize:12}}>Showing the last available readings. Refresh will retry automatically.</p>}
+    </div>}
+    {heart?.permission===false&&<p style={{fontSize:13,color:T.sub,lineHeight:1.5}}>Enabling heart rate gives The Lab read-only access to Google Health measurements. The Lab reads recent BPM samples, daily summaries and resting heart rate for this private dashboard; it doesn’t share them with your groups. You can keep using Fitbit steps without enabling heart rate.</p>}
     {!checked && <p role="status" style={{color:T.sub,fontSize:12}}>Checking Fitbit connection…</p>}
     {checked && !available && !message && <p style={{color:T.sub,fontSize:12}}>{connected ? "Heart-rate import is not enabled on the server yet." : "Connect Google / Fitbit under Manage health connection to get started."}</p>}
     {heart?.permission===true && <>

@@ -154,6 +154,9 @@ export async function startGoogleHealthConnect(heart = false) {
 export async function getGoogleHealthHeart(offset = 0) {
   return googleHealthAction("heart", { offset });
 }
+export async function getLatestGoogleHealthHeart() {
+  return googleHealthAction("heart-latest");
+}
 
 export async function getGoogleHealthStatus() {
   return googleHealthAction("status");

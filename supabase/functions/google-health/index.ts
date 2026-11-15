@@ -74,13 +74,26 @@ Deno.serve(async req => {
     if(row?.encrypted_tokens)try { const t=await open(row.encrypted_tokens); const token=t.refresh_token||t.access_token; if(token)await fetch(`https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(token)}`,{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"}}); } catch { /* local deletion still revokes The Lab's access */ }
     await admin.from("google_health_connections").delete().eq("user_id",user.id); return json(origin,{ok:true});
   }
-  if(action==="heart") {
+  if(action==="heart" || action==="heart-latest") {
     const {data:row}=await admin.from("google_health_connections").select("*").eq("user_id",user.id).maybeSingle();
     if(!row?.encrypted_tokens)return json(origin,{permission:false});
     try {
       const saved=await open(row.encrypted_tokens);
       if(!String(saved.scope||"").split(/\s+/).includes(HEART_SCOPE))return json(origin,{permission:false});
       const t=await freshTokens(row);
+      if(action==="heart-latest"){
+        const start=new Date(Date.now()-3600_000).toISOString();
+        const end=new Date().toISOString();
+        const q=new URLSearchParams({pageSize:"300",filter:`heart_rate.sample_time.physical_time >= "${start}" AND heart_rate.sample_time.physical_time < "${end}"`,dataSourceFamily:"users/me/dataSourceFamilies/google-wearables"});
+        const res=await fetch("https://health.googleapis.com/v4/users/me/dataTypes/heart-rate/dataPoints?"+q,{headers:{Authorization:`Bearer ${t.access_token}`}});
+        if(!res.ok)return json(origin,{error:"Recent Fitbit readings unavailable."},502);
+        const body=await res.json();
+        const samples=(body.dataPoints||[]).flatMap((p:any)=>{
+          const hr=p.heartRate,bpm=Number(hr?.beatsPerMinute),at=hr?.sampleTime?.physicalTime;
+          return Number.isFinite(bpm)&&bpm>0&&typeof at==="string"&&Number.isFinite(Date.parse(at))?[{bpm,at,active:hr.metadata?.motionContext==="ACTIVE"}]:[];
+        }).sort((a:any,b:any)=>Date.parse(b.at)-Date.parse(a.at));
+        return json(origin,{permission:true,latest:samples[0]||null,active:samples.find((p:any)=>p.active)||null});
+      }
       const today=new Date().toISOString().slice(0,10);
       const back=Number.isInteger(offset)&&offset>=0&&offset<=364 ? offset : 0;
       const body={range:{start:{date:dayObject(addDays(today,Math.max(-364,-13-back))),time:{}},end:{date:dayObject(addDays(today,1-back)),time:{}}},windowSizeDays:1};
